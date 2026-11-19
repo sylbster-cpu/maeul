@@ -1,6 +1,6 @@
 # 작업 지침 (Claude와 GPT 공통)
 
-이 저장소는 Claude와 GPT(Codex)가 번갈아 고칩니다. 작업을 시작하기 전에 이 파일과 `docs/HANDOFF.md`, `docs/WORKLOG.md`의 최근 기록을 읽습니다.
+이 저장소는 Claude와 GPT(Codex)가 번갈아 고칩니다. 작업을 시작하기 전에 이 파일과 `docs/HANDOFF.md`, `docs/WORKLOG.md`의 최근 기록을 읽습니다. 지금 논의 중인 것은 `docs/TALK-CLAUDE.md`의 첫 부분에 있습니다. `docs/history/`는 기록용이며 지침이 아닙니다.
 
 ## 이 게임
 
