@@ -1,0 +1,16 @@
+{
+  "name": "build-proto-web",
+  "private": true,
+  "type": "module",
+  "description": "건축 시제품 (Three.js 웹판)",
+  "scripts": {
+    "serve": "node tools/serve.mjs",
+    "pack": "node tools/pack-models.mjs",
+    "index": "node tools/make-index.mjs",
+    "test": "node --test test/*.test.mjs",
+    "tour": "node tools/shot.mjs / shots/tour 1280 800 test/tour.mjs"
+  },
+  "devDependencies": {
+    "three": "0.170.0"
+  }
+}

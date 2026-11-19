@@ -1,0 +1,245 @@
+<title>집짓기 시제품 웹판</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Jua&display=swap">
+<style>
+  /* 한 화면 앱: 3D 집터가 바탕이고, 그 위에 도구 쟁반과 작은 팻말이 뜬다 */
+  :root {
+    --sky-top: #bfe3ee;
+    --sky-bottom: #e6f3dc;
+    --panel: #fbf8ee;
+    --panel-edge: #1d4035;
+    --tile: #ffffff;
+    --tile-edge: #d9d3bd;
+    --ink: #1d4035;
+    --ink-soft: #55695f;
+    --accent: #f3a833;
+    --accent-ink: #33230a;
+    --moss: #23916f;
+    --on-moss: #ffffff;
+    --danger: #c9472f;
+    --on-danger: #ffffff;
+    --void-top: #33443f;
+    --void-bottom: #222e2a;
+    --scene-grass: #8fc46f;
+    --scene-lawn: #a9d684;
+    --scene-grid: #1d4035;
+    --scene-sun: #fff1d6;
+    --scene-sun-power: 2.4;
+    --scene-sky-power: 1.25;
+    --font-display: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+    --font-text: 'Gowun Dodum', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --sky-top: #16233a; --sky-bottom: #2c3b4c;
+      --panel: #1c2b27; --panel-edge: #0d1714; --tile: #273934; --tile-edge: #3a4f48;
+      --ink: #e9f2e5; --ink-soft: #a3b7ab; --accent: #f3b24d; --accent-ink: #2b1c00; --moss: #55c3a0; --on-moss: #0d231c; --danger: #f08a73; --on-danger: #2b0d06; --void-top: #141d1a; --void-bottom: #0c1211;
+      --scene-grass: #35604a; --scene-lawn: #437255; --scene-grid: #e9f2e5;
+      --scene-sun: #cdd9ff; --scene-sun-power: 1.5; --scene-sky-power: 0.85;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --sky-top: #16233a; --sky-bottom: #2c3b4c;
+    --panel: #1c2b27; --panel-edge: #0d1714; --tile: #273934; --tile-edge: #3a4f48;
+    --ink: #e9f2e5; --ink-soft: #a3b7ab; --accent: #f3b24d; --accent-ink: #2b1c00; --moss: #55c3a0; --on-moss: #0d231c; --danger: #f08a73; --on-danger: #2b0d06; --void-top: #141d1a; --void-bottom: #0c1211;
+    --scene-grass: #35604a; --scene-lawn: #437255; --scene-grid: #e9f2e5;
+    --scene-sun: #cdd9ff; --scene-sun-power: 1.5; --scene-sky-power: 0.85;
+    color-scheme: dark;
+  }
+
+  html, body { height: 100%; }
+  body {
+    background: linear-gradient(var(--sky-top), var(--sky-bottom));
+    color: var(--ink);
+    font-family: var(--font-text);
+    font-size: 15px;
+    line-height: 1.45;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    overflow: hidden;
+  }
+  .app { position: relative; height: 100%; overflow: hidden; }
+  /* 방 안에서는 바탕을 어둡게 해 방만 떠 보이게 한다 */
+  body[data-place="main"] { background: linear-gradient(var(--void-top), var(--void-bottom)); }
+  #scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; transition: opacity 0.16s ease; }
+  #scene.fading { opacity: 0; }
+  body[data-mode="build"] #scene { cursor: crosshair; }
+
+  .overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; justify-content: space-between; gap: 10px;
+    padding-block: 12px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    pointer-events: none;
+  }
+  .overlay button, .overlay .help, .overlay .dock { pointer-events: auto; }
+  .overlay { -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+  .overlay button { -webkit-user-select: none; user-select: none; }
+
+  button {
+    font: inherit; color: inherit;
+    background: var(--tile); border: 2px solid var(--tile-edge); border-radius: 10px;
+    cursor: pointer;
+  }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button[aria-pressed="true"] { background: var(--accent); border-color: var(--panel-edge); color: var(--accent-ink); }
+  kbd {
+    font: 12px/1 var(--font-text); padding: 2px 5px; border-radius: 5px;
+    border: 1px solid currentColor; opacity: 0.75;
+  }
+
+  /* 위쪽: 팻말과 카메라 */
+  .top { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .plaque {
+    background: var(--panel); border: 2px solid var(--panel-edge); border-radius: var(--radius);
+    box-shadow: 0 3px 0 var(--panel-edge);
+    padding: 6px 14px 7px; pointer-events: auto;
+  }
+  .plaque h1 { margin: 0; font: 400 21px/1.2 var(--font-display); letter-spacing: 0.01em; }
+  .plaque p { margin: 0; font-size: 12.5px; color: var(--ink-soft); }
+  .cam { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+  .cam button { min-width: 40px; height: 40px; padding: 0 10px; font-size: 14px; box-shadow: 0 2px 0 var(--tile-edge); }
+  .cam .glyph { font-size: 20px; line-height: 1; }
+
+  .help {
+    align-self: flex-start;
+    width: min(270px, 100%);
+    background: var(--panel); border: 2px solid var(--panel-edge); border-radius: var(--radius);
+    box-shadow: 0 3px 0 var(--panel-edge);
+    padding: 10px 14px 12px;
+  }
+  .help h2 { margin: 0 0 6px; font: 400 16px/1.2 var(--font-display); }
+  .help dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13.5px; }
+  .help dt { color: var(--ink-soft); white-space: nowrap; }
+  .help dd { margin: 0; min-width: 0; }
+
+  /* 아래쪽: 안내와 도구 쟁반 */
+  .bottom { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; }
+  .hint, .toast {
+    margin: 0; max-width: 100%;
+    padding: 5px 14px; border-radius: 999px;
+    background: var(--panel); border: 2px solid var(--panel-edge);
+    font-size: 14px; text-align: center; text-wrap: balance;
+  }
+  .toast { background: var(--accent); color: var(--accent-ink); }
+  .toast[data-kind="error"] { background: var(--danger); color: var(--on-danger); }
+  .dock {
+    display: flex; flex-wrap: wrap; align-items: stretch; justify-content: center; gap: 10px;
+    max-width: 100%; min-width: 0;
+    background: var(--panel); border: 2px solid var(--panel-edge); border-radius: 18px;
+    box-shadow: 0 4px 0 var(--panel-edge);
+    padding: 8px;
+  }
+  .mode { display: flex; gap: 6px; align-items: stretch; }
+  .mode button { min-width: 78px; min-height: 48px; padding: 6px 14px; font: 400 18px/1.1 var(--font-display); }
+  .extras { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; align-items: stretch; }
+  .extras button { padding: 4px 10px; font-size: 13.5px; min-height: 48px; }
+  .tools {
+    display: flex; gap: 12px; min-width: 0; max-width: 100%;
+    overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: 2px;
+  }
+  .tabs { display: flex; gap: 6px; flex: 1 1 100%; justify-content: center; }
+  .tabs button { padding: 3px 14px; min-height: 34px; font-size: 14px; border-radius: 999px; flex: none; white-space: nowrap; }
+  .tool-group { display: flex; flex-direction: column; gap: 3px; }
+  .tool-group-name { font-size: 11.5px; color: var(--ink-soft); letter-spacing: 0.08em; padding-left: 2px; }
+  .tool-row { display: flex; gap: 5px; }
+  .tool {
+    width: 62px; padding: 3px 2px 4px; flex: none;
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+  }
+  .tool-art { width: 44px; height: 44px; display: grid; place-items: center; color: var(--moss); }
+  .tool[aria-pressed="true"] .tool-art { color: var(--accent-ink); }
+  .tool-art img, .tool-art svg { width: 44px; height: 44px; display: block; }
+  .chip { width: 36px; height: 36px; border-radius: 8px; border: 2px solid var(--panel-edge); display: block; }
+  .cam #place-toggle { background: var(--moss); border-color: var(--panel-edge); color: var(--on-moss); font-family: var(--font-display); font-size: 16px; padding: 0 14px; box-shadow: 0 2px 0 var(--panel-edge); }
+  .tool-label { font-size: 12px; line-height: 1.15; white-space: nowrap; }
+
+  .loading {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    background: linear-gradient(var(--sky-top), var(--sky-bottom));
+    font: 400 20px var(--font-display); color: var(--ink);
+  }
+
+  @media (max-width: 720px) {
+    .plaque h1 { font-size: 18px; }
+    .mode button { min-width: 58px; min-height: 44px; padding: 4px 10px; font-size: 16px; }
+    /* 좁은 화면: 모드 버튼 옆에 보조 버튼을 한 줄로 두고 옆으로 민다 */
+    .dock { gap: 8px; }
+    .mode { flex: none; }
+    .extras { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; overscroll-behavior-x: contain; }
+    .extras button { flex: none; white-space: nowrap; font-size: 13px; padding: 4px 10px; min-height: 44px; }
+    .tools { flex: 1 1 100%; }
+    .tabs { justify-content: flex-start; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; }
+    .hint { font-size: 13px; }
+  }
+</style>
+
+<div class="app">
+  <canvas id="scene" tabindex="0" aria-label="마당과 방. 걷기 모드에서는 땅을 눌러 걷고, 꾸미기 모드에서는 가구를 놓습니다."></canvas>
+
+  <div class="overlay">
+    <header class="top">
+      <div class="plaque">
+        <h1>집짓기 시제품</h1>
+        <p><span id="place-name">마당</span> · <span id="save-status" role="status"></span></p>
+      </div>
+      <div class="cam" role="group" aria-label="카메라와 설정">
+        <button type="button" id="place-toggle">집 안으로</button>
+        <button type="button" id="cam-left" aria-label="카메라를 왼쪽으로 돌리기" title="카메라 돌리기 (Q)"><span class="glyph">↶</span></button>
+        <button type="button" id="cam-right" aria-label="카메라를 오른쪽으로 돌리기" title="카메라 돌리기 (E)"><span class="glyph">↷</span></button>
+        <button type="button" id="zoom-in" aria-label="확대"><span class="glyph">＋</span></button>
+        <button type="button" id="zoom-out" aria-label="축소"><span class="glyph">－</span></button>
+        <button type="button" id="help-toggle" aria-expanded="true" aria-controls="help">조작법</button>
+        <button type="button" id="sound" aria-pressed="true">소리 켜짐</button>
+      </div>
+    </header>
+
+    <aside class="help" id="help" aria-label="조작법">
+      <h2>조작법</h2>
+      <dl>
+        <dt>걷기</dt><dd>WASD, 방향키, 또는 땅 누르기</dd>
+        <dt>드나들기</dt><dd>집이나 현관 깔개 누르기</dd>
+        <dt>꾸미기와 걷기</dt><dd><kbd>B</kbd> 로 바꾸기</dd>
+        <dt>가구 돌리기</dt><dd><kbd>R</kbd></dd>
+        <dt>카메라</dt><dd><kbd>Q</kbd> <kbd>E</kbd> 로 돌리고 휠로 확대</dd>
+        <dt>그만두기</dt><dd><kbd>Esc</kbd> 또는 오른쪽 버튼</dd>
+        <dt>되돌리기</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> (맥은 <kbd>Cmd</kbd>)</dd>
+        <dt>다시 하기</dt><dd><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></dd>
+      </dl>
+    </aside>
+
+    <div class="bottom">
+      <p class="toast" id="toast" role="status" hidden></p>
+      <p class="hint" id="hint"></p>
+      <div class="dock">
+        <div class="mode" role="group" aria-label="모드">
+          <button type="button" id="mode-walk" aria-pressed="true">걷기</button>
+          <button type="button" id="mode-build" aria-pressed="false">꾸미기</button>
+        </div>
+        <div class="extras" id="build-extras" hidden>
+          <button type="button" id="cancel-carry" hidden>그만두기</button>
+          <button type="button" id="undo" disabled title="되돌리기 (Ctrl+Z)">되돌리기</button>
+          <button type="button" id="redo" disabled title="다시 하기 (Ctrl+Shift+Z)">다시 하기</button>
+          <button type="button" id="rotate-part">돌리기</button>
+          <button type="button" id="clear-all">방 가구 치우기</button>
+          <button type="button" id="sample">처음 배치로</button>
+        </div>
+        <div class="tabs" id="tabs" role="group" aria-label="보기 고르기" hidden>
+          <button type="button" id="tab-furniture" aria-pressed="true">가구</button>
+          <button type="button" id="tab-props" aria-pressed="false">소품</button>
+          <button type="button" id="tab-wall" aria-pressed="false">벽걸이</button>
+          <button type="button" id="tab-style" aria-pressed="false">집 겉모습</button>
+        </div>
+        <div class="tools" id="tools" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="loading" id="loading">집터를 준비하고 있습니다</div>
+</div>
+
+<script type="module" src="src/main.js"></script>
