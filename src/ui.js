@@ -223,7 +223,12 @@ export function createUI({ thumbs, on, guest = false }) {
       $('save-status').textContent = { saved: '자동 저장됨', pending: '저장하는 중', off: '이 브라우저에서는 저장되지 않습니다', guest: '친구 집 구경 중 · 내 집 유지' }[status] || '';
     },
     toast: showToast,
-    openShare(link) {
+    openShare(link, options = {}) {
+      $('share-title').textContent = options.title || '내 집 보여 주기';
+      $('share-description').textContent = options.description ||
+        '지금 꾸민 집을 친구가 그대로 구경할 수 있습니다. 구경하는 사람은 수정할 수 없고, 원래 자기 집도 그대로 남습니다.';
+      $('share-footnote').textContent = options.footnote ||
+        '이 링크는 공유한 순간의 집 모습입니다. 이후 바꾼 모습은 새 링크를 보내야 보입니다.';
       shareLink.value = link;
       shareLayer.hidden = false;
       $('share-copy').focus();
