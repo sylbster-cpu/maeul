@@ -4,16 +4,19 @@
 export default async function onlineTimeoutTour(page, { out, logs }) {
   const say = (label, ok, extra = '') => logs.push(`${ok ? '통과' : '실패'}  ${label} ${extra}`);
   const g = (fn, arg) => page.evaluate(fn, arg);
-  // 주소의 ?hang= 과 ?slow= 로 어느 동작을 멈추거나 늦출지 고른다. 한도는 시험이 빨리 끝나게 짧게 둔다
+  // 주소의 ?hang= 으로 응답을 멈추고, ?gate= 로 시험이 풀어 줄 때까지 응답을 붙잡아 둔다.
+  // 순서를 시간에 기대지 않게 하려는 것이다. 한도만 실제 시계로 본다(멈춘 경우 3초)
   const mock = `
     import { createState } from './state.js';
     const OWNER = 'ownerAa123456789';
     const mode = new URLSearchParams(location.search);
     const never = () => new Promise(() => {});
-    const later = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    const hold = async (name) => { if (mode.get('hang') === name) await never(); if (mode.get('slow') === name) await later(2500); };
-    // 늦은 응답을 볼 때는 한도가 먼저 걸리지 않게 넉넉히 둔다
-    export const ONLINE_TIMEOUT_MS = mode.get('slow') ? 8000 : 900;
+    let release = null;
+    window.__releaseOnline = () => { if (release) { release(); release = null; return true; } return false; };
+    const gate = () => new Promise((resolve) => { release = resolve; });
+    const hold = async (name) => { if (mode.get('hang') === name) await never(); if (mode.get('gate') === name) await gate(); };
+    // 응답을 붙잡아 둘 때는 한도가 먼저 걸리지 않게 넉넉히 둔다
+    export const ONLINE_TIMEOUT_MS = mode.get('gate') ? 60000 : 3000;
     export function isOnlineConfigured() { return true; }
     export function getOnlineService() {
       return Promise.resolve({
@@ -37,8 +40,8 @@ export default async function onlineTimeoutTour(page, { out, logs }) {
   await g(() => { window.__game.store.dispatch({ type: 'setExterior', slot: 'roof', value: 'slate' }); window.__game.saveNow(); });
   await page.click('#online-action');
   await page.click('#online-publish');
-  await page.waitForTimeout(150);
-  const waiting = { text: await status(), closeOff: await g(() => document.getElementById('online-close').disabled), publishOff: await g(() => document.getElementById('online-publish').disabled) };
+  // 세 값을 한 번에 읽는다. 따로 읽으면 그 사이에 한도가 지나 값이 엇갈릴 수 있다
+  const waiting = await g(() => ({ text: document.getElementById('online-status').textContent, closeOff: document.getElementById('online-close').disabled, publishOff: document.getElementById('online-publish').disabled }));
   say('기다리는 동안 닫기 버튼은 켜져 있고 게시 버튼은 꺼져 있다', waiting.text.includes('연결하는 중') && !waiting.closeOff && waiting.publishOff, JSON.stringify(waiting));
   await page.click('#online-close');
   say('응답을 기다리는 중에도 창을 닫을 수 있다', await hidden('online-layer'));
@@ -46,36 +49,37 @@ export default async function onlineTimeoutTour(page, { out, logs }) {
   await page.click('#online-action');
   say('닫았다 다시 열면 버튼을 바로 쓸 수 있다', !(await g(() => document.getElementById('online-publish').disabled)) && (await status()) === '');
   await page.click('#online-publish');
-  await page.waitForFunction(() => document.getElementById('online-status').textContent.includes('응답이 없습니다'), null, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(() => document.getElementById('online-status').textContent.includes('응답이 없습니다'), null, { timeout: 15000 }).catch(() => {});
   const after = { text: await status(), publishOff: await g(() => document.getElementById('online-publish').disabled), toast: await g(() => document.getElementById('toast').textContent) };
   say('한도가 지나면 실패로 알리고 버튼을 다시 쓸 수 있다', after.text.includes('응답이 없습니다') && !after.publishOff && after.toast.includes('응답이 없습니다'), JSON.stringify(after));
   await page.screenshot({ path: `${out}-1-timeout.png` });
 
   // 바깥을 눌러도 기다리는 창이 닫힌다
   await page.click('#online-publish');
-  await page.waitForTimeout(100);
   await page.mouse.click(4, 4);
-  say('기다리는 중에 창 바깥을 눌러도 닫힌다', await hidden('online-layer'));
+  say('창 바깥을 눌러도 닫힌다', await hidden('online-layer'));
 
   // 2) 창을 닫은 뒤 늦게 온 응답
-  await page.goto(base + '?slow=publish'); await ready();
+  await page.goto(base + '?gate=publish'); await ready();
   await page.click('#online-action');
   await page.click('#online-publish');
-  await page.click('#online-close'); // 응답은 2.5초 뒤에 온다. 그 전에 닫는다
-  const closedInTime = await hidden('share-layer');
-  await page.waitForTimeout(3200);
-  say('닫은 뒤 늦게 온 응답은 화면을 바꾸지 않는다', closedInTime && (await hidden('share-layer')) && (await hidden('online-layer')));
+  await page.click('#online-close'); // 응답은 아직 붙잡혀 있다
+  const released = await g(() => window.__releaseOnline()); // 닫은 뒤에 응답을 보낸다
+  await page.waitForTimeout(400);
+  say('닫은 뒤 늦게 온 응답은 화면을 바꾸지 않는다', released && (await hidden('share-layer')) && (await hidden('online-layer')));
   await page.click('#online-action');
   await page.click('#online-publish');
-  await page.waitForFunction(() => !document.getElementById('share-layer').hidden, null, { timeout: 7000 }).catch(() => {});
-  say('기다리면 늦은 응답도 정상으로 처리된다', !(await hidden('share-layer')) && (await g(() => document.getElementById('share-link').value.includes('#visit='))));
+  await page.waitForFunction(() => document.getElementById('online-publish').disabled, null, { timeout: 5000 }).catch(() => {});
+  await g(() => window.__releaseOnline()); // 이번에는 창을 연 채로 응답을 받는다
+  await page.waitForFunction(() => !document.getElementById('share-layer').hidden, null, { timeout: 10000 }).catch(() => {});
+  say('창을 연 채 기다리면 늦은 응답도 정상으로 처리된다', !(await hidden('share-layer')) && (await g(() => document.getElementById('share-link').value.includes('#visit='))));
 
   // 3) 방문 링크가 응답하지 않을 때
   const saved = await g(() => JSON.stringify(JSON.parse(localStorage.getItem('house-lab-web:save')).state.house));
   await page.goto('about:blank');
   const started = Date.now();
   await page.goto(base + '?hang=visit#visit=ownerAa123456789');
-  const up = await page.waitForFunction(() => window.__ready === true, null, { timeout: 15000 }).then(() => true).catch(() => false);
+  const up = await page.waitForFunction(() => window.__ready === true, null, { timeout: 30000 }).then(() => true).catch(() => false);
   const took = Date.now() - started;
   await page.waitForTimeout(200);
   const visit = up ? await g(() => ({
