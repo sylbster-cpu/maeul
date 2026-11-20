@@ -1,5 +1,7 @@
 // 서버 없는 집 공유. URL의 #home= 부분에 읽기 전용 집 상태를 담는다.
 // 로컬 저장과 별개이며, 공유 링크를 연 사람의 기존 집은 바꾸지 않는다.
+// Claude 임시 게시 화면에서도, 친구에게 보낼 링크는 정식 GitHub Pages 주소를 사용한다.
+export const PUBLIC_SHARE_URL = 'https://sylbster-cpu.github.io/maeul/';
 const MAX_TEXT_BYTES = 100_000;
 const MAX_HASH_LENGTH = 6_000;
 const MAX_OBJECTS = 300;
