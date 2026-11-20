@@ -12,8 +12,8 @@ import { createSaver, parse, serialize } from './save.js';
 import { makeShareLink, readShareHash, PUBLIC_SHARE_URL } from './share.js';
 import { watchShareHash } from './share-route.js';
 import { sampleCommands } from './sample.js';
-import { onlineVisitUid, onlineErrorText } from './online-data.js';
-import { getOnlineService } from './online.js';
+import { onlineVisitUid, onlineErrorText, withOnlineTimeout } from './online-data.js';
+import { getOnlineService, ONLINE_TIMEOUT_MS } from './online.js';
 import { createOnlineUI } from './online-ui.js';
 
 watchShareHash(window);
@@ -50,7 +50,9 @@ async function start(saved = {}) {
     document.getElementById('loading').textContent = '친구의 집을 불러오는 중입니다';
     try {
       const ownerUid = onlineVisitUid(window.location.hash);
-      sharedState = await (await getOnlineService()).visit(ownerUid);
+      // 서버가 응답하지 않으면 한도 뒤에 포기하고 내 집을 연다. 불러오는 화면에서 멈추지 않게 한다
+      sharedState = await withOnlineTimeout(
+        (async () => (await getOnlineService()).visit(ownerUid))(), ONLINE_TIMEOUT_MS);
       onlineGuestOwner = ownerUid;
     } catch (error) { shareError = onlineErrorText(error); }
   }

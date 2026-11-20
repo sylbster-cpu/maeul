@@ -70,6 +70,7 @@ npm test
 
 규칙, 되돌리기, 저장 테스트입니다. 공유 링크 변환·손상 복구 테스트(`test/share.test.mjs`)도 포함됩니다. 화면 확인은 서버를 띄운 채 `node tools/shot.mjs / 출력이름 1280 800 test/tour.mjs` 로 자동 둘러보기를 돌립니다. 소품과 벽걸이는 `test/decor.mjs` 로 같은 방식으로 확인합니다. 터치 조작은 `TOUCH=1 node tools/shot.mjs / 출력이름 390 844 test/touch.mjs` 로 확인합니다. 의자에 앉기는 `test/sit.mjs` 를 두 방식 모두로 돌립니다(마우스는 `1280 800`, 터치는 `TOUCH=1` 과 `390 844`).
 집 공유 브라우저 시험은 서버를 띄운 채 `node tools/shot.mjs / shots/share 390 844 test/share.mjs` 로 실행합니다. 같은 탭 공유 링크 전환, 조작된 링크, 원래 집 저장 보호를 확인합니다.
+온라인 창은 같은 방식으로 `test/online.mjs`(가짜 서비스로 게시, 방명록, 방문 인사)와 `test/online-timeout.mjs`(서버가 응답하지 않을 때 창이 닫히는지, 방문 링크가 내 집으로 넘어가는지)로 확인합니다. 둘 다 `TOUCH=1` 과 `390 844` 로 돌리며 실제 Firebase 에는 접속하지 않습니다.
 
 ## 에셋
 

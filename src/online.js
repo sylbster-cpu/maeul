@@ -2,8 +2,12 @@
 // 게임 엔진은 Three.js 그대로 두고 온라인 방문 집/방명록에만 Firestore를 사용한다.
 import { FIREBASE_CONFIG } from './firebase-config.js';
 import { createOnlineService } from './online-service.js';
+import { withOnlineTimeout } from './online-data.js';
 
 const SDK = 'https://www.gstatic.com/firebasejs/13.4.0';
+// 서버 응답을 기다리는 한도(밀리초). Firestore 의 쓰기는 연결이 끊긴 동안 실패하지 않고 계속 기다리므로,
+// 한도가 없으면 창과 불러오는 화면이 끝없이 멈춘다.
+export const ONLINE_TIMEOUT_MS = 20000;
 export function isOnlineConfigured() {
   return !!FIREBASE_CONFIG && ['apiKey', 'authDomain', 'projectId', 'appId'].every(
     (key) => typeof FIREBASE_CONFIG[key] === 'string' && FIREBASE_CONFIG[key].length > 3);
@@ -15,7 +19,8 @@ export function getOnlineService() {
     return Promise.reject(new Error('온라인 기능은 Firebase 설정 후 사용할 수 있습니다'));
   }
   if (!connection) {
-    connection = (async () => {
+    // 모듈 내려받기나 로그인이 멈추면 한도 뒤에 실패로 돌리고, 다음 시도에서 다시 연결한다
+    connection = withOnlineTimeout((async () => {
       const [appSdk, authSdk, storeSdk] = await Promise.all([
         import(`${SDK}/firebase-app.js`),
         import(`${SDK}/firebase-auth.js`),
@@ -27,7 +32,7 @@ export function getOnlineService() {
       if (!auth.currentUser) await authSdk.signInAnonymously(auth);
       const uid = auth.currentUser?.uid;
       return createOnlineService({ uid, db: storeSdk.getFirestore(app), api: storeSdk });
-    })().catch((error) => { connection = null; throw error; });
+    })(), ONLINE_TIMEOUT_MS).catch((error) => { connection = null; throw error; });
   }
   return connection;
 }

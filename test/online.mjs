@@ -5,6 +5,7 @@ export default async function onlineTour(page, { out, logs }) {
   const mock = `
     import { createState } from './state.js';
     const OWNER = 'ownerAa123456789';
+    export const ONLINE_TIMEOUT_MS = 20000;
     export function isOnlineConfigured() { return true; }
     export function getOnlineService() {
       return Promise.resolve({
