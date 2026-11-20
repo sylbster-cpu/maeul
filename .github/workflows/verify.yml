@@ -70,6 +70,7 @@ jobs:
           run_tour sit 1280 800 test/sit.mjs no
           run_tour touch 390 844 test/touch.mjs yes
           run_tour sit-touch 390 844 test/sit.mjs yes
+          run_tour route 390 844 test/route.mjs yes
           run_tour share 390 844 test/share.mjs yes
           run_tour online 390 844 test/online.mjs yes
           run_tour online-timeout 390 844 test/online-timeout.mjs yes

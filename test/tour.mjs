@@ -21,11 +21,12 @@ export default async function tour(page, { out, logs }) {
   // 2) 방에서 가구 놓기, 돌리기, 옮기기
   await page.keyboard.press('KeyB');
   await page.click('#tool-stool');
-  await click(4.5, 4.5);
+  // 기본 의자가 (4,4)를 차지하므로, 탁자 오른쪽 빈 칸에서 놓기 시험을 한다.
+  await click(5.5, 4.5);
   const stool = () => g(() => Object.values(window.__game.store.state.spaces.main.objects).filter((o) => o.part === 'stool').map((o) => [o.x, o.y, o.rot]));
-  say('방에 스툴 놓기', JSON.stringify(await stool()) === '[[4,4,0]]', JSON.stringify(await stool()));
+  say('방에 스툴 놓기', JSON.stringify(await stool()) === '[[5,4,0]]', JSON.stringify(await stool()));
   await page.click('#tool-select');
-  await click(4.5, 4.5);
+  await click(5.5, 4.5);
   await page.keyboard.press('KeyR');
   await click(0.5, 4.5);
   say('집어서 돌려 옮기기', JSON.stringify(await stool()) === '[[0,4,1]]', JSON.stringify(await stool()));
