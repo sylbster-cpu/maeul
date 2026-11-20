@@ -224,6 +224,13 @@ img { max-width: 100%; }
   .online-panel button { min-height: 44px; padding: 7px 12px; }
   .online-actions button { flex: 1 1 90px; }
   #online-status { min-height: 1.4em; font-size: 13px; white-space: pre-wrap; }
+  /* 이 브라우저로 게시한 집이 지금 공개 중인지 알려 주는 줄. 글이 바뀌어도 창이 덜 움직이게 두 줄 자리를 잡아 둔다 */
+  #online-state {
+    box-sizing: border-box; min-height: calc(2 * 1.45em + 14px); margin: 0 0 10px; padding: 6px 10px;
+    border: 2px solid var(--tile-edge); border-radius: 9px; background: var(--tile);
+  }
+  #online-state[data-state="public"] { border-color: var(--moss); }
+  #online-state[data-state="private"], #online-state[data-state="error"] { border-color: var(--accent); }
   .online-note-row { padding: 8px 0; border-bottom: 1px solid var(--tile-edge); }
   .online-note-row p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 6px; }
   .online-note-row small { font-size: 12px; color: var(--ink-soft); padding-right: 10px; }
@@ -335,6 +342,7 @@ img { max-width: 100%; }
     <section class="online-panel" role="dialog" aria-modal="true" aria-labelledby="online-title">
       <h2 id="online-title">온라인 집</h2>
       <p id="online-description"></p>
+      <p id="online-state" role="status" hidden></p>
       <div class="online-actions" id="online-owner-controls" hidden>
         <button type="button" id="online-publish">내 집 온라인 게시</button>
         <button type="button" id="online-list">방명록 보기</button>

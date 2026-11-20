@@ -1,5 +1,5 @@
 // Firebase 온라인 집과 방명록 UI. 화면 위의 창으로 열어 게임 한 화면의 크기를 바꾸지 않는다.
-// 서버 기능은 버튼을 누를 때 불러오며, 기존 localStorage/명령 상태를 직접 고치지 않는다.
+// 서버 기능은 온라인 창을 열거나 그 안의 버튼을 누를 때 불러오며, 기존 localStorage/명령 상태를 직접 고치지 않는다.
 import { getOnlineService, isOnlineConfigured, ONLINE_TIMEOUT_MS } from './online.js';
 import { MAX_NOTE_LENGTH, normalizeVisitNote, onlineErrorText, withOnlineTimeout } from './online-data.js';
 
@@ -26,8 +26,36 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, ope
   let submitted = false;
   let run = 0; // 요청마다 번호를 매긴다. 기다리던 창을 닫으면 번호를 넘겨, 늦게 온 응답이 화면을 바꾸지 않게 한다
 
+  // 이 브라우저로 게시한 집이 지금 어떤 상태인지 알려 주는 줄 (집주인의 창에만 보인다).
+  // 익명 계정은 브라우저마다 따로라서, 다른 브라우저에서 게시한 집과 그 방명록은 여기서 보이지 않는다
+  const state = $('online-state');
+  let stateRun = 0;
+  function showState(kind, when = null) {
+    const at = when instanceof Date && !Number.isNaN(when.valueOf())
+      ? ` (마지막 게시 ${when.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })})` : '';
+    state.dataset.state = kind;
+    state.textContent = {
+      checking: '이 브라우저로 게시한 집을 확인하는 중입니다…',
+      none: '이 브라우저로 게시한 집이 없습니다. 방명록은 집을 게시한 브라우저에서만 보입니다.',
+      public: `이 브라우저로 게시한 집이 지금 공개 중입니다.${at}`,
+      private: '이 브라우저로 게시한 집은 공개가 중지되어 있습니다. 다시 게시하면 같은 링크로 열립니다.',
+      error: '게시 상태를 확인하지 못했습니다. 연결을 확인한 뒤 창을 다시 열어 주세요.',
+    }[kind];
+  }
+  // 버튼을 막지 않고 따로 읽는다. 번호가 넘어가면(창을 닫거나 게시 상태를 바꾸는 중이면) 늦은 결과는 버린다
+  async function refreshState() {
+    const mine = ++stateRun;
+    showState('checking');
+    try {
+      const info = await withOnlineTimeout((async () => (await getOnlineService()).ownStatus())(), ONLINE_TIMEOUT_MS);
+      if (mine !== stateRun) return;
+      showState(!info.published ? 'none' : info.isPublic ? 'public' : 'private', info.updatedAt);
+    } catch { if (mine === stateRun) showState('error'); }
+  }
+
   function report(message) { status.textContent = message; }
   function hide() {
+    stateRun++;
     layer.hidden = true;
     button.focus();
   }
@@ -41,7 +69,7 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, ope
     buttons.forEach((b) => { b.disabled = b.id !== 'online-close' && (on || (b.id === 'online-submit' && submitted)); });
     if (on) report('서버에 연결하는 중입니다…');
   }
-  async function task(fn, onSuccess = () => {}) {
+  async function task(fn, onSuccess = () => {}, onFailure = () => {}) {
     if (busy) return;
     const mine = ++run;
     setBusy(true);
@@ -56,6 +84,7 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, ope
       const message = onlineErrorText(error);
       report(message);
       toast(message, 'error');
+      onFailure();
     } finally { if (mine === run) setBusy(false); }
   }
   function open() {
@@ -65,6 +94,8 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, ope
     list.hidden = true;
     list.replaceChildren();
     report('');
+    state.hidden = isVisitor;
+    if (!isVisitor) refreshState();
     if (isVisitor) {
       title.textContent = '친구 집에 인사 남기기';
       explanation.textContent = '한 번 남긴 인사는 집주인이 다음에 접속했을 때 확인합니다. 집은 수정할 수 없습니다.';
@@ -86,9 +117,11 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, ope
     }
   });
 
-  $('online-publish').addEventListener('click', () => task(
+  // 게시 상태를 바꾸는 동안에는 앞서 읽던 상태를 버린다. 실패하면 다시 읽는다
+  $('online-publish').addEventListener('click', () => { stateRun++; showState('checking'); task(
     (service) => service.publish(store.state),
     (link) => {
+      showState('public', new Date());
       hide();
       toast('온라인 집 게시가 완료됐습니다');
       openShare(link, {
@@ -96,7 +129,7 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, ope
         description: '친구가 이 주소로 방문하면 서버에 게시한 집을 구경하고 인사말을 남길 수 있습니다.',
         footnote: '이후 꾸민 모습은 다시 온라인 게시를 눌러야 반영됩니다. 계정이 익명이므로 브라우저 데이터를 지우면 수정 권한을 잃을 수 있습니다.',
       });
-    }));
+    }, refreshState); });
 
   function renderNotes(notes, service) {
     list.hidden = false;
@@ -136,7 +169,12 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, ope
 
   $('online-unpublish').addEventListener('click', () => {
     if (!confirm('온라인에 게시된 집을 비공개로 바꿀까요? 친구의 링크에서 더는 열리지 않습니다.')) return;
-    task((service) => service.unpublish(), () => report('집을 비공개로 바꿨습니다. 기존 로컬 집은 그대로입니다.'));
+    stateRun++;
+    showState('checking');
+    task((service) => service.unpublish(), () => {
+      showState('private');
+      report('집을 비공개로 바꿨습니다. 기존 로컬 집은 그대로입니다.');
+    }, refreshState);
   });
 
   noteBox.maxLength = MAX_NOTE_LENGTH;

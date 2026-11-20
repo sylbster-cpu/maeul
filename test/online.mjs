@@ -7,18 +7,21 @@ export default async function onlineTour(page, { out, logs }) {
     const OWNER = 'ownerAa123456789';
     export const ONLINE_TIMEOUT_MS = 20000;
     export function isOnlineConfigured() { return true; }
+    let house = null; // 가짜 서버에 올라간 내 집의 상태
     export function getOnlineService() {
       return Promise.resolve({
         uid: OWNER,
-        async publish() { return 'https://sylbster-cpu.github.io/maeul/#visit=' + OWNER; },
+        async ownStatus() { return house ? { published: true, isPublic: house.isPublic, updatedAt: house.at } : { published: false, isPublic: false, updatedAt: null }; },
+        async publish() { house = { isPublic: true, at: new Date(2026, 10, 20, 18, 10) }; return 'https://sylbster-cpu.github.io/maeul/#visit=' + OWNER; },
         async visit() { return createState(); },
         async leaveNote() {},
         async getNotes() { return [{ uid: 'guestBb987654321', body: '<b>안전한 인사</b>', date: new Date() }]; },
         async removeNote() {},
-        async unpublish() {},
+        async unpublish() { if (house) house.isPublic = false; },
       });
     }
   `;
+  page.on('dialog', (dialog) => dialog.accept()); // 공개 중지를 묻는 창에는 예로 답한다
   await page.route('**/src/online.js', (route) => route.fulfill({
     body: mock, contentType: 'text/javascript', headers: { 'access-control-allow-origin': '*' },
   }));
@@ -33,6 +36,9 @@ export default async function onlineTour(page, { out, logs }) {
 
   await page.click('#online-action');
   say('온라인 게시 창이 화면 위에 열린다', await page.locator('#online-layer').isVisible());
+  const stateText = () => page.evaluate(() => document.getElementById('online-state').textContent);
+  await page.waitForFunction(() => document.getElementById('online-state').dataset.state === 'none');
+  say('게시한 적이 없으면 그렇게 알려 준다', (await stateText()).includes('게시한 집이 없습니다') && await page.locator('#online-state').isVisible());
   await page.click('#online-list');
   await page.waitForFunction(() => document.getElementById('online-notes-list').textContent.includes('안전한 인사'));
   say('방명록은 방문자 HTML을 실행하지 않고 글자로 표시한다',
@@ -41,6 +47,18 @@ export default async function onlineTour(page, { out, logs }) {
   await page.waitForFunction(() => document.getElementById('share-link').value.includes('#visit='));
   say('온라인 게시 버튼이 짧은 방문 링크를 표시한다', await page.locator('#share-layer').isVisible());
   await page.click('#share-close');
+  await page.click('#online-action');
+  await page.waitForFunction(() => document.getElementById('online-state').dataset.state === 'public');
+  say('게시한 뒤 창을 열면 공개 중이라고 알려 준다', /지금 공개 중입니다.*마지막 게시 11\. 20\./.test(await stateText()));
+  await page.click('#online-unpublish');
+  await page.waitForFunction(() => document.getElementById('online-state').dataset.state === 'private');
+  say('공개 중지를 누르면 중지됐다고 바로 알려 준다', (await stateText()).includes('공개가 중지되어 있습니다'));
+  await page.click('#online-close');
+  await page.click('#online-action');
+  await page.waitForFunction(() => document.getElementById('online-state').dataset.state === 'private');
+  say('창을 다시 열어도 중지 상태가 보인다', (await stateText()).includes('공개가 중지되어 있습니다'));
+  await page.screenshot({ path: `${out}-state.png` });
+  await page.click('#online-close');
 
   await Promise.all([
     page.waitForEvent('load'),
@@ -49,6 +67,7 @@ export default async function onlineTour(page, { out, logs }) {
   await page.waitForFunction(() => window.__ready === true && !document.getElementById('my-home').hidden);
   say('방문 모드에서는 편집 버튼이 숨겨진다', await page.locator('#mode-build').isHidden());
   await page.click('#online-action');
+  say('방문자의 창에는 게시 상태 줄이 없다', await page.locator('#online-state').isHidden());
   await page.fill('#online-note-text', '반가워요');
   await page.click('#online-submit');
   await page.waitForFunction(() => document.getElementById('online-status').textContent.includes('방문 인사를 남겼습니다'));

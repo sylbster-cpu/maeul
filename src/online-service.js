@@ -28,6 +28,14 @@ export function createOnlineService({ uid, db, api }) {
       if (!result.exists()) throw new Error('공개된 집이 없습니다');
       return readPublishedSnapshot(result.data(), ownerUid);
     },
+    // 이 브라우저(익명 계정)로 게시한 집의 상태. 게시한 적이 없으면 published 가 false 다.
+    // 집주인이 자기 문서를 한 번 읽는 것이며 규칙이 허용한다
+    async ownStatus() {
+      const result = await api.getDocFromServer(houseRef(uid));
+      if (!result.exists()) return { published: false, isPublic: false, updatedAt: null };
+      const data = result.data() || {};
+      return { published: true, isPublic: data.isPublic === true, updatedAt: data.updatedAt?.toDate?.() || null };
+    },
     async leaveNote(ownerUid, rawText) {
       if (ownerUid === uid) throw new Error('같은 집에는 인사를 남길 수 없습니다');
       const body = normalizeVisitNote(rawText);
