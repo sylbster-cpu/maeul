@@ -1,11 +1,13 @@
-// 캐릭터. 걷기, 가구와 집에 대한 충돌, 누른 곳까지 길 찾기. 마당과 방을 오간다.
+// 캐릭터. 걷기, 가구와 집에 대한 충돌, 누른 곳까지 길 찾기, 의자에 앉기. 마당과 방을 오간다.
 import * as THREE from './three.js';
 import { PARTS, YARD, HOUSE_CENTER_X, MAT_X, LEVELS } from './parts.js';
-import { footprint, cellKey, layerOf, houseRect } from './state.js';
+import { footprint, cellKey, layerOf, houseRect, seatSpots, seatApproach } from './state.js';
 
 const RADIUS = 0.34;
 const SPEED = 5.2;
 const MARGIN = 3; // 마당 밖으로 걸어 나갈 수 있는 칸 수
+const SIT_TIME = 0.26; // 올라앉고 일어나는 데 걸리는 시간 (초)
+const SIT_SINK = 0.2; // 앉으면 몸의 아랫부분이 앉는 면 아래로 이만큼 내려간다
 
 function buildFigure() {
   const group = new THREE.Group();
@@ -41,6 +43,13 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
   let stuck = 0;
   let stride = 0;
   let boxes = [];
+  // 앉기. 서 있는 자리(pos)는 의자 옆 칸에 그대로 두고, 그리는 자리만 의자 위로 옮긴다.
+  // 그래서 저장되는 자리와 길 찾기의 출발점은 늘 걸을 수 있는 칸이다
+  const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let goal = null; // 앉으러 걸어가는 자리
+  let seat = null; // 앉은 자리 (올라앉는 중에도)
+  let anchor = null; // 그리는 데 쓰는 자리. 일어나는 동안에도 남는다
+  let sitK = 0; // 0 이면 서 있고 1 이면 다 앉았다
 
   const roomSize = () => LEVELS[store.state.house.level].room;
 
@@ -70,7 +79,24 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
     }
   }
   buildColliders();
-  store.subscribe(buildColliders);
+
+  // 가구의 앉는 자리 하나와 그리로 갈 때 설 칸들
+  function seatOf(id, index) {
+    const obj = store.state.spaces[place].objects[id];
+    const spot = obj && seatSpots(obj)[index];
+    return spot ? { id, index, ...spot, cells: seatApproach(obj, spot) } : null;
+  }
+  function standNow() { goal = null; seat = null; anchor = null; sitK = 0; }
+  store.subscribe(() => {
+    buildColliders();
+    // 앉은(앉으러 가던) 의자가 옮겨지거나 치워졌으면 일어난다
+    const held = seat || goal;
+    const now = held && seatOf(held.id, held.index);
+    if (held && (!now || now.x !== held.x || now.z !== held.z || now.face !== held.face)) {
+      if (held === goal) path = [];
+      standNow();
+    }
+  });
 
   function blocked(x, z, r = RADIUS) {
     if (place === 'yard') {
@@ -98,42 +124,75 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
     return true;
   }
 
-  // 누른 곳까지 칸 단위로 길을 찾는다. 막힌 칸을 눌렀으면 가장 가까운 빈 칸으로 간다
-  function goTo(x, z) {
-    const { derived, state } = store;
+  // 가구나 집이 차지해 걸을 수 없는 칸인지
+  function solidCell(cx, cy) {
+    if (store.derived.occ[place].furniture.has(cellKey(cx, cy))) return true;
+    if (place !== 'yard') return false;
+    const house = houseRect(store.state.house.level);
+    return cx >= house.x0 && cx < house.x0 + house.w && cy >= house.z0 && cy < house.z0 + house.d;
+  }
+  // 지금 선 칸에서 걸어서 닿는 칸들을 가까운 순서로 훑는다. 칸마다 바로 앞 칸을 적어 돌려준다
+  function flood(visit) {
     const [w, h] = place === 'yard' ? [YARD.w, YARD.h] : roomSize();
     const pad = place === 'yard' ? MARGIN : 0;
-    const house = place === 'yard' ? houseRect(state.house.level) : null;
     const inRange = (cx, cy) => cx >= -pad && cy >= -pad && cx < w + pad && cy < h + pad;
-    const solid = (cx, cy) => derived.occ[place].furniture.has(cellKey(cx, cy))
-      || (house && cx >= house.x0 && cx < house.x0 + house.w && cy >= house.z0 && cy < house.z0 + house.d);
     const sx = Math.floor(pos.x), sy = Math.min(Math.floor(pos.z), h + pad - 1);
     const prev = new Map([[cellKey(sx, sy), null]]);
     const queue = [[sx, sy]];
-    let best = [sx, sy], bestDist = Infinity;
     for (let head = 0; head < queue.length; head++) {
       const [cx, cy] = queue[head];
-      const d = Math.hypot(cx + 0.5 - x, cy + 0.5 - z);
-      if (d < bestDist) { bestDist = d; best = [cx, cy]; }
+      visit?.(cx, cy);
       for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
         const nx = cx + dx, ny = cy + dy, nk = cellKey(nx, ny);
-        if (!inRange(nx, ny) || prev.has(nk) || solid(nx, ny)) continue;
+        if (!inRange(nx, ny) || prev.has(nk) || solidCell(nx, ny)) continue;
         prev.set(nk, [cx, cy]);
         queue.push([nx, ny]);
       }
     }
+    return prev;
+  }
+  // 닿는 칸까지 거쳐 갈 칸들의 가운데. 지금 서 있는 칸은 뺀다
+  function trace(prev, cell) {
     const points = [];
-    for (let cur = best; cur; cur = prev.get(cellKey(cur[0], cur[1]))) points.unshift([cur[0] + 0.5, cur[1] + 0.5]);
-    points.shift(); // 지금 서 있는 칸의 가운데는 뺀다
+    for (let cur = cell; cur; cur = prev.get(cellKey(cur[0], cur[1]))) points.unshift([cur[0] + 0.5, cur[1] + 0.5]);
+    points.shift();
+    return points;
+  }
+
+  // 누른 곳까지 칸 단위로 길을 찾는다. 막힌 칸을 눌렀으면 가장 가까운 빈 칸으로 간다. 앉아 있었으면 일어난다
+  function goTo(x, z) {
+    goal = null; seat = null;
+    let best = null, bestDist = Infinity;
+    const prev = flood((cx, cy) => {
+      const d = Math.hypot(cx + 0.5 - x, cy + 0.5 - z);
+      if (d < bestDist) { bestDist = d; best = [cx, cy]; }
+    });
+    const points = trace(prev, best);
     if (Math.floor(x) === best[0] && Math.floor(z) === best[1] && !blocked(x, z)) points.push([x, z]);
     path = points;
     stuck = 0;
     return points.length > 0;
   }
 
+  // 의자 옆의 빈 칸까지 걸어가 앉는다. 설 칸에 닿을 수 없으면 false
+  function sit(id, index = 0) {
+    const target = seatOf(id, index);
+    if (!target) return false;
+    const prev = flood();
+    const cell = target.cells.find(([cx, cy]) => prev.has(cellKey(cx, cy)) && !solidCell(cx, cy));
+    if (!cell) return false;
+    const stand = { x: cell[0] + 0.5, z: cell[1] + 0.5 };
+    path = trace(prev, cell);
+    if (!path.length && Math.hypot(pos.x - stand.x, pos.z - stand.z) > 0.12) path = [[stand.x, stand.z]];
+    goal = { ...target, stand };
+    seat = null;
+    stuck = 0;
+    return true;
+  }
+
   function update(dt, inputDir) {
     let dir = null;
-    if (inputDir) { path = []; dir = inputDir; }
+    if (inputDir) { path = []; goal = null; seat = null; dir = inputDir; }
     else if (path.length) {
       // 보이는 가장 먼 지점으로 곧장 걷는다
       let far = 0;
@@ -158,33 +217,56 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
       facing += diff * Math.min(1, dt * 14);
       if (!moved && path.length) { stuck += dt; if (stuck > 0.5) path = []; } else stuck = 0;
     }
+    // 앉으러 간 칸에 닿았으면 올라앉는다. 앞의 의자에서 다 일어난 뒤에 시작한다
+    if (goal && !path.length && sitK === 0) {
+      if (Math.hypot(pos.x - goal.stand.x, pos.z - goal.stand.z) < 0.3) seat = anchor = goal;
+      goal = null;
+    }
+    sitK = calm ? (seat ? 1 : 0) : Math.max(0, Math.min(1, sitK + (seat ? dt : -dt) / SIT_TIME));
+    if (sitK === 0 && !seat) anchor = null;
+    const k = sitK * sitK * (3 - 2 * sitK);
+    const a = anchor;
+
     stride = moved ? stride + dt * 13 : 0;
     const { footL, footR } = figure.userData;
     const swing = Math.sin(stride);
-    figure.position.set(pos.x, moved ? Math.abs(swing) * 0.07 : 0, pos.z);
-    figure.rotation.y = facing;
-    footL.position.z = 0.05 + swing * 0.16;
-    footR.position.z = 0.05 - swing * 0.16;
+    const bob = moved ? Math.abs(swing) * 0.07 : 0;
+    if (a) {
+      // 선 자리에서 의자 위로 살짝 뛰어 옮겨 앉는다. 발은 앉는 면 높이에서 앞으로 뻗는다
+      const hop = Math.sin(Math.PI * k) * 0.16;
+      figure.position.set(pos.x + (a.x - pos.x) * k, bob + (a.y - SIT_SINK) * k + hop, pos.z + (a.z - pos.z) * k);
+      figure.rotation.y = facing + Math.atan2(Math.sin(a.face - facing), Math.cos(a.face - facing)) * k;
+    } else {
+      figure.position.set(pos.x, bob, pos.z);
+      figure.rotation.y = facing;
+    }
+    footL.position.set(-0.16, 0.08 + (SIT_SINK + 0.02) * k, 0.05 + swing * 0.16 + 0.37 * k);
+    footR.position.set(0.16, 0.08 + (SIT_SINK + 0.02) * k, 0.05 - swing * 0.16 + 0.37 * k);
     figure.rotation.z = moved ? swing * 0.04 : 0;
     return moved;
   }
 
   return {
-    pos, figure, update, goTo,
+    pos, figure, update, goTo, sit,
     get place() { return place; },
     get walking() { return path.length > 0; },
-    stop() { path = []; },
+    // 앉은 자리 { id, index }. 올라앉기 시작한 때부터이고, 앉으러 걸어가는 동안은 아니다
+    get seated() { return seat ? { id: seat.id, index: seat.index } : null; },
+    get sitAmount() { return sitK; },
+    // 걸음을 멈추고, 앉아 있었으면 일어난다
+    stop() { path = []; goal = null; seat = null; },
     // 다른 곳으로 옮긴다 (마당 ↔ 방)
     setPlace(next, x, z, face = facing) {
       place = next;
       pos.x = x; pos.z = z;
       facing = face;
       path = [];
+      standNow();
       buildColliders();
       figure.position.set(x, 0, z);
       figure.rotation.y = facing;
     },
-    teleport(x, z) { pos.x = x; pos.z = z; path = []; },
+    teleport(x, z) { pos.x = x; pos.z = z; path = []; standNow(); },
     // 문 앞에 서 있는지 (마당), 현관 밖으로 나갔는지 (방)
     atHouseDoor() {
       if (place !== 'yard') return false;

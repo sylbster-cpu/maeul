@@ -25,16 +25,18 @@ export const MAX_LEVEL = 3;
 //   'top'   탁자나 수납장 위에 올려놓는 소품. 받치는 가구에는 surface (윗면 높이) 가 있어야 한다
 //   'wall'  방의 벽에 거는 것.  span 은 벽을 따라 차지하는 칸 수, hang 은 거는 높이
 // offset 은 모델을 옮기는 값 [x, y, z], scale 은 크기 배율
+// seat 가 있는 가구에는 앉을 수 있다. h 는 앉는 면의 높이, z 는 앉는 자리가 가운데에서 앞으로 나온 거리,
+//   x 는 앉는 자리들의 좌우 위치 (없으면 가운데 한 자리). 모두 모델 단위다
 export const PARTS = {
-  chair: { label: '의자', size: [1, 1], model: 'furniture/chair_A' },
-  stool: { label: '스툴', size: [1, 1], model: 'furniture/chair_stool' },
+  chair: { label: '의자', size: [1, 1], model: 'furniture/chair_A', seat: { h: 0.5 } },
+  stool: { label: '스툴', size: [1, 1], model: 'furniture/chair_stool', seat: { h: 0.5 } },
   table: { label: '탁자', size: [2, 2], model: 'furniture/table_medium', scale: 0.92, surface: 1 },
   side_table: { label: '작은 탁자', size: [1, 1], model: 'furniture/table_small', scale: 0.9, surface: 1 },
   low_table: { label: '낮은 탁자', size: [3, 2], model: 'furniture/table_low', scale: 1.08, surface: 0.5 },
   bed: { label: '침대', size: [2, 3], model: 'furniture/bed_single_A' },
   double_bed: { label: '큰 침대', size: [3, 3], model: 'furniture/bed_double_A', scale: 0.95 },
-  couch: { label: '소파', size: [3, 2], model: 'furniture/couch_pillows', scale: 0.97, offset: [0, 0, -0.1] },
-  armchair: { label: '안락의자', size: [2, 2], model: 'furniture/armchair_pillows', offset: [0, 0, -0.05] },
+  couch: { label: '소파', size: [3, 2], model: 'furniture/couch_pillows', scale: 0.97, offset: [0, 0, -0.1], seat: { h: 0.5, z: 0.22, x: [-0.8, 0, 0.8] } },
+  armchair: { label: '안락의자', size: [2, 2], model: 'furniture/armchair_pillows', offset: [0, 0, -0.05], seat: { h: 0.5, z: 0.22 } },
   cabinet: { label: '수납장', size: [2, 1], model: 'furniture/cabinet_medium', scale: 0.95, surface: 1 },
   drawer: { label: '서랍장', size: [1, 1], model: 'furniture/cabinet_small', scale: 0.92, surface: 1 },
   lamp: { label: '스탠드', size: [1, 1], model: 'furniture/lamp_standing' },

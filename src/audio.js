@@ -7,6 +7,7 @@ export function createAudio() {
     remove: [240, 150, 0.1, 'triangle', 0.14],
     error: [150, 120, 0.12, 'square', 0.05],
     step: [660, 880, 0.08, 'sine', 0.08],
+    sit: [420, 300, 0.1, 'sine', 0.1],
   };
   return {
     get muted() { return muted; },
