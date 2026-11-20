@@ -223,7 +223,7 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
     },
     setHistory({ canUndo, canRedo }) { $('undo').disabled = !canUndo; $('redo').disabled = !canRedo; },
     setSaveStatus(status) {
-      $('save-status').textContent = { saved: '자동 저장됨', pending: '저장하는 중', off: '이 브라우저에서는 저장되지 않습니다', guest: '친구 집 구경 중 · 내 집 유지' }[status] || '';
+      $('save-status').textContent = { saved: '자동 저장됨', pending: '저장하는 중', off: '이 브라우저에서는 저장되지 않습니다', guest: '친구 집 구경 중 · 내 집 유지', conflict: '다른 탭에서 집이 바뀌어 자동 저장 중지 · 새로고침 필요' }[status] || '';
     },
     toast: showToast,
     openShare(link, options = {}) {
@@ -237,9 +237,17 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
       shareLink.hidden = !linkAvailable;
       $('share-copy').hidden = !linkAvailable;
       $('share-native').hidden = !linkAvailable || typeof navigator.share !== 'function';
-      $('share-restore-previous').hidden = guest || !on.canRestorePrevious();
+      // Firebase 온라인 공유 링크(#visit=)에는 로컬 집 교환 버튼을 보이지 않는다.
+      const localShare = link === '' || link.includes('#home=');
+      const canSwap = !guest && localShare && on.canRestorePrevious();
+      $('share-restore-previous').hidden = !canSwap;
       shareLayer.hidden = false;
-      $('share-copy').focus();
+      (linkAvailable ? $('share-copy') : canSwap ? $('share-restore-previous') : $('share-close')).focus();
+    },
+    setHouseTransition(busy) {
+      $('share-restore-previous').disabled = busy;
+      $('share-house').disabled = busy;
+      $('my-home').disabled = busy;
     },
     loaded() { $('loading').hidden = true; },
   };
