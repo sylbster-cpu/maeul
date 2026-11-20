@@ -20,7 +20,8 @@ function fakeStorage(initial = {}) {
 }
 function house(roof) {
   const store = createStore(createState(), 'p1');
-  assert.equal(store.dispatch({ type: 'setExterior', slot: 'roof', value: roof }).ok, true);
+  const result = store.dispatch({ type: 'setExterior', slot: 'roof', value: roof });
+  assert.ok(result.ok || result.reason?.startsWith('이미 그'), '기존 기본 지붕색도 허용한다');
   return store.state;
 }
 
