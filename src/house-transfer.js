@@ -46,7 +46,7 @@ function readBackup(storage) {
 // 백업이 없던 브라우저의 첫 복사에서는 되돌리기를 제공하지 않는다.
 // 원래 저장 데이터가 null인 상태를 "집"으로 바꿔 표시하면 복구 시 저장이 사라지기 때문이다.
 export function hasPreviousHouse(storage) {
-  try { return !!storage && readBackup(storage)?.previous !== null && readBackup(storage) !== null; }
+  try { const backup = storage ? readBackup(storage) : null; return backup !== null && backup.previous !== null; }
   catch {
     // 백업이 손상됐을 때는 버튼을 남겨 오류 원인을 볼 수 있게 한다.
     try { return storage?.getItem(PRE_IMPORT_KEY) !== null; } catch { return false; }
@@ -127,11 +127,17 @@ function commitHouseChange(storage, after, failureMessage) {
     setRaw(storage, PRE_IMPORT_KEY, after.backup);
     setRaw(storage, SAVE_KEY, after.save);
   } catch {
-    try {
-      setRaw(storage, SAVE_KEY, before.save);
-      setRaw(storage, PRE_IMPORT_KEY, before.backup);
-      storage.removeItem(TRANSFER_JOURNAL_KEY);
-    } catch { /* 교환 기록은 지우지 않아 다음 시작에 원본을 복구할 수 있다 */ }
+    // 저장 공간 부족 등으로 일부만 변경됐으면 원래 값으로 되돌린다.
+    // 한 키를 되돌리지 못해도 다른 키의 원본을 되살리는 시도는 계속한다.
+    let restored = true;
+    try { if (storage.getItem(PRE_IMPORT_KEY) !== before.backup) setRaw(storage, PRE_IMPORT_KEY, before.backup); }
+    catch { restored = false; }
+    try { if (storage.getItem(SAVE_KEY) !== before.save) setRaw(storage, SAVE_KEY, before.save); }
+    catch { restored = false; }
+    if (restored) {
+      try { storage.removeItem(TRANSFER_JOURNAL_KEY); }
+      catch { /* 교환 기록을 남겨 다음 시작에 확인 */ }
+    }
     throw new Error(failureMessage);
   }
   // 정리 작업이 실패해도 교환 기록을 남겨 두면 다음 시작에서 완료 여부를 확인한다.
