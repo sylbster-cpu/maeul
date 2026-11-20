@@ -10,6 +10,9 @@ export default async function shareTour(page, { out, logs }) {
     window.__game.saveNow();
   });
   const original = await page.evaluate(() => localStorage.getItem('house-lab-web:save'));
+  // 내 집을 벗어날 때 기존 저장기가 savedAt과 위치를 다시 기록할 수 있으므로,
+  // 소유자 상태는 내용으로 비교한다. 구경 모드 중 저장 안 됨은 원문 그대로 비교한다.
+  const sameHouse = (a, b) => JSON.stringify(JSON.parse(a).state) === JSON.stringify(JSON.parse(b).state);
 
   // A의 집 링크를 같은 탭에서 연다. B와 구별되도록 지붕색을 바꿔 둔다.
   const link = await page.evaluate(async () => {
@@ -29,7 +32,15 @@ export default async function shareTour(page, { out, logs }) {
     guest: document.getElementById('my-home').hidden === false,
   }));
   say('같은 탭에서 방문자 집이 보이며 편집이 차단된다', guest.guest && guest.buildHidden);
-  say('방문해도 내 집 저장 내용은 그대로다', guest.saved === original);
+  say('방문해도 내 집의 외관·가구 상태는 보존된다', sameHouse(guest.saved, original));
+  const guestKept = await page.evaluate(() => {
+    const before = localStorage.getItem('house-lab-web:save');
+    window.dispatchEvent(new Event('pagehide'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    const refused = window.__game.saveNow() === false;
+    return refused && localStorage.getItem('house-lab-web:save') === before;
+  });
+  say('구경 중 페이지를 떠나거나 저장을 호출해도 저장 글자는 바뀌지 않는다', guestKept);
 
   // 내 집으로 돌아오면 B의 지붕색이 다시 보인다.
   await Promise.all([page.waitForEvent('load'), page.click('#my-home')]);
@@ -37,7 +48,9 @@ export default async function shareTour(page, { out, logs }) {
     && document.getElementById('my-home').hidden === true);
   say('내 집으로 돌아오면 원래 집이 보인다', await page.evaluate(() => !location.hash.startsWith('#home=')
     && window.__game.store.state.house.roof === 'slate'));
-  say('내 집 복귀 후에도 저장 내용은 같다', (await page.evaluate(() => localStorage.getItem('house-lab-web:save'))) === original);
+  const afterHome = await page.evaluate(() => localStorage.getItem('house-lab-web:save'));
+  say('내 집 복귀 후에도 원래 배치가 보존된다', sameHouse(afterHome, original));
+  say('구경을 끝내고 돌아와도 구경 중 저장 글자는 유지된다', afterHome === guest.saved);
 
   // 가짜 바닥재 이름으로 조작된 링크는 내 집으로 열리고 로딩에서 멈추지 않는다.
   const altered = await page.evaluate(async () => {
@@ -57,6 +70,6 @@ export default async function shareTour(page, { out, logs }) {
   }));
   say('조작된 링크가 로딩을 멈추지 않고 내 집으로 열린다',
     result.roof === 'slate' && result.floor !== 'constructor' && result.toast.includes('공유 링크'));
-  say('조작된 링크도 내 집 저장 내용은 훼손하지 않는다', result.saved === original);
+  say('조작된 링크도 내 집의 배치를 훼손하지 않는다', sameHouse(result.saved, original));
   await page.screenshot({ path: `${out}-final.png` });
 }
