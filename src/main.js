@@ -230,6 +230,7 @@ async function start(saved = {}) {
   }
   const saveNow = () => {
     if (guest || switchingHouse) return false;
+    if (!saver.available) { ui.setSaveStatus('off'); return false; }
     if (!saveGuard.isCurrent()) { stopStaleTab(); return false; }
     clearTimeout(saveTimer);
     saveTimer = 0;
