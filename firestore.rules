@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isOwner(ownerUid) {
+      return signedIn() && request.auth.uid == ownerUid;
+    }
+    function publicHouse(ownerUid) {
+      return exists(/databases/$(database)/documents/houses/$(ownerUid))
+        && get(/databases/$(database)/documents/houses/$(ownerUid)).data.isPublic == true;
+    }
+    function validHouse(ownerUid) {
+      let data = request.resource.data;
+      return data.keys().hasAll(['ownerUid', 'snapshot', 'isPublic', 'updatedAt'])
+        && data.keys().hasOnly(['ownerUid', 'snapshot', 'isPublic', 'updatedAt'])
+        && data.ownerUid is string && data.ownerUid == ownerUid
+        && data.snapshot is string && data.snapshot.size() > 0 && data.snapshot.size() <= 80000
+        && data.isPublic is bool
+        && data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+    function validNote(visitorUid) {
+      let data = request.resource.data;
+      return data.keys().hasAll(['authorUid', 'body', 'createdAt'])
+        && data.keys().hasOnly(['authorUid', 'body', 'createdAt'])
+        && data.authorUid is string && data.authorUid == visitorUid
+        && data.body is string && data.body.size() > 0 && data.body.size() <= 140
+        && data.createdAt is timestamp && data.createdAt == request.time;
+    }
+
+    match /houses/{ownerUid} {
+      // 집은 주소를 아는 인증 사용자만 단건 조회할 수 있다. 집 전체 목록 검색은 금지한다.
+      allow get: if isOwner(ownerUid) || (signedIn() && resource.data.isPublic == true);
+      allow list: if false;
+      allow create: if isOwner(ownerUid) && validHouse(ownerUid);
+      allow update: if isOwner(ownerUid) && resource.data.ownerUid == ownerUid && validHouse(ownerUid);
+      allow delete: if false;
+
+      match /notes/{visitorUid} {
+        // 방명록 목록은 집주인만 보고 관리한다.
+        allow get: if isOwner(ownerUid) ||
+          (signedIn() && request.auth.uid == visitorUid && publicHouse(ownerUid));
+        allow list: if isOwner(ownerUid);
+        // 집 하나에 방문자 계정당 한 번. 기존 글 수정이나 남의 이름으로 쓰기는 거부한다.
+        allow create: if signedIn() && request.auth.uid == visitorUid
+          && visitorUid != ownerUid && publicHouse(ownerUid) && validNote(visitorUid);
+        allow update: if false;
+        allow delete: if isOwner(ownerUid);
+      }
+    }
+  }
+}

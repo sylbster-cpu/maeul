@@ -39,6 +39,8 @@ GitHub Pages 에는 이 폴더를 그대로 올리면 됩니다. three.js 는 �
 | `src/state.js` | 규칙. 모든 변경은 명령으로 처리하고 가구마다 고유 ID 를 붙입니다. three.js 를 쓰지 않습니다 |
 | `src/history.js` | 되돌리기. 명령마다 반대 명령을 기록하고, 되돌릴 때 다시 검증합니다 |
 | `src/save.js` | 저장과 불러오기. 저장 형식 버전과 변환 자리가 여기 있습니다 |
+| `src/online.js`, `src/online-service.js`, `src/online-data.js`, `src/online-ui.js` | Firebase 온라인 공유(선택), 익명 로그인, 방문 인사, 모바일 대화창 |
+| `firestore.rules` | Firestore 집 공개·방명록 보안 규칙 |
 | `src/sample.js` | 처음 놓여 있는 가구 |
 | `src/view.js` | 화면. 마당의 집과 방을 그리고 카메라를 다룹니다 |
 | `src/input.js` | 조작. 포인터와 키 입력을 명령으로 바꿉니다 |
@@ -68,6 +70,7 @@ npm test
 
 규칙, 되돌리기, 저장 테스트입니다. 공유 링크 변환·손상 복구 테스트(`test/share.test.mjs`)도 포함됩니다. 화면 확인은 서버를 띄운 채 `node tools/shot.mjs / 출력이름 1280 800 test/tour.mjs` 로 자동 둘러보기를 돌립니다. 소품과 벽걸이는 `test/decor.mjs` 로 같은 방식으로 확인합니다. 터치 조작은 `TOUCH=1 node tools/shot.mjs / 출력이름 390 844 test/touch.mjs` 로 확인합니다. 의자에 앉기는 `test/sit.mjs` 를 두 방식 모두로 돌립니다(마우스는 `1280 800`, 터치는 `TOUCH=1` 과 `390 844`).
 집 공유 브라우저 시험은 서버를 띄운 채 `node tools/shot.mjs / shots/share 390 844 test/share.mjs` 로 실행합니다. 같은 탭 공유 링크 전환, 조작된 링크, 원래 집 저장 보호를 확인합니다.
+온라인 창은 같은 방식으로 `test/online.mjs`(가짜 서비스로 게시, 방명록, 방문 인사)와 `test/online-timeout.mjs`(서버가 응답하지 않을 때 창이 닫히는지, 방문 링크가 내 집으로 넘어가는지)로 확인합니다. 둘 다 `TOUCH=1` 과 `390 844` 로 돌리며 실제 Firebase 에는 접속하지 않습니다.
 
 ## 에셋
 
@@ -76,4 +79,6 @@ npm test
 
 ## 다음 단계: 친구의 흔적 저장
 
-이번 집 공유 기능은 읽기 전용 링크이며, 다른 기기에서 방명록을 남기는 기능은 **아직 없습니다**. 이 실험은 Firebase Authentication + Cloud Firestore의 별도 서버 저장과 권한 규칙이 필요합니다. 기술 구상과 사용자 확인이 필요한 사항은 `docs/ONLINE_STORAGE_PLAN.md`를 참고합니다. Firebase 프로젝트나 설정 없이 집 공유 기능만으로 작동합니다.
+**Firebase로 온라인 집을 게시하고 친구가 방문 인사를 남기는 기능의 코드를 추가했습니다.** 하지만 `src/firebase-config.js`의 공개 웹 설정이 아직 `null`이고 실제 Firebase 프로젝트의 Authentication/Firestore/보안 규칙 설정도 없으므로, **현재 배포판의 온라인 버튼은 숨겨져 있으며 서버 기능은 아직 작동하지 않습니다.** 기존 로컬 저장과 `#home=` 오프라인 집 공유는 그대로 작동합니다.
+
+관리자는 Firebase 프로젝트에서 익명 로그인·Firestore를 준비하고, 먼저 `firestore.rules` 보안 규칙을 배포한 다음에 웹 앱의 **공개 설정만** 전달하면 됩니다. 개인 비밀번호와 서비스 계정 키는 제공하면 안 됩니다. 구체적인 모바일 연결 및 테스트 방법은 `docs/ONLINE_STORAGE_PLAN.md`에 있습니다.

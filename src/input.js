@@ -314,7 +314,8 @@ export function createInput({ canvas, view, store, history, character, ui, audio
     refresh();
   }
   window.addEventListener('keydown', (e) => {
-    if (!document.getElementById('share-layer').hidden) return; // 공유 팝업이 열려 있으면 게임 키 조작을 하지 않는다
+    if (!document.getElementById('share-layer').hidden ||
+        !document.getElementById('online-layer').hidden) return; // 대화창 뒤에서는 게임 키 조작을 막는다
     // Ctrl+Z 되돌리기, Ctrl+Shift+Z 또는 Ctrl+Y 다시 하기 (맥은 Cmd)
     if (!readOnly && (e.ctrlKey || e.metaKey) && !e.altKey && (e.code === 'KeyZ' || e.code === 'KeyY')) {
       e.preventDefault();
