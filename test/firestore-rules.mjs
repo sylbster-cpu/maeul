@@ -54,7 +54,7 @@ try {
   await yes(updateDoc(house(owner), { isPublic: false, updatedAt: serverTimestamp() }), '집주인 게시 중지');
   await no(getDoc(house(guest)), '비공개 집 방문');
   await no(setDoc(note(guest, GUEST), noteData()), '비공개 집 인사 작성');
-  assert.equal(checks, 21);
+  assert.equal(checks, 23);
   console.log('Firestore 보안 규칙 시험 전체 통과:', checks);
 } finally {
   await env.cleanup();
