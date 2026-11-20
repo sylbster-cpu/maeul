@@ -187,7 +187,7 @@ async function start(saved = {}) {
   requestAnimationFrame(frame);
 
   // 열어 둔 화면에 새 판이 도착해도 꾸민 집을 잃지 않게 한다
-  window.claude?.hot?.snapshot?.(() => ({ state: store.state, place: character.place, pos: { ...character.pos }, mode: input.state.mode }));
+  window.claude?.hot?.snapshot?.(() => guest ? {} : ({ state: store.state, place: character.place, pos: { ...character.pos }, mode: input.state.mode }));
   window.__game = { store, view, character, input, history, saveNow, travel };
   window.__ready = true;
 }
