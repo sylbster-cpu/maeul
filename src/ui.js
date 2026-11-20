@@ -163,7 +163,7 @@ export function createUI({ thumbs, on, guest = false }) {
   $('share-close').addEventListener('click', closeShare);
   shareLayer.addEventListener('click', (event) => { if (event.target === shareLayer) closeShare(); });
   window.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !shareLayer.hidden) { closeShare(); event.preventDefault(); }
+    if (event.key === 'Escape' && !shareLayer.hidden) { event.preventDefault(); event.stopImmediatePropagation(); closeShare(); }
   });
   $('share-copy').addEventListener('click', async () => {
     let copied = false;
