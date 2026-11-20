@@ -233,6 +233,10 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
       $('share-footnote').textContent = options.footnote ||
         '이 링크는 공유한 순간의 집 모습입니다. 이후 바꾼 모습은 새 링크를 보내야 보입니다.';
       shareLink.value = link;
+      const linkAvailable = typeof link === 'string' && link.length > 0;
+      shareLink.hidden = !linkAvailable;
+      $('share-copy').hidden = !linkAvailable;
+      $('share-native').hidden = !linkAvailable || typeof navigator.share !== 'function';
       $('share-restore-previous').hidden = guest || !on.canRestorePrevious();
       shareLayer.hidden = false;
       $('share-copy').focus();
