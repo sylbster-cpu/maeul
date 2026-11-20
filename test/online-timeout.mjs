@@ -22,6 +22,7 @@ export default async function onlineTimeoutTour(page, { out, logs }) {
       return Promise.resolve({
         uid: OWNER,
         async publish() { await hold('publish'); return 'https://sylbster-cpu.github.io/maeul/#visit=' + OWNER; },
+        async ownStatus() { return { published: false, isPublic: false, updatedAt: null }; },
         async visit() { await hold('visit'); return createState(); },
         async leaveNote() {}, async getNotes() { return []; }, async removeNote() {}, async unpublish() {},
       });

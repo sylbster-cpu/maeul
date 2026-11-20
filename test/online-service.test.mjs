@@ -38,8 +38,12 @@ test('집주인 게시 → 친구 방문 → 방문 인사 → 집주인 열람 
   const guest = createOnlineService({ uid: GUEST, db: {}, api });
   const local = createState();
   const before = structuredClone(local);
+  assert.deepEqual(await owner.ownStatus(), { published: false, isPublic: false, updatedAt: null });
   const link = await owner.publish(local);
   assert.match(link, /#visit=ownerAa123456789$/);
+  assert.deepEqual(await owner.ownStatus(), { published: true, isPublic: true, updatedAt: null });
+  // 다른 브라우저(다른 익명 계정)는 남의 집을 자기 집으로 보지 않는다
+  assert.equal((await guest.ownStatus()).published, false);
   assert.deepEqual(await guest.visit(OWNER), local);
   await guest.leaveNote(OWNER, ' 반갑습니다! ');
   const notes = await owner.getNotes();
@@ -48,6 +52,7 @@ test('집주인 게시 → 친구 방문 → 방문 인사 → 집주인 열람 
   await owner.removeNote(GUEST);
   assert.deepEqual(await owner.getNotes(), []);
   await owner.unpublish();
+  assert.deepEqual(await owner.ownStatus(), { published: true, isPublic: false, updatedAt: null });
   await assert.rejects(() => guest.visit(OWNER), /공개/);
   assert.deepEqual(local, before);
 });

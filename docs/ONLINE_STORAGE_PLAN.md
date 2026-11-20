@@ -31,7 +31,7 @@
 - `src/online-data.js`: 주소 검증, 집 스냅샷 검사, 140자 인사말 검사
 - `src/online.js`: 필요한 순간에만 Firebase CDN의 모듈 SDK 로드(13.4.0 고정), 익명 로그인
 - `src/online-service.js`: 게시, 단건 방문 조회, 작성자 UID별 한 번 인사, 목록 확인, 집주인의 삭제·비공개
-- `src/online-ui.js`: 휴대폰 터치 UI, 텍스트만 표시, 방명록 팝업
+- `src/online-ui.js`: 휴대폰 터치 UI, 텍스트만 표시, 방명록 팝업. 집주인의 창에는 이 브라우저로 게시한 집의 상태(공개 중, 공개 중지, 없음)를 보여 준다. 익명 계정이 브라우저마다 따로라서, 다른 브라우저에서 게시한 집과 그 방명록은 보이지 않는다
 - `firestore.rules`, `firebase.json`, `test/firestore-rules.mjs`: 보안 규칙 및 에뮬레이터 시험
 - `test/online-data.test.mjs`, `test/online-service.test.mjs`: 원격 접근을 일으키지 않는 단위 시험
 
