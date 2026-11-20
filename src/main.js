@@ -9,6 +9,7 @@ import { createHistory } from './history.js';
 import { createUI } from './ui.js';
 import { createAudio } from './audio.js';
 import { createSaver, parse, serialize } from './save.js';
+import { importSharedHouse, restorePreviousHouse, hasPreviousHouse } from './house-transfer.js';
 import { makeShareLink, readShareHash, PUBLIC_SHARE_URL } from './share.js';
 import { watchShareHash } from './share-route.js';
 import { sampleCommands } from './sample.js';
@@ -57,8 +58,10 @@ async function start(saved = {}) {
     } catch (error) { shareError = onlineErrorText(error); }
   }
   const guest = !!sharedState;
+  const canImport = guest && window.location.hash.startsWith('#home=');
   // 불러오는 순서: 공유 스냅샷 → 열어 둔 화면에서 넘겨받은 상태 → 브라우저에 저장된 집 → 처음 배치
-  const saver = createSaver(openStorage());
+  const storage = openStorage();
+  const saver = createSaver(storage);
   const handed = guest ? null : (saved.state?.version === 2 ? saved : null);
   const loaded = guest ? null : (handed ? null : saver.load());
   const kept = sharedState || handed?.state || (loaded?.ok ? loaded.state : null);
@@ -84,6 +87,7 @@ async function start(saved = {}) {
   const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let input;
   let busy = false;
+  let switchingHouse = false; // 이전 집 복구 뒤 페이지를 떠날 때 현재 집의 자동 저장이 덮지 않게 한다
   let pending = null; // 문이나 깔개를 눌러 걸어가는 중이면 'door'
   function go(place) {
     if (busy || character.place === place) return;
@@ -118,12 +122,36 @@ async function start(saved = {}) {
   };
 
   const ui = createUI({
-    guest,
+    guest, canImport,
     thumbs: view.thumbnails(Object.keys(PARTS)),
     on: {
       share: async () => {
         try { ui.openShare(await makeShareLink(store.state, PUBLIC_SHARE_URL)); }
         catch (error) { ui.toast(error.message || '공유 링크를 만들지 못했습니다', 'error'); }
+      },
+      // 서버 없는 집 공유 링크를 열었을 때만, 확인을 받은 뒤 현재 브라우저의 집을 복사한다.
+      importHouse: () => {
+        if (!canImport || !sharedState) return;
+        if (!window.confirm('지금 구경하는 집을 이 브라우저의 내 집으로 가져올까요? 기존 집은 복원할 수 있도록 따로 보관합니다. Firebase 온라인 집과 방명록의 소유권은 옮겨지지 않습니다.')) return;
+        try {
+          importSharedHouse(storage, sharedState);
+          switchingHouse = true;
+          const url = new URL(window.location.href);
+          url.hash = '';
+          window.location.replace(url.href);
+        } catch (error) { ui.toast(error.message || '집을 가져오지 못했습니다', 'error'); }
+      },
+      canRestorePrevious: () => hasPreviousHouse(storage),
+      restorePreviousHouse: () => {
+        if (!window.confirm('복사하기 전 내 집으로 되돌릴까요? 지금 보고 있는 집도 따로 보관하고 싶다면 먼저 집 공유 주소를 복사해 주세요. Firebase 온라인 집과 방명록은 그대로입니다.')) return;
+        switchingHouse = true;
+        try {
+          restorePreviousHouse(storage);
+          window.location.reload();
+        } catch (error) {
+          switchingHouse = false;
+          ui.toast(error.message || '이전 집을 복구하지 못했습니다', 'error');
+        }
       },
       home: () => {
         const url = new URL(window.location.href);
@@ -163,7 +191,7 @@ async function start(saved = {}) {
   // ---- 자동 저장: 집이 바뀌면 잠시 뒤에, 화면을 떠날 때는 바로 저장한다 ----
   let saveTimer = 0;
   const saveNow = () => {
-    if (guest) return false;
+    if (guest || switchingHouse) return false;
     clearTimeout(saveTimer);
     saveTimer = 0;
     const ok = saver.save(store.state, { place: character.place, pos: { x: character.pos.x, z: character.pos.z } });
@@ -171,7 +199,7 @@ async function start(saved = {}) {
     return ok;
   };
   function saveSoon() {
-    if (guest || !saver.available) return;
+    if (guest || switchingHouse || !saver.available) return;
     ui.setSaveStatus('pending');
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveNow, 400);
