@@ -41,6 +41,7 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
   let facing = Math.PI; // 처음에는 북쪽(집 쪽)을 본다
   let path = [];
   let stuck = 0;
+  let routeBlocked = false; // 누른 바닥 칸까지 이어진 길이 없는지
   let stride = 0;
   let boxes = [];
   // 앉기. 서 있는 자리(pos)는 의자 옆 칸에 그대로 두고, 그리는 자리만 의자 위로 옮긴다.
@@ -167,6 +168,9 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
       const d = Math.hypot(cx + 0.5 - x, cy + 0.5 - z);
       if (d < bestDist) { bestDist = d; best = [cx, cy]; }
     });
+    // 기존 집에서 가구가 길을 막더라도 저장된 배치를 함부로 바꾸지 않는다.
+    // 가장 가까이 걸을 수는 있지만, 목적지까지 이어지지 않는 사실은 조작 화면에 알린다.
+    routeBlocked = !prev.has(cellKey(Math.floor(x), Math.floor(z)));
     const points = trace(prev, best);
     if (Math.floor(x) === best[0] && Math.floor(z) === best[1] && !blocked(x, z)) points.push([x, z]);
     path = points;
@@ -250,6 +254,7 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
     pos, figure, update, goTo, sit,
     get place() { return place; },
     get walking() { return path.length > 0; },
+    get routeBlocked() { return routeBlocked; },
     // 앉은 자리 { id, index }. 올라앉기 시작한 때부터이고, 앉으러 걸어가는 동안은 아니다
     get seated() { return seat ? { id: seat.id, index: seat.index } : null; },
     get sitAmount() { return sitK; },
