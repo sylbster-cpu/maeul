@@ -127,7 +127,17 @@ async function start(saved = {}) {
     on: {
       share: async () => {
         try { ui.openShare(await makeShareLink(store.state, PUBLIC_SHARE_URL)); }
-        catch (error) { ui.toast(error.message || '공유 링크를 만들지 못했습니다', 'error'); }
+        catch (error) {
+          // 공유 링크가 너무 길어도 이미 보관된 이전 집으로 돌아갈 길은 막지 않는다.
+          if (hasPreviousHouse(storage)) {
+            ui.openShare('', {
+              title: '이전 집 복구',
+              description: '현재 집의 공유 주소를 만들지 못했습니다. 그래도 아래에서 복사하기 전의 내 집으로 되돌아갈 수 있습니다.',
+              footnote: '집을 복구해도 Firebase 온라인 집과 방명록은 변경되지 않습니다.',
+            });
+          }
+          ui.toast(error.message || '공유 링크를 만들지 못했습니다', 'error');
+        }
       },
       // 서버 없는 집 공유 링크를 열었을 때만, 확인을 받은 뒤 현재 브라우저의 집을 복사한다.
       importHouse: () => {
