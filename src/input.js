@@ -1,12 +1,13 @@
 // 조작. 포인터와 키 입력을 명령으로 바꿔 store 에 보낸다.
 // 꾸미기 모드에서 놓는 것은 가구뿐이다. 바닥재, 벽지, 집의 겉모습, 집 키우기는 버튼으로 고른다.
 import { PARTS, LEVELS, MAX_LEVEL } from './parts.js';
-import { cellKey, clearCommands, layerOf } from './state.js';
+import { cellKey, clearCommands, layerOf, seatSpots } from './state.js';
 import { sampleCommands } from './sample.js';
 
 const KEY_HINTS = {
   walkYard: '땅을 누르거나 WASD로 걷습니다. 집을 누르면 안으로 들어갑니다.',
-  walkRoom: '바닥을 누르거나 WASD로 걷습니다. 현관 깔개를 누르면 밖으로 나갑니다.',
+  walkRoom: '바닥을 누르거나 WASD로 걷고, 의자를 누르면 앉습니다. 현관 깔개를 누르면 밖으로 나갑니다.',
+  seated: '앉았습니다. 다른 곳을 누르거나 걸으면 일어납니다.',
   select: '가구를 눌러 집은 뒤 옮길 자리를 누릅니다. R로 돌립니다.',
   erase: '치울 가구를 누릅니다. 끌면 이어서 치웁니다.',
   object: '누른 칸에 놓습니다. R로 돌립니다.',
@@ -17,7 +18,8 @@ const KEY_HINTS = {
 // 손가락으로 쓰는 기기에서는 키 이름 대신 버튼과 손동작으로 안내한다
 const TOUCH_HINTS = {
   walkYard: '땅을 누르면 그곳으로 걸어갑니다. 집을 누르면 안으로 들어갑니다.',
-  walkRoom: '바닥을 누르면 걸어갑니다. 현관 깔개를 누르면 밖으로 나갑니다.',
+  walkRoom: '바닥을 누르면 걷고, 의자를 누르면 앉습니다. 현관 깔개를 누르면 밖으로 나갑니다.',
+  seated: '앉았습니다. 다른 곳을 누르면 일어납니다.',
   select: '가구를 눌러 집은 뒤 옮길 자리를 누릅니다. 끌어서 바로 옮겨도 됩니다.',
   erase: '치울 가구를 누릅니다. 끌면 이어서 치웁니다.',
   object: '누른 채 움직여 자리를 고르고, 떼면 놓입니다. 놓은 뒤 돌리기 버튼으로 돌립니다.',
@@ -39,7 +41,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
   const toolKind = () => (PARTS[s.tool] ? kindOfPart(s.tool) : s.tool);
   const placing = () => ['object', 'top', 'wallitem'].includes(toolKind());
   function hintFor() {
-    if (s.mode === 'walk') return here() === 'yard' ? hints.walkYard : hints.walkRoom;
+    if (s.mode === 'walk') return character.seated ? hints.seated : here() === 'yard' ? hints.walkYard : hints.walkRoom;
     if (s.carry) return hints.carry;
     return hints[toolKind()] || '';
   }
@@ -156,6 +158,24 @@ export function createInput({ canvas, view, store, history, character, ui, audio
   }
   const eraseAt = (at) => { const ref = objectAt(at); if (ref) history.run([{ type: 'removeObject', space: here(), id: ref.id }]); };
 
+  // 걷는 중에 의자를 눌렀으면 가서 앉는다. 앉아 있던 자리를 다시 누르면 일어난다. 의자가 아니면 false
+  function trySit(hit, at) {
+    const seatAt = (id) => { const obj = objectsHere()[id]; return obj && PARTS[obj.part].seat ? obj : null; };
+    // 가구를 바로 눌렀거나, 의자가 놓인 칸의 바닥을 눌렀을 때
+    const obj = seatAt(hit?.ref?.id) || seatAt(store.derived.occ[here()].furniture.get(cellKey(at.cx, at.cy)));
+    if (!obj) return false;
+    const near = hit?.ref?.id === obj.id ? hit.point : at.pt;
+    let index = 0, bestDist = Infinity;
+    seatSpots(obj).forEach((spot, i) => {
+      const d = Math.hypot(spot.x - near.x, spot.z - near.z);
+      if (d < bestDist) { bestDist = d; index = i; }
+    });
+    const now = character.seated;
+    if (now && now.id === obj.id && now.index === index) character.stop();
+    else if (!character.sit(obj.id, index)) { ui.toast('의자 옆에 설 자리가 없습니다'); audio.play('error'); }
+    return true;
+  }
+
   // 두 손가락: 벌리고 오므려 확대와 축소. 그동안 하던 동작은 그만둔다.
   const touches = new Map();
   let pinch = null;
@@ -232,8 +252,10 @@ export function createInput({ canvas, view, store, history, character, ui, audio
     if (s.mode === 'walk') {
       if (!at || !press || Math.hypot(e.clientX - press.x, e.clientY - press.y) >= 8) return;
       // 집이나 현관 깔개를 누르면 그리로 걸어가 드나든다
-      const special = view.pickSpecial(e.clientX, e.clientY);
-      if (special) { travel.walkToDoor(); return; }
+      const hit = view.pickFront(e.clientX, e.clientY);
+      if (hit?.special) { travel.walkToDoor(); return; }
+      travel.cancel(); // 드나들려고 걷던 중이었으면 그만둔다
+      if (trySit(hit, at)) return;
       if (character.goTo(at.pt.x, at.pt.z)) view.showMarker(at.pt.x, at.pt.z);
       return;
     }

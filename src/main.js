@@ -75,6 +75,8 @@ async function start(saved = {}) {
   }
   const travel = {
     toggle: () => go(character.place === 'yard' ? 'main' : 'yard'),
+    // 문이나 깔개로 걸어가던 것을 그만둔다 (다른 곳을 눌렀을 때)
+    cancel() { pending = null; },
     // 집이나 현관 깔개를 눌렀을 때: 그 앞으로 걸어간 뒤 드나든다
     walkToDoor() {
       const spot = character.place === 'yard' ? { x: HOUSE_CENTER_X, z: doorFront().z - 0.8 } : { x: MAT_X + 1, z: matSpot().z + 0.4 };
@@ -134,12 +136,16 @@ async function start(saved = {}) {
   else if (loaded?.dropped) ui.toast(`저장된 것 가운데 ${loaded.dropped}개는 지금 규칙에 맞지 않아 빼고 불러왔습니다`, 'error');
 
   let last = performance.now();
+  let wasSeated = null;
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     const dir = input.state.mode === 'walk' || character.place === 'yard' ? input.moveDirection() : input.moveDirection();
     if (dir) pending = null;
     character.update(dt, dir);
+    // 앉거나 일어나면 안내를 바꾼다
+    const seated = character.seated?.id ?? null;
+    if (seated !== wasSeated) { wasSeated = seated; input.syncUI(); if (seated) audio.play('sit'); }
     if (!busy) {
       if (character.place === 'yard') {
         view.setFocus(character.pos.x, character.pos.z);

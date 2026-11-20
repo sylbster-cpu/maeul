@@ -36,7 +36,7 @@
    - `npm test`가 통과해야 합니다.
    - `page.html`을 고쳤으면 `npm run index`로 `index.html`을 다시 만듭니다. `index.html`을 직접 고치지 않습니다.
    - 가구 모델을 더했으면 `npm run pack`을 실행합니다.
-   - 브라우저 자동 시험(`test/tour.mjs`, `test/decor.mjs`, `test/touch.mjs`)은 Playwright와 Chromium이 있는 환경에서만 돌아갑니다. 실행 방법은 `README.md`에 있습니다. 돌리지 못했으면 기록에 그렇게 적습니다.
+   - 브라우저 자동 시험(`test/tour.mjs`, `test/decor.mjs`, `test/touch.mjs`, `test/sit.mjs`)은 Playwright와 Chromium이 있는 환경에서만 돌아갑니다. 실행 방법은 `README.md`에 있습니다. 돌리지 못했으면 기록에 그렇게 적습니다.
 4. `docs/WORKLOG.md` 맨 위에 기록을 더합니다.
 5. 풀 리퀘스트를 엽니다. 사용자가 병합합니다.
 

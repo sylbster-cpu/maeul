@@ -442,6 +442,8 @@ export function createView({ canvas, assets, store }) {
       nodes.set(obj.id, node);
       pickables.push(node);
     }
+    // 새로 만든 것들의 자리를 바로 계산해 둔다. 다음 화면을 그리기 전에도 누른 곳을 판정할 수 있어야 한다
+    scene.updateMatrixWorld();
   }
 
   // ---- 미리보기와 강조 ----
@@ -532,11 +534,20 @@ export function createView({ canvas, assets, store }) {
     }
     return best && { wall: best.wall, i: best.i };
   }
-  // 집(마당)이나 현관 깔개(방)를 눌렀는지
-  function pickSpecial(clientX, clientY) {
+  // 걷는 중에 누른 것. 집(마당)이나 현관 깔개(방)와 가구 가운데 카메라에 더 가까운 쪽을 돌려준다.
+  // 드나드는 곳이면 { special }, 가구면 { ref, point } (point 는 가구에서 눌린 지점)
+  function pickFront(clientX, clientY) {
+    if (dirty) rebuild();
     setRay(clientX, clientY);
-    const hit = raycaster.intersectObjects(specials, true)[0];
-    return hit ? (place === 'yard' ? 'door' : 'mat') : null;
+    const special = raycaster.intersectObjects(specials, true)[0];
+    let object = null;
+    for (const hit of raycaster.intersectObjects(pickables, true)) {
+      let o = hit.object;
+      while (o && !o.userData.ref) o = o.parent;
+      if (o) { object = { ref: o.userData.ref, point: { x: hit.point.x, z: hit.point.z }, distance: hit.distance }; break; }
+    }
+    if (special && (!object || special.distance <= object.distance)) return { special: place === 'yard' ? 'door' : 'mat' };
+    return object;
   }
 
   // ---- 테마 ----
@@ -597,7 +608,7 @@ export function createView({ canvas, assets, store }) {
   resize();
 
   return {
-    scene, camera, renderer, rebuild, showGhosts, pop, groundPoint, wallPoint, pick, pickSpecial, thumbnails,
+    scene, camera, renderer, rebuild, showGhosts, pop, groundPoint, wallPoint, pick, pickFront, thumbnails,
     clearGhosts: () => emptyGroup(ghostGroup),
     // 세계 좌표가 화면의 어디인지 (자동 확인 스크립트가 쓴다)
     screenPoint(x, z) {

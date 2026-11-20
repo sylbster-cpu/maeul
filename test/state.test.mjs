@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createState, createStore, clearCommands, houseRect, blockedCells, cellKey } from '../src/state.js';
+import { createState, createStore, clearCommands, houseRect, blockedCells, cellKey, seatSpots, seatApproach } from '../src/state.js';
 import { sampleCommands } from '../src/sample.js';
 import { createHistory } from '../src/history.js';
 import { serialize, parse, createSaver, SAVE_KEY, SAVE_VERSION } from '../src/save.js';
@@ -293,4 +293,47 @@ test('저장소에 쓰고 읽는다. 읽지 못한 내용은 옆에 남기고, �
   const none = createSaver(null);
   assert.equal(none.load(), null);
   assert.equal(none.save(createState(), {}), false);
+});
+
+// ---- 앉는 자리 ----
+const round = (n) => Math.round(n * 100) / 100;
+
+test('의자의 앉는 자리는 칸의 가운데이고, 의자가 보는 쪽을 본다', () => {
+  for (let rot = 0; rot < 4; rot++) {
+    const [spot, ...rest] = seatSpots({ part: 'chair', x: 2, y: 3, rot });
+    assert.equal(rest.length, 0);
+    assert.deepEqual([spot.x, spot.z, spot.y], [2.5, 3.5, 0.5]);
+    assert.equal(spot.face, rot * Math.PI / 2);
+  }
+  assert.deepEqual(seatSpots({ part: 'table', x: 0, y: 0, rot: 0 }), []); // 앉을 수 없는 가구
+});
+
+test('소파에는 세 자리가 있고, 돌리면 자리도 함께 돈다', () => {
+  // 앞을 볼 때(rot 0)는 가로로 나란히, 조금 앞쪽에 앉는다
+  const front = seatSpots({ part: 'couch', x: 4, y: 6, rot: 0 });
+  assert.deepEqual(front.map((p) => round(p.x)), [4.72, 5.5, 6.28]);
+  assert.ok(front.every((p) => round(p.z) === 7.11 && p.z > 7 && p.face === 0));
+  // 서쪽을 볼 때(rot 3)는 세로로 나란히, 서쪽으로 조금 나와 앉는다
+  const west = seatSpots({ part: 'couch', x: 4, y: 6, rot: 3 });
+  assert.deepEqual(west.map((p) => round(p.z)), [6.72, 7.5, 8.28]);
+  assert.ok(west.every((p) => round(p.x) === 4.89 && p.x < 5));
+  // 뒤를 볼 때(rot 2)는 좌우가 뒤집힌다
+  const back = seatSpots({ part: 'couch', x: 4, y: 6, rot: 2 });
+  assert.deepEqual(back.map((p) => round(p.x)), [6.28, 5.5, 4.72]);
+});
+
+test('앉으러 갈 때는 의자의 앞, 옆, 뒤 순서로 설 칸을 찾는다', () => {
+  // 동쪽을 보는 의자: 앞은 동쪽 칸, 뒤는 서쪽 칸
+  const chair = { part: 'chair', x: 2, y: 2, rot: 1 };
+  const cells = seatApproach(chair, seatSpots(chair)[0]);
+  assert.deepEqual(cells[0], [3, 2]);
+  assert.deepEqual(cells[3], [1, 2]);
+  assert.deepEqual(cells.slice(1, 3).sort(), [[2, 1], [2, 3]]);
+  // 소파의 오른쪽 자리: 앞쪽 칸 가운데 그 자리에 가장 가까운 칸이 먼저다
+  const couch = { part: 'couch', x: 4, y: 6, rot: 0 };
+  const right = seatSpots(couch)[2];
+  const around = seatApproach(couch, right);
+  assert.deepEqual(around.slice(0, 3), [[6, 8], [5, 8], [4, 8]]);
+  assert.equal(around.length, 10); // 둘레의 칸 전부 (가로 3칸 x 2 + 세로 2칸 x 2)
+  assert.ok(!around.some(([x, y]) => x >= 4 && x < 7 && y >= 6 && y < 8)); // 소파가 차지한 칸은 없다
 });

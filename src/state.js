@@ -80,6 +80,38 @@ export function wallCells(obj) {
   return out;
 }
 
+// ---- 앉는 자리 ----
+// 가구의 앉는 자리들. 세계 좌표 x, z 와 앉는 면의 높이 y, 바라보는 방향 face (라디안. 0 이면 +Z)
+export function seatSpots(obj) {
+  const part = PARTS[obj.part];
+  if (!part?.seat) return [];
+  const { fw, fh } = footprint(obj);
+  const s = part.scale || 1, o = part.offset || [0, 0, 0];
+  const cos = [1, 0, -1, 0][obj.rot], sin = [0, 1, 0, -1][obj.rot];
+  const cx = obj.x + fw / 2, cz = obj.y + fh / 2;
+  const lz = (part.seat.z || 0) * s + o[2];
+  return (part.seat.x || [0]).map((sx) => {
+    const lx = sx * s + o[0];
+    return { x: cx + lx * cos + lz * sin, z: cz - lx * sin + lz * cos, y: part.seat.h * s + o[1], face: obj.rot * Math.PI / 2 };
+  });
+}
+// 앉으러 갈 때 설 수 있는 칸들. 가구 둘레의 칸을 앞, 옆, 뒤 순서로, 같은 쪽에서는 앉는 자리에 가까운 순서로 준다.
+// 그 칸이 비어 있는지는 따지지 않는다
+export function seatApproach(obj, spot) {
+  const { fw, fh } = footprint(obj);
+  const [fx, fy] = [[0, 1], [1, 0], [0, -1], [-1, 0]][obj.rot]; // 앞쪽
+  const around = [];
+  for (let i = 0; i < fw; i++) around.push([obj.x + i, obj.y - 1, 0, -1], [obj.x + i, obj.y + fh, 0, 1]);
+  for (let j = 0; j < fh; j++) around.push([obj.x - 1, obj.y + j, -1, 0], [obj.x + fw, obj.y + j, 1, 0]);
+  return around
+    .map(([x, y, dx, dy]) => {
+      const toward = dx * fx + dy * fy;
+      return { x, y, side: toward > 0 ? 0 : toward === 0 ? 1 : 2, dist: Math.hypot(x + 0.5 - spot.x, y + 0.5 - spot.z) };
+    })
+    .sort((a, b) => a.side - b.side || a.dist - b.dist)
+    .map((c) => [c.x, c.y]);
+}
+
 // 파생 자료: 곳마다의 칸 점유와 막힌 칸
 export function derive(state) {
   const occ = {};
