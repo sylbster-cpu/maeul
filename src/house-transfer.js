@@ -1,33 +1,143 @@
-// 서버를 쓰지 않는 내 집 복사. 집 공유 링크(#home=)의 사본만 이 브라우저에 복원한다.
-// 다른 브라우저의 Firebase 익명 계정/온라인 집/방명록 소유권은 이전되지 않는다.
+// 집 공유 링크(#home=)의 배치만 브라우저에 옮긴다. Firebase 소유권/방명록은 옮기지 않는다.
+// 집과 보관본을 교환할 때는 변경 기록을 먼저 저장해 오류·중간 종료 시 원본을 보존한다.
 import { SAVE_KEY, serialize, parse } from './save.js';
 
 export const PRE_IMPORT_KEY = 'house-lab-web:before-import';
+export const TRANSFER_JOURNAL_KEY = 'house-lab-web:transfer-pending';
+export const HOUSE_STORAGE_KEYS = Object.freeze([SAVE_KEY, PRE_IMPORT_KEY, TRANSFER_JOURNAL_KEY]);
 
 function storageAvailable(storage) {
   if (!storage) throw new Error('이 브라우저에서는 집을 저장할 수 없습니다');
   return storage;
 }
 
+function rawPair(storage) {
+  return { save: storage.getItem(SAVE_KEY), backup: storage.getItem(PRE_IMPORT_KEY) };
+}
+
+function samePair(a, b) {
+  return a.save === b.save && a.backup === b.backup;
+}
+
+function validPair(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value) &&
+    (value.save === null || typeof value.save === 'string') &&
+    (value.backup === null || typeof value.backup === 'string');
+}
+
+function setRaw(storage, key, value) {
+  if (value === null) storage.removeItem(key);
+  else storage.setItem(key, value);
+}
+
 function readBackup(storage) {
   const raw = storage.getItem(PRE_IMPORT_KEY);
   if (raw === null) return null;
   let value;
-  try { value = JSON.parse(raw); } catch { throw new Error('이전 집 백업이 손상되어 있습니다. 덮어쓰지 않았습니다'); }
+  try { value = JSON.parse(raw); }
+  catch { throw new Error('이전 집 백업이 손상되어 있습니다. 현재 집을 덮어쓰지 않았습니다'); }
   if (!value || value.version !== 1 ||
       !(value.previous === null || typeof value.previous === 'string')) {
-    throw new Error('이전 집 백업의 형식이 잘못되었습니다. 덮어쓰지 않았습니다');
+    throw new Error('이전 집 백업의 형식이 잘못되었습니다. 현재 집을 덮어쓰지 않았습니다');
   }
   return value;
 }
 
+// 백업이 없던 브라우저의 첫 복사에서는 되돌리기를 제공하지 않는다.
+// 원래 저장 데이터가 null인 상태를 "집"으로 바꿔 표시하면 복구 시 저장이 사라지기 때문이다.
 export function hasPreviousHouse(storage) {
-  try { return !!storage && storage.getItem(PRE_IMPORT_KEY) !== null; }
-  catch { return false; }
+  try { return !!storage && readBackup(storage)?.previous !== null && readBackup(storage) !== null; }
+  catch {
+    // 백업이 손상됐을 때는 버튼을 남겨 오류 원인을 볼 수 있게 한다.
+    try { return storage?.getItem(PRE_IMPORT_KEY) !== null; } catch { return false; }
+  }
 }
 
-// 처음 복원하기 전에 원래 집을 백업한다. 기존 백업이 있으면 실수로 덮어쓰지 않는다.
-// 실패했을 때 복원 전 저장 내용을 변경하지 않는다.
+// 다른 탭이 로컬 집이나 교환 백업을 고쳤을 때 오래된 화면의 자동 저장을 거부한다.
+// 같은 탭의 정상적인 자동 저장이 성공했을 때만 refresh()로 기준을 갱신한다.
+export function createHouseSaveGuard(storage) {
+  const snapshot = () => HOUSE_STORAGE_KEYS.map((key) => storage.getItem(key));
+  let expected;
+  try { expected = storage ? snapshot() : null; } catch { expected = null; }
+  return {
+    isCurrent() {
+      if (!storage || !expected) return false;
+      try {
+        const actual = snapshot();
+        return actual.every((value, index) => value === expected[index]) &&
+          actual[2] === null;
+      } catch { return false; }
+    },
+    refresh() {
+      if (!storage) return false;
+      try { expected = snapshot(); return true; }
+      catch { return false; }
+    },
+  };
+}
+
+function readJournal(storage) {
+  const raw = storage.getItem(TRANSFER_JOURNAL_KEY);
+  if (raw === null) return null;
+  let item;
+  try { item = JSON.parse(raw); }
+  catch { throw new Error('집 교환 기록을 읽을 수 없습니다. 자동 저장을 중단했습니다'); }
+  if (!item || item.version !== 1 || !validPair(item.before) || !validPair(item.after)) {
+    throw new Error('집 교환 기록이 손상됐습니다. 자동 저장을 중단했습니다');
+  }
+  return item;
+}
+
+// 비정상 종료 뒤 기록이 남으면 새로 시작할 때 원래 상태를 복구하거나 완료 상태를 확인한다.
+// 제3의 탭이 그 사이 다른 내용을 저장했다면 임의로 덮어쓰지 않고 자동 저장을 막는다.
+export function recoverInterruptedHouseTransfer(storage) {
+  if (!storage) return false;
+  const journal = readJournal(storage);
+  if (!journal) return false;
+  const now = rawPair(storage);
+  try {
+    if (samePair(now, journal.after)) {
+      storage.removeItem(TRANSFER_JOURNAL_KEY);
+      return true;
+    }
+    if (![journal.before.save, journal.after.save].includes(now.save) ||
+        ![journal.before.backup, journal.after.backup].includes(now.backup)) {
+      throw new Error('다른 탭에서 집 데이터가 바뀌어 교환을 자동 복구할 수 없습니다');
+    }
+    setRaw(storage, SAVE_KEY, journal.before.save);
+    setRaw(storage, PRE_IMPORT_KEY, journal.before.backup);
+    storage.removeItem(TRANSFER_JOURNAL_KEY);
+    return true;
+  } catch {
+    throw new Error('집 교환이 중단된 기록이 있습니다. 집을 보존하려고 자동 저장을 멈췄습니다');
+  }
+}
+
+function commitHouseChange(storage, after, failureMessage) {
+  if (storage.getItem(TRANSFER_JOURNAL_KEY) !== null) {
+    throw new Error('완료되지 않은 집 교환이 있습니다. 먼저 화면을 새로 고쳐 주세요');
+  }
+  const before = rawPair(storage);
+  const journal = JSON.stringify({ version: 1, before, after });
+  try { storage.setItem(TRANSFER_JOURNAL_KEY, journal); }
+  catch { throw new Error('집을 안전하게 보관할 공간이 없습니다. 현재 집은 그대로입니다'); }
+
+  try {
+    // 백업을 먼저 남긴 뒤 현재 집을 바꾼다. 임시 기록에는 두 원본이 모두 있다.
+    setRaw(storage, PRE_IMPORT_KEY, after.backup);
+    setRaw(storage, SAVE_KEY, after.save);
+  } catch {
+    try {
+      setRaw(storage, SAVE_KEY, before.save);
+      setRaw(storage, PRE_IMPORT_KEY, before.backup);
+      storage.removeItem(TRANSFER_JOURNAL_KEY);
+    } catch { /* 교환 기록은 지우지 않아 다음 시작에 원본을 복구할 수 있다 */ }
+    throw new Error(failureMessage);
+  }
+  // 정리 작업이 실패해도 교환 기록을 남겨 두면 다음 시작에서 완료 여부를 확인한다.
+  try { storage.removeItem(TRANSFER_JOURNAL_KEY); } catch { /* 다음 시작에 검사 */ }
+}
+
 export function importSharedHouse(storage, incomingState) {
   storageAvailable(storage);
   let checked;
@@ -35,37 +145,28 @@ export function importSharedHouse(storage, incomingState) {
   catch { throw new Error('가져올 집 데이터가 올바르지 않습니다'); }
   if (!checked?.ok || checked.dropped) throw new Error('가져올 집 데이터가 현재 게임 규칙에 맞지 않습니다');
   if (readBackup(storage) !== null) {
-    throw new Error('이전 집 백업이 이미 있습니다. 먼저 내 집에서 이전 집을 복구한 뒤 다시 시도해 주세요');
+    throw new Error('보관된 집이 이미 있습니다. 먼저 두 집을 맞바꿔 백업을 확인해 주세요');
   }
-
   const original = storage.getItem(SAVE_KEY);
   const next = serialize(checked.state, { place: 'yard' });
-  try {
-    storage.setItem(PRE_IMPORT_KEY, JSON.stringify({ version: 1, previous: original }));
-  } catch {
-    throw new Error('이전 집을 안전하게 백업하지 못했습니다. 내 집은 변경하지 않았습니다');
-  }
-  try {
-    storage.setItem(SAVE_KEY, next);
-  } catch {
-    // 집을 바꾸지 못했으면 방금 만든 백업 표시도 지워 다음 시도를 막지 않는다.
-    try { storage.removeItem(PRE_IMPORT_KEY); } catch { /* 원래 집 저장 내용은 그대로다 */ }
-    throw new Error('집을 저장하지 못했습니다. 이전 집은 그대로 남아 있습니다');
-  }
+  commitHouseChange(storage, {
+    save: next,
+    backup: JSON.stringify({ version: 1, previous: original }),
+  }, '집을 저장하지 못했습니다. 원래 집을 복구할 수 있도록 보관했습니다');
   return checked.state;
 }
 
-// 내가 명시적으로 복구를 누를 때만 실행. 성공 뒤에만 백업을 제거한다.
+// 두 집을 맞바꾼다. 이전 저장을 없애지 않고 현재 집을 다음 교환용 백업으로 남긴다.
+// 저장된 집이 원래 없었다면 없는 값을 집으로 취급하지 않는다.
 export function restorePreviousHouse(storage) {
   storageAvailable(storage);
   const backup = readBackup(storage);
-  if (!backup) throw new Error('복구할 이전 집이 없습니다');
-  try {
-    if (backup.previous === null) storage.removeItem(SAVE_KEY);
-    else storage.setItem(SAVE_KEY, backup.previous);
-    storage.removeItem(PRE_IMPORT_KEY);
-  } catch {
-    throw new Error('이전 집 복구를 완료하지 못했습니다. 저장 공간을 확인해 주세요');
-  }
+  if (!backup || backup.previous === null) throw new Error('맞바꿀 이전 집이 없습니다');
+  const current = storage.getItem(SAVE_KEY);
+  if (current === null) throw new Error('지금 집의 저장 내용을 찾지 못했습니다. 교환하지 않았습니다');
+  commitHouseChange(storage, {
+    save: backup.previous,
+    backup: JSON.stringify({ version: 1, previous: current }),
+  }, '두 집을 맞바꾸지 못했습니다. 저장 상태를 확인해 주세요');
   return true;
 }
