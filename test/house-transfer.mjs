@@ -49,11 +49,32 @@ export default async function transferTour(page, { out, logs }) {
   await Promise.all([page.waitForEvent('load'), page.locator('#share-restore-previous').click()]);
   await ready();
   say('이전 집으로 되돌리면 원래 외관이 복구된다', (await roof()) === 'slate');
-  say('복구하면 원래 집 저장 내용이 글자 그대로 보존된다',
-    (await save()) === oldSave && await backup() === null);
-  say('복구 후에도 온라인 사용자 관련 저장은 그대로다',
+  say('맞바꾸면 원래 집은 되돌아오고 가져왔던 집은 백업으로 남는다',
+    (await save()) === oldSave && JSON.parse(await backup()).previous === imported);
+  say('맞바꾼 뒤에도 복구 버튼은 남아 있다', await page.locator('#share-house').isVisible());
+  say('맞바꾼 뒤 온라인 사용자 관련 저장은 그대로다',
     await page.evaluate(() => localStorage.getItem('firebase:test-owner-key') === 'untouched'));
+  await page.screenshot({ path: `${out}-restored.png` });
+
+  // 이전에 Claude가 재현한 0.4초 간격의 두 번 누르기 문제를 방지한다.
+  await page.locator('#share-house').click();
+  await page.waitForFunction(() => !document.getElementById('share-layer').hidden);
+  const previous = await save();
+  await Promise.all([
+    page.waitForEvent('load'),
+    page.evaluate(() => {
+      const button = document.getElementById('share-restore-previous');
+      button.click();
+      button.click(); // 새로고침되기 전 같은 버튼을 또 눌러도 두 번째 교환은 불가
+    }).catch((error) => {
+      if (!/navigation|context.*destroyed/i.test(String(error))) throw error;
+    }),
+  ]);
+  await ready();
+  say('복구 버튼을 빠르게 두 번 눌러도 한 번만 맞바뀐다', (await roof()) === 'moss');
+  say('두 번 누른 뒤에도 두 집의 원본을 보관한다',
+    JSON.parse(await backup()).previous === previous);
   say('작은 휴대폰 화면에서 가로 넘침이 없다',
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-  await page.screenshot({ path: `${out}-restored.png` });
+  await page.screenshot({ path: `${out}-swapped-back.png` });
 }
