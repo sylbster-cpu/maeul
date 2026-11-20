@@ -52,6 +52,24 @@ export default async function routeTour(page, { out, logs }) {
   say('의자에서 일어나 탁자 반대편까지 돌아서 걸어간다', crossed, JSON.stringify(pos.map((n) => +n.toFixed(2))));
   await page.screenshot({ path: `${out}-open-passage.png` });
 
+  // 가구나 벽, 바닥 바깥을 누르면 그 근처로 걸어갈 뿐 길이 막혔다고 하지 않는다
+  const clearToast = () => page.evaluate(() => { const t = document.getElementById('toast'); t.textContent = ''; t.hidden = true; });
+  const quietWalk = async (label, x, z) => {
+    await clearToast();
+    await floorTap(x, z);
+    await page.waitForTimeout(400);
+    const r = await page.evaluate(() => ({
+      blocked: window.__game.character.routeBlocked,
+      toast: document.getElementById('toast').hidden ? '' : document.getElementById('toast').textContent,
+      seated: !!window.__game.character.seated,
+    }));
+    say(`${label} 누르면 막혔다고 하지 않는다`, !r.blocked && !r.toast.includes('가구 때문에') && !r.seated, JSON.stringify(r));
+  };
+  await quietWalk('탁자를', 3.5, 2.5);
+  await quietWalk('화분을', 0.5, 5.5);
+  await quietWalk('북쪽 벽 너머를', 3.5, -1.5);
+  await quietWalk('방 바깥 오른쪽을', 7.5, 2.5);
+
   // 과거 초기 배치를 일부러 재현한다. 코드는 사용자의 이미 저장된 가구를 이동시키지 않는다.
   const recreated = await page.evaluate(() => {
     const { store, character } = window.__game;
@@ -77,4 +95,25 @@ export default async function routeTour(page, { out, logs }) {
   await page.screenshot({ path: `${out}-blocked-passage.png` });
   say('휴대폰 화면에 가로 넘침이 없다',
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+
+  // 같은 막힌 집을 친구가 공유 링크로 구경할 때: 꾸미기를 쓸 수 없으니 꾸미기 안내를 하지 않는다
+  const link = await page.evaluate(async () => {
+    const { makeShareLink, PUBLIC_SHARE_URL } = await import('./src/share.js');
+    return makeShareLink(window.__game.store.state, PUBLIC_SHARE_URL);
+  });
+  await Promise.all([page.waitForEvent('load'), page.evaluate((hash) => { location.hash = hash; }, new URL(link).hash)]);
+  await page.waitForFunction(() => window.__ready === true && !document.getElementById('my-home').hidden, null, { timeout: 20000 });
+  await page.waitForTimeout(420);
+  const guestHouse = await page.evaluate(() => ({
+    place: window.__game.character.place,
+    oldChair: Object.values(window.__game.store.state.spaces.main.objects).some((o) => o.part === 'chair' && o.x === 5 && o.y === 3),
+  }));
+  await clearToast();
+  await floorTap(3.5, 1.5);
+  const guestToast = await page.waitForFunction(() => document.getElementById('toast').textContent.includes('가구 때문에'), null, { timeout: 3500 })
+    .then(() => page.evaluate(() => document.getElementById('toast').textContent)).catch(() => '');
+  say('구경하는 사람에게는 막힌 길만 알리고 꾸미기 안내는 하지 않는다',
+    guestHouse.place === 'main' && guestHouse.oldChair && guestToast.includes('가구 때문에') && !guestToast.includes('꾸미기'),
+    JSON.stringify({ ...guestHouse, guestToast }));
+  await page.screenshot({ path: `${out}-guest-blocked.png` });
 }
