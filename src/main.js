@@ -12,6 +12,18 @@ import { createSaver, parse, serialize } from './save.js';
 import { makeShareLink, readShareHash } from './share.js';
 import { sampleCommands } from './sample.js';
 
+// Claude 게시 화면은 다른 출처의 틀 안에서 실행될 수 있으므로, 공유 주소는 항상 정식 배포 주소를 사용한다.
+export const PUBLIC_SHARE_URL = 'https://sylbster-cpu.github.io/maeul/';
+
+// 열린 탭에서 공유 해시만 바뀌면 브라우저가 페이지를 다시 불러오지 않는다.
+// 기존의 로컬 집과 공유 집이 뒤섞이지 않도록 해시 전환 때 시작부터 다시 읽는다.
+let previousWasShared = window.location.hash.startsWith('#home=');
+window.addEventListener('hashchange', () => {
+  const nowShared = window.location.hash.startsWith('#home=');
+  if (previousWasShared || nowShared) window.location.reload();
+  previousWasShared = nowShared;
+});
+
 // 브라우저 저장소. 막혀 있는 환경(사생활 보호 창 등)에서는 null 을 돌려준다
 function openStorage() {
   try {
@@ -36,7 +48,7 @@ async function start(saved = {}) {
       const checked = parse(serialize(received)); // 배치 규칙으로 다시 검증한다
       if (!checked.ok || checked.dropped) throw new Error('공유된 집에 사용할 수 없는 가구가 있습니다');
       sharedState = checked.state;
-    } catch (error) { shareError = error.message || '공유 링크를 읽지 못했습니다'; }
+    } catch (error) { shareError = error.message === '이 브라우저는 압축된 집 공유를 지원하지 않습니다' ? error.message : '공유 링크가 잘못되었거나 지금 사용할 수 없는 집입니다'; }
   }
   const guest = !!sharedState;
   // 불러오는 순서: 공유 스냅샷 → 열어 둔 화면에서 넘겨받은 상태 → 브라우저에 저장된 집 → 처음 배치
@@ -104,7 +116,7 @@ async function start(saved = {}) {
     thumbs: view.thumbnails(Object.keys(PARTS)),
     on: {
       share: async () => {
-        try { ui.openShare(await makeShareLink(store.state, window.location.href)); }
+        try { ui.openShare(await makeShareLink(store.state, PUBLIC_SHARE_URL)); }
         catch (error) { ui.toast(error.message || '공유 링크를 만들지 못했습니다', 'error'); }
       },
       home: () => {
