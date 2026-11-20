@@ -19,7 +19,7 @@ function wallChip(def) {
   return `linear-gradient(${def.bottom}, ${def.bottom}) bottom / 100% 34% no-repeat, ${top}`;
 }
 
-export function createUI({ thumbs, on }) {
+export function createUI({ thumbs, on, guest = false }) {
   const $ = (id) => document.getElementById(id);
   const tools = $('tools');
   const toolButtons = new Map();
@@ -126,6 +126,11 @@ export function createUI({ thumbs, on }) {
   $('sample').addEventListener('click', () => on.sample());
   $('cancel-carry').addEventListener('click', () => on.cancelCarry());
   $('place-toggle').addEventListener('click', () => on.travel());
+  $('share-house').addEventListener('click', () => on.share());
+  $('my-home').addEventListener('click', () => on.home());
+  $('share-house').hidden = guest;
+  $('my-home').hidden = !guest;
+  $('mode-build').hidden = guest;
   $('sound').addEventListener('click', () => {
     const muted = on.mute();
     $('sound').setAttribute('aria-pressed', String(!muted));
@@ -143,6 +148,44 @@ export function createUI({ thumbs, on }) {
   new ResizeObserver(() => on.inset(bottom.getBoundingClientRect().height + 12)).observe(bottom);
 
   let toastTimer = 0;
+  function showToast(text, kind = 'info') {
+    const el = $('toast');
+    el.textContent = text;
+    el.dataset.kind = kind;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, 2600);
+  }
+
+  const shareLayer = $('share-layer');
+  const shareLink = $('share-link');
+  const closeShare = () => { shareLayer.hidden = true; $('share-house').focus(); };
+  $('share-close').addEventListener('click', closeShare);
+  shareLayer.addEventListener('click', (event) => { if (event.target === shareLayer) closeShare(); });
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !shareLayer.hidden) { closeShare(); event.preventDefault(); }
+  });
+  $('share-copy').addEventListener('click', async () => {
+    let copied = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareLink.value);
+        copied = true;
+      }
+    } catch { /* 접근이 막힌 브라우저에서는 아래 방법으로 시도한다 */ }
+    if (!copied) {
+      shareLink.focus();
+      shareLink.select();
+      try { copied = document.execCommand('copy'); } catch { /* 직접 복사할 수 있게 선택은 유지한다 */ }
+    }
+    showToast(copied ? '집 링크를 복사했습니다' : '링크를 길게 눌러 직접 복사해 주세요');
+  });
+  $('share-native').hidden = typeof navigator.share !== 'function';
+  $('share-native').addEventListener('click', async () => {
+    try { await navigator.share({ title: '우리 집 구경하기', url: shareLink.value }); }
+    catch (error) { if (error.name !== 'AbortError') showToast('보내지 못했습니다. 주소 복사를 이용해 주세요', 'error'); }
+  });
+
   return {
     setMode(mode) {
       $('mode-walk').setAttribute('aria-pressed', String(mode === 'walk'));
@@ -177,15 +220,13 @@ export function createUI({ thumbs, on }) {
     },
     setHistory({ canUndo, canRedo }) { $('undo').disabled = !canUndo; $('redo').disabled = !canRedo; },
     setSaveStatus(status) {
-      $('save-status').textContent = { saved: '자동 저장됨', pending: '저장하는 중', off: '이 브라우저에서는 저장되지 않습니다' }[status] || '';
+      $('save-status').textContent = { saved: '자동 저장됨', pending: '저장하는 중', off: '이 브라우저에서는 저장되지 않습니다', guest: '친구 집 구경 중 · 내 집 유지' }[status] || '';
     },
-    toast(text, kind = 'info') {
-      const el = $('toast');
-      el.textContent = text;
-      el.dataset.kind = kind;
-      el.hidden = false;
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => { el.hidden = true; }, 2600);
+    toast: showToast,
+    openShare(link) {
+      shareLink.value = link;
+      shareLayer.hidden = false;
+      $('share-copy').focus();
     },
     loaded() { $('loading').hidden = true; },
   };
