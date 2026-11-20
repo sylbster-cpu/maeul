@@ -61,7 +61,7 @@ export default async function sitTour(page, { out, logs }) {
   const still = async (from) => { const now = await at(3, 0, 3); return Math.abs(now.x - from.x) < 0.5 && Math.abs(now.y - from.y) < 0.5; };
   const roomAt = await at(3, 0, 3);
   const chairA = await idAt('main', 2, 2); // 동쪽을 보는 의자 (탁자 쪽)
-  const chairB = await idAt('main', 5, 3); // 서쪽을 보는 의자
+  const chairB = await idAt('main', 4, 4); // 탁자 앞쪽에서 안쪽을 보는 의자. 오른쪽 통로는 비워 둔다
 
   // 1) 의자를 누르면 걸어가서 앉는다
   await tapSeat(2.5, 2.5);
@@ -93,7 +93,7 @@ export default async function sitTour(page, { out, logs }) {
   // 4) 앉은 채 다른 의자를 누르면 옮겨 앉는다
   await tapSeat(2.5, 2.5);
   await waitSit(true);
-  await tapSeat(5.5, 3.5);
+  await tapSeat(4.5, 4.5);
   ok = await page.waitForFunction((id) => { const c = window.__game.character; return c.seated?.id === id && c.sitAmount === 1; }, chairB, { timeout: 7000 }).then(() => true).catch(() => false);
   say('다른 의자로 옮겨 앉기', ok, JSON.stringify((await who()).seat));
   await page.screenshot({ path: `${out}-2-other-chair.png` });
