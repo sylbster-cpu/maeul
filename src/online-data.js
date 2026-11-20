@@ -57,6 +57,18 @@ export function normalizeVisitNote(text) {
   return body;
 }
 
+// 서버 응답을 기다리는 한도를 둔다. 한도를 넘으면 실패로 알린다.
+// 원래 요청을 취소하는 것은 아니므로, 연결이 돌아오면 나중에 서버에 반영될 수 있다.
+export function withOnlineTimeout(promise, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error('온라인 서버의 응답이 없습니다. 연결을 확인한 뒤 다시 시도해 주세요')), ms);
+    Promise.resolve(promise).then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); });
+  });
+}
+
 export function onlineErrorText(error) {
   if (typeof error?.message === 'string' &&
       /^(집|인사말|온라인|공개|올릴|로그인|설정|방문|같은)/.test(error.message)) {

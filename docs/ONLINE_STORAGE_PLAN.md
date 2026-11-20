@@ -1,6 +1,8 @@
 # Firebase 온라인 집과 비동기 방문 인사 — 두 번째 실험
 
 > 작성 2026-11-20, GPT. **프로그램·보안 규칙·검증 시험은 구현했으나, 사용자의 Firebase 프로젝트와 웹 앱 공개 설정이 아직 없어 실서버에는 연결되지 않았다.** 정식 서비스가 아니라 두 기기에서 영속적인 흔적이 남는지 확인하는 소규모 실험이다.
+>
+> 2026-11-20 덧붙임(Claude): 사용자가 아래 1~4번을 마쳤고 공개 웹 설정이 코드에 연결됐다. 읽기 권한은 실제 서버에서 규칙대로 동작했다. **실제 서버에 쓰는 동작과 두 기기 시험(6번)은 아직 하지 못했다.**
 
 ## 목적과 현재 범위
 
@@ -15,7 +17,7 @@
 관리자 계정 없이 AI가 Firebase 콘솔의 프로젝트를 만들거나 보안 규칙을 배포할 수는 없다. 휴대폰에서도 가능한 범위로 안내하지만 모바일 콘솔 동작은 아직 실기기 확인하지 못했다.
 
 1. `https://console.firebase.google.com/` 에서 Firebase 프로젝트를 만들고 **웹 앱(`</>`)** 을 등록한다. 프로젝트에서 보여 주는 공개 웹 설정 `firebaseConfig` 객체(보통 `apiKey`, `authDomain`, `projectId`, `appId` 포함)를 복사한다. 관리자 개인 키나 비밀번호는 필요하지 않다.
-2. **Authentication → Sign-in method → Anonymous** 를 사용 설정한다. Authentication의 **Settings → Authorized domains**에 `sylbster-cpu.github.io`가 있는지 확인하고 없으면 추가한다(필요하면 로컬 시험 주소도 추가).
+2. **Authentication → Sign-in method → Anonymous** 를 사용 설정한다. 같은 화면의 **자동 정리**(30일이 지난 익명 계정 삭제)는 켜지 않는다. 집의 소유권이 익명 UID에 묶여 있어 계정이 지워지면 집주인이 자기 집을 고치지도 공개를 중지하지도 못한다. Authentication의 **Settings → Authorized domains**에 `sylbster-cpu.github.io`가 있는지 확인하고 없으면 추가한다(필요하면 로컬 시험 주소도 추가).
 3. **Firestore Database → 데이터베이스 생성**에서 `(default)` 데이터베이스를 만든다. 이 앱은 Cloud Firestore **Standard 에디션**을 전제로 한다. 공개 시험 모드 규칙을 계속 쓰지 말고 처음부터 접근을 막는 모드로 시작한다.
 4. Firestore → Rules(규칙)에서 저장소의 `firestore.rules` 전체를 붙여 넣고 **게시(Publish)** 한다. 규칙에는 집주인만 쓰기, 집 목록 열람 금지, 방명록 본인 한 번 작성, 집주인만 방명록 목록·삭제, 글자 수와 서버 시각 검사 등이 있다. 보안 규칙 검증은 별도 에뮬레이터 자동 시험에서 확인한다.
 5. 공개 웹 설정 객체를 GPT 또는 Claude에게 보내 `src/firebase-config.js`의 `FIREBASE_CONFIG = null`을 **공개 설정**으로 바꾸는 별도 PR을 작성하도록 한다. 공개 웹 설정은 클라이언트에 노출될 수 있지만, 서비스 계정 키/관리자 인증 토큰은 절대 공개하지 않는다. Google 서비스 결제 수단을 등록할 필요가 없는 Spark 범위에서 시작한다.

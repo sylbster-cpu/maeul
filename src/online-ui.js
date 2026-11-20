@@ -1,7 +1,7 @@
 // Firebase 온라인 집과 방명록 UI. 화면 위의 창으로 열어 게임 한 화면의 크기를 바꾸지 않는다.
 // 서버 기능은 버튼을 누를 때 불러오며, 기존 localStorage/명령 상태를 직접 고치지 않는다.
-import { getOnlineService, isOnlineConfigured } from './online.js';
-import { MAX_NOTE_LENGTH, normalizeVisitNote, onlineErrorText } from './online-data.js';
+import { getOnlineService, isOnlineConfigured, ONLINE_TIMEOUT_MS } from './online.js';
+import { MAX_NOTE_LENGTH, normalizeVisitNote, onlineErrorText, withOnlineTimeout } from './online-data.js';
 
 export function createOnlineUI({ store, visitorUid = null, readOnly = false, openShare, toast }) {
   const $ = (id) => document.getElementById(id);
@@ -24,30 +24,39 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, ope
     .map($);
   let busy = false;
   let submitted = false;
+  let run = 0; // 요청마다 번호를 매긴다. 기다리던 창을 닫으면 번호를 넘겨, 늦게 온 응답이 화면을 바꾸지 않게 한다
 
   function report(message) { status.textContent = message; }
-  function close(force = false) {
-    if (busy && !force) return;
+  function hide() {
     layer.hidden = true;
     button.focus();
   }
+  // 닫기는 서버 응답을 기다리는 중에도 된다. 그때는 기다리던 요청의 결과를 버린다
+  function close() {
+    if (busy) { run++; setBusy(false); report(''); }
+    hide();
+  }
   function setBusy(on) {
     busy = on;
-    buttons.forEach((b) => { b.disabled = on || (b.id === 'online-submit' && submitted); });
+    buttons.forEach((b) => { b.disabled = b.id !== 'online-close' && (on || (b.id === 'online-submit' && submitted)); });
     if (on) report('서버에 연결하는 중입니다…');
   }
   async function task(fn, onSuccess = () => {}) {
     if (busy) return;
+    const mine = ++run;
     setBusy(true);
     try {
-      const answer = await fn(await getOnlineService());
+      // 연결과 요청을 합쳐 한도를 둔다. 한도를 넘으면 실패로 알리고 버튼을 다시 쓸 수 있게 한다
+      const answer = await withOnlineTimeout((async () => fn(await getOnlineService()))(), ONLINE_TIMEOUT_MS);
+      if (mine !== run) return;
       report('');
       onSuccess(answer);
     } catch (error) {
+      if (mine !== run) return;
       const message = onlineErrorText(error);
       report(message);
       toast(message, 'error');
-    } finally { setBusy(false); }
+    } finally { if (mine === run) setBusy(false); }
   }
   function open() {
     layer.hidden = false;
@@ -80,7 +89,7 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, ope
   $('online-publish').addEventListener('click', () => task(
     (service) => service.publish(store.state),
     (link) => {
-      close(true);
+      hide();
       toast('온라인 집 게시가 완료됐습니다');
       openShare(link, {
         title: '온라인 방문 링크',
