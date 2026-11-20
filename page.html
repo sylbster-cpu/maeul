@@ -188,6 +188,36 @@
   .share-actions button { min-height: 44px; padding: 7px 12px; flex: 1 1 auto; }
   #share-copy { background: var(--moss); color: var(--on-moss); border-color: var(--panel-edge); }
 
+  /* 온라인 대화창도 게임 화면 위에 나타나므로 3D 화면이 움직이지 않는다 */
+  .online-layer {
+    position: absolute; inset: 0; z-index: 7;
+    display: flex; align-items: center; justify-content: center; padding: 12px;
+    box-sizing: border-box; background: rgba(17, 35, 29, 0.72);
+  }
+  .online-layer[hidden] { display: none; }
+  .online-panel {
+    box-sizing: border-box; width: min(440px, 100%); max-height: calc(100dvh - 24px);
+    overflow: auto; background: var(--panel); color: var(--ink);
+    border: 2px solid var(--panel-edge); border-radius: 16px; padding: 16px;
+  }
+  .online-panel h2 { font: 400 21px var(--font-display); margin: 0 0 8px; }
+  .online-panel p { font-size: 13px; margin: 0 0 10px; }
+  .online-panel textarea {
+    box-sizing: border-box; width: 100%; min-height: 72px; max-height: 130px;
+    border: 1px solid var(--tile-edge); border-radius: 9px;
+    padding: 8px; background: var(--tile); color: var(--ink); resize: vertical;
+  }
+  .online-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+  .online-panel button { min-height: 44px; padding: 7px 12px; }
+  .online-actions button { flex: 1 1 90px; }
+  #online-status { min-height: 1.4em; font-size: 13px; white-space: pre-wrap; }
+  .online-note-row { padding: 8px 0; border-bottom: 1px solid var(--tile-edge); }
+  .online-note-row p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 6px; }
+  .online-note-row small { font-size: 12px; color: var(--ink-soft); padding-right: 10px; }
+  #online-notes-list { max-height: 180px; overflow: auto; }
+  #online-close { width: 100%; margin-top: 10px; }
+
+
   .loading {
     position: absolute; inset: 0; display: grid; place-items: center;
     background: linear-gradient(var(--sky-top), var(--sky-bottom));
@@ -221,6 +251,7 @@
       <div class="cam" role="group" aria-label="카메라와 설정">
         <button type="button" id="place-toggle">집 안으로</button>
         <button type="button" id="share-house">집 공유</button>
+        <button type="button" id="online-action" hidden>온라인</button>
         <button type="button" id="my-home" hidden>내 집으로</button>
         <button type="button" id="cam-left" aria-label="카메라를 왼쪽으로 돌리기" title="카메라 돌리기 (Q)"><span class="glyph">↶</span></button>
         <button type="button" id="cam-right" aria-label="카메라를 오른쪽으로 돌리기" title="카메라 돌리기 (E)"><span class="glyph">↷</span></button>
@@ -276,14 +307,35 @@
   <div class="share-layer" id="share-layer" hidden>
     <section class="share-panel" role="dialog" aria-modal="true" aria-labelledby="share-title">
       <h2 id="share-title">내 집 보여 주기</h2>
-      <p>지금 꾸민 집을 친구가 그대로 구경할 수 있습니다. 구경하는 사람은 수정할 수 없고, 원래 자기 집도 그대로 남습니다.</p>
+      <p id="share-description">지금 꾸민 집을 친구가 그대로 구경할 수 있습니다. 구경하는 사람은 수정할 수 없고, 원래 자기 집도 그대로 남습니다.</p>
       <textarea id="share-link" rows="3" readonly aria-label="집 공유 주소"></textarea>
       <div class="share-actions">
         <button type="button" id="share-native">친구에게 보내기</button>
         <button type="button" id="share-copy">주소 복사</button>
         <button type="button" id="share-close">닫기</button>
       </div>
-      <p style="margin-top: 10px; margin-bottom: 0">이 링크는 공유한 순간의 집 모습입니다. 이후 바꾼 모습은 새 링크를 보내야 보입니다.</p>
+      <p id="share-footnote" style="margin-top: 10px; margin-bottom: 0">이 링크는 공유한 순간의 집 모습입니다. 이후 바꾼 모습은 새 링크를 보내야 보입니다.</p>
+    </section>
+  </div>
+
+  <div class="online-layer" id="online-layer" hidden>
+    <section class="online-panel" role="dialog" aria-modal="true" aria-labelledby="online-title">
+      <h2 id="online-title">온라인 집</h2>
+      <p id="online-description"></p>
+      <div class="online-actions" id="online-owner-controls" hidden>
+        <button type="button" id="online-publish">내 집 온라인 게시</button>
+        <button type="button" id="online-list">방명록 보기</button>
+        <button type="button" id="online-unpublish">공개 중지</button>
+      </div>
+      <div id="online-visitor-controls" hidden>
+        <label for="online-note-text">친구에게 인사 남기기 (140자까지)</label>
+        <textarea id="online-note-text" rows="3" maxlength="140" placeholder="집을 구경한 소감을 적어 주세요"></textarea>
+        <button type="button" id="online-submit">인사 남기기</button>
+      </div>
+      <div id="online-notes-list" hidden></div>
+      <p id="online-status" role="status" aria-live="polite"></p>
+      <p>이 실험은 익명 계정을 사용합니다. 브라우저 정보를 지우면 온라인 집 수정 권한을 잃을 수 있습니다. 중요한 집은 기존 집 공유 링크로도 보관해 주세요.</p>
+      <button type="button" id="online-close">닫기</button>
     </section>
   </div>
 
