@@ -12,6 +12,9 @@ import { createSaver, parse, serialize } from './save.js';
 import { makeShareLink, readShareHash, PUBLIC_SHARE_URL } from './share.js';
 import { watchShareHash } from './share-route.js';
 import { sampleCommands } from './sample.js';
+import { onlineVisitUid, onlineErrorText } from './online-data.js';
+import { getOnlineService } from './online.js';
+import { createOnlineUI } from './online-ui.js';
 
 watchShareHash(window);
 
@@ -33,6 +36,7 @@ async function start(saved = {}) {
   // 공유 링크를 열었다면 저장된 내 집보다 공유된 집을 우선하되, 절대 내 저장소에 쓰지 않는다.
   let sharedState = null;
   let shareError = '';
+  let onlineGuestOwner = null;
   if (window.location.hash.startsWith('#home=')) {
     try {
       const received = await readShareHash(window.location.hash);
@@ -40,6 +44,15 @@ async function start(saved = {}) {
       if (!checked.ok || checked.dropped) throw new Error('공유된 집에 사용할 수 없는 가구가 있습니다');
       sharedState = checked.state;
     } catch (error) { shareError = error.message === '이 브라우저는 압축된 집 공유를 지원하지 않습니다' ? error.message : '공유 링크가 잘못되었거나 지금 사용할 수 없는 집입니다'; }
+  } else if (window.location.hash.startsWith('#visit=')) {
+    // 서버에 게시된 집은 명시적인 URL을 열었을 때만 불러온다.
+    // 실패한 링크는 기존 개인 집으로 복귀한다. Firebase는 로컬 저장소를 고치지 않는다.
+    document.getElementById('loading').textContent = '친구의 집을 불러오는 중입니다';
+    try {
+      const ownerUid = onlineVisitUid(window.location.hash);
+      sharedState = await (await getOnlineService()).visit(ownerUid);
+      onlineGuestOwner = ownerUid;
+    } catch (error) { shareError = onlineErrorText(error); }
   }
   const guest = !!sharedState;
   // 불러오는 순서: 공유 스냅샷 → 열어 둔 화면에서 넘겨받은 상태 → 브라우저에 저장된 집 → 처음 배치
@@ -131,6 +144,12 @@ async function start(saved = {}) {
       upgrade: () => input.upgrade(),
       travel: () => travel.toggle(),
     },
+  });
+  // 온라인 기능은 설정이 없으면 버튼을 숨긴다. 로컬 집/오프라인 링크는 항상 독립적으로 작동한다.
+  createOnlineUI({
+    store, visitorUid: onlineGuestOwner, readOnly: guest,
+    openShare: (link, options) => ui.openShare(link, options),
+    toast: (message, kind) => ui.toast(message, kind),
   });
   const history = createHistory(store); // 처음 놓인 가구는 기록에 넣지 않는다
   input = createInput({ canvas, view, store, history, character, ui, audio, travel, readOnly: guest });
