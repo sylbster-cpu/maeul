@@ -12,7 +12,14 @@ export default async function shareTour(page, { out, logs }) {
   const original = await page.evaluate(() => localStorage.getItem('house-lab-web:save'));
   // 내 집을 벗어날 때 기존 저장기가 savedAt과 위치를 다시 기록할 수 있으므로,
   // 소유자 상태는 내용으로 비교한다. 구경 모드 중 저장 안 됨은 원문 그대로 비교한다.
-  const sameHouse = (a, b) => JSON.stringify(JSON.parse(a).state) === JSON.stringify(JSON.parse(b).state);
+  // 불러오기는 벽걸이와 탁자 소품의 객체 삽입 순서를 바꿀 수 있다.
+  // 저장 내용의 의미가 같은지 검사하되, 객체 키의 나열 순서는 무시한다.
+  const canonical = (value) => Array.isArray(value) ? value.map(canonical)
+    : value !== null && typeof value === 'object'
+      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, item]) => [key, canonical(item)])) : value;
+  const sameHouse = (a, b) => JSON.stringify(canonical(JSON.parse(a).state))
+    === JSON.stringify(canonical(JSON.parse(b).state));
 
   // A의 집 링크를 같은 탭에서 연다. B와 구별되도록 지붕색을 바꿔 둔다.
   const link = await page.evaluate(async () => {
