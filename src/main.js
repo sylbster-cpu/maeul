@@ -9,20 +9,11 @@ import { createHistory } from './history.js';
 import { createUI } from './ui.js';
 import { createAudio } from './audio.js';
 import { createSaver, parse, serialize } from './save.js';
-import { makeShareLink, readShareHash } from './share.js';
+import { makeShareLink, readShareHash, PUBLIC_SHARE_URL } from './share.js';
+import { watchShareHash } from './share-route.js';
 import { sampleCommands } from './sample.js';
 
-// Claude 게시 화면은 다른 출처의 틀 안에서 실행될 수 있으므로, 공유 주소는 항상 정식 배포 주소를 사용한다.
-export const PUBLIC_SHARE_URL = 'https://sylbster-cpu.github.io/maeul/';
-
-// 열린 탭에서 공유 해시만 바뀌면 브라우저가 페이지를 다시 불러오지 않는다.
-// 기존의 로컬 집과 공유 집이 뒤섞이지 않도록 해시 전환 때 시작부터 다시 읽는다.
-let previousWasShared = window.location.hash.startsWith('#home=');
-window.addEventListener('hashchange', () => {
-  const nowShared = window.location.hash.startsWith('#home=');
-  if (previousWasShared || nowShared) window.location.reload();
-  previousWasShared = nowShared;
-});
+watchShareHash(window);
 
 // 브라우저 저장소. 막혀 있는 환경(사생활 보호 창 등)에서는 null 을 돌려준다
 function openStorage() {
