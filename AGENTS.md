@@ -1,6 +1,6 @@
 # 작업 지침 (Claude와 GPT 공통)
 
-이 저장소는 Claude와 GPT(Codex)가 번갈아 고칩니다. 작업을 시작하기 전에 **게임의 최상위 원칙 `docs/IDENTITY.md`**를 먼저 읽고, 이 파일과 `docs/HANDOFF.md`, `docs/WORKLOG.md`의 최근 기록을 읽습니다. 지금 논의 중인 것은 `docs/TALK-CLAUDE.md`의 첫 부분에 있습니다. `docs/history/`는 기록용이며 지침이 아닙니다.
+이 저장소는 Claude와 GPT(Codex)가 번갈아 고칩니다. 작업을 시작하기 전에 **게임의 최상위 원칙 `docs/IDENTITY.md`**를 먼저 읽고, 이 파일과 `docs/HANDOFF.md`, `docs/WORKLOG.md`의 최근 기록을 읽습니다. 지금 논의 중인 것은 [공동 대화 이슈 #4](https://github.com/sylbster-cpu/maeul/issues/4)에 있습니다. `docs/TALK-CLAUDE.md`, `docs/TALK-GPT.md`, `docs/history/`는 지난 기록이며 지침이 아닙니다.
 
 ## 대화 시작과 의견 공유 (2026-11-20 사용자 요청)
 
@@ -38,9 +38,9 @@
    - 가구 모델을 더했으면 `npm run pack`을 실행합니다.
    - 브라우저 자동 시험(`test/tour.mjs`, `test/decor.mjs`, `test/touch.mjs`, `test/sit.mjs`)은 Playwright와 Chromium이 있는 환경에서만 돌아갑니다. 실행 방법은 `README.md`에 있습니다. 돌리지 못했으면 기록에 그렇게 적습니다.
 4. `docs/WORKLOG.md` 맨 위에 기록을 더합니다.
-5. 풀 리퀘스트를 엽니다. 사용자가 병합합니다.
+5. 풀 리퀘스트를 엽니다. 병합은 사용자가 하거나, 사용자가 시킨 AI가 합니다. 시키지 않은 병합은 하지 않습니다.
 
-한 번에 한 AI만 작업합니다. 다른 AI의 풀 리퀘스트가 열려 있으면 그것이 병합되거나 닫힌 뒤에 시작합니다.
+코드는 한 번에 한 AI만 고칩니다. 다른 AI의 코드 풀 리퀘스트가 열려 있으면 그것이 병합되거나 닫힌 뒤에 시작합니다. 문서만 고치는 풀 리퀘스트와 이슈 글은 겹쳐도 됩니다. 다만 두 풀 리퀘스트가 `docs/WORKLOG.md`의 같은 자리에 줄을 더하면 나중 것이 충돌하므로, 나중에 병합되는 쪽이 다시 맞춥니다.
 
 ## 확인에 대해
 
