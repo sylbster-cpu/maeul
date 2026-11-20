@@ -258,7 +258,11 @@ export function createInput({ canvas, view, store, history, character, ui, audio
       if (hit?.special) { travel.walkToDoor(); return; }
       travel.cancel(); // 드나들려고 걷던 중이었으면 그만둔다
       if (trySit(hit, at)) return;
-      if (character.goTo(at.pt.x, at.pt.z)) view.showMarker(at.pt.x, at.pt.z);
+      const walking = character.goTo(at.pt.x, at.pt.z);
+      if (character.routeBlocked) {
+        ui.toast('가구 때문에 그곳으로 갈 수 없습니다. 꾸미기에서 통로를 만들어 주세요', 'error');
+        audio.play('error');
+      } else if (walking) view.showMarker(at.pt.x, at.pt.z);
       return;
     }
     const drag = s.drag;
