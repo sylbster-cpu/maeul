@@ -159,7 +159,6 @@ function supportAt(state, derived, space, x, y) {
 }
 
 function checkObjectFits(state, derived, space, obj, ignoreId) {
-  const part = PARTS[obj.part];
   if (!Object.hasOwn(PARTS, obj.part)) return no('놓을 수 없는 부품입니다');
   const layer = layerOf(obj.part);
   if (layer === 'wall') {
