@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeShareLink, readShareHash } from '../src/share.js';
+import { makeShareLink, readShareHash, PUBLIC_SHARE_URL } from '../src/share.js';
+import { createState, createStore } from '../src/state.js';
+import { serialize, parse } from '../src/save.js';
 
 const HOME = 'https://sylbster-cpu.github.io/maeul/';
 const house = () => ({
@@ -60,4 +62,43 @@ test('공유를 위한 상태 변경은 발생하지 않는다', async () => {
   const original = structuredClone(state);
   await makeShareLink(state, HOME);
   assert.deepEqual(state, original);
+});
+
+test('정식 GitHub Pages 주소를 공유 대상으로 사용한다', () => {
+  assert.equal(PUBLIC_SHARE_URL, HOME);
+});
+
+test('프로토타입 속성명을 바닥재·외관·가구·집 단계로 사용할 수 없다', () => {
+  const store = createStore(createState(), 'p1');
+  assert.equal(store.dispatch({ type: 'setFinish', space: 'main', slot: 'floor', value: 'constructor' }).ok, false);
+  assert.equal(store.dispatch({ type: 'setFinish', space: 'main', slot: 'wall', value: 'toString' }).ok, false);
+  assert.equal(store.dispatch({ type: 'setFinish', space: 'main', slot: 'constructor', value: 'prototype' }).ok, false);
+  assert.equal(store.dispatch({ type: 'setExterior', slot: 'roof', value: 'toString' }).ok, false);
+  assert.equal(store.dispatch({ type: 'setExterior', slot: 'constructor', value: 'toString' }).ok, false);
+  assert.equal(store.dispatch({ type: 'setLevel', level: 'constructor' }).ok, false);
+  assert.equal(store.dispatch({ type: 'placeObject', space: 'main', id: 'p1-777', part: 'toString', x: 2, y: 3, rot: 0 }).ok, false);
+});
+
+test('조작된 집 링크에서 잘못된 마감·겉모습을 폐기하므로 로딩을 계속할 수 있다', async () => {
+  const modified = house();
+  modified.spaces.main.floor = 'constructor';
+  modified.spaces.main.wall = 'toString';
+  modified.house.roof = 'toString';
+  modified.house.door = 'constructor';
+  const url = await makeShareLink(modified, HOME);
+  const received = await readShareHash(new URL(url).hash);
+  const result = parse(serialize(received));
+  assert.equal(result.ok, true);
+  assert.ok(result.dropped >= 4, '잘못된 공유 내용은 방문 모드로 넘어가지 않도록 거절한다');
+  assert.equal(result.state.spaces.main.floor, 'wood');
+});
+
+test('조작된 링크의 프로토타입 가구 이름은 실제 가구로 인정하지 않는다', async () => {
+  const modified = house();
+  modified.spaces.main.objects['p1-1'].part = 'toString';
+  const url = await makeShareLink(modified, HOME);
+  const result = parse(serialize(await readShareHash(new URL(url).hash)));
+  assert.equal(result.ok, true);
+  assert.ok(result.dropped > 0);
+  assert.equal(Object.keys(result.state.spaces.main.objects).length, 0);
 });
