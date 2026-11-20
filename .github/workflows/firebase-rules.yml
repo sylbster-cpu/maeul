@@ -1,0 +1,43 @@
+name: Firebase 보안 규칙 검증
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'firestore.rules'
+      - 'firebase.json'
+      - 'test/firestore-rules.mjs'
+      - '.github/workflows/firebase-rules.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'firestore.rules'
+      - 'firebase.json'
+      - 'test/firestore-rules.mjs'
+      - '.github/workflows/firebase-rules.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firestore-rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Firebase 에뮬레이터 및 보안 검증 패키지 설치
+        run: |
+          npm install --no-save --package-lock=false firebase@13.4.0 @firebase/rules-unit-testing@6.0.0 firebase-tools@15.36.0
+
+      - name: 실서버 없이 Firestore 권한 시험
+        run: |
+          npx firebase emulators:exec --only firestore --project demo-maeul-online "node test/firestore-rules.mjs"
