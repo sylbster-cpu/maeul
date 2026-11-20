@@ -23,16 +23,17 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, ope
   const buttons = ['online-publish', 'online-list', 'online-unpublish', 'online-submit', 'online-close']
     .map($);
   let busy = false;
+  let submitted = false;
 
   function report(message) { status.textContent = message; }
-  function close() {
-    if (busy) return;
+  function close(force = false) {
+    if (busy && !force) return;
     layer.hidden = true;
     button.focus();
   }
   function setBusy(on) {
     busy = on;
-    buttons.forEach((b) => { b.disabled = on; });
+    buttons.forEach((b) => { b.disabled = on || (b.id === 'online-submit' && submitted); });
     if (on) report('서버에 연결하는 중입니다…');
   }
   async function task(fn, onSuccess = () => {}) {
@@ -79,7 +80,7 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, ope
   $('online-publish').addEventListener('click', () => task(
     (service) => service.publish(store.state),
     (link) => {
-      close();
+      close(true);
       toast('온라인 집 게시가 완료됐습니다');
       openShare(link, {
         title: '온라인 방문 링크',
@@ -136,10 +137,12 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, ope
     catch (error) { report(error.message); return; }
     task((service) => service.leaveNote(visitorUid, body), () => {
       noteBox.value = '';
+      submitted = true;
+      noteBox.disabled = true;
       $('online-submit').disabled = true;
       report('방문 인사를 남겼습니다. 집주인이 다음에 접속하면 볼 수 있습니다.');
     });
   });
   // 브라우저로 불러온 뒤에는 쓰기 버튼을 계속 눌러 중복 요청하지 않도록 한다.
-  noteBox.addEventListener('input', () => { if (!busy) $('online-submit').disabled = false; });
+  noteBox.addEventListener('input', () => { if (!busy && !submitted) $('online-submit').disabled = false; });
 }
