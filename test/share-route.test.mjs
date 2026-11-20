@@ -39,3 +39,19 @@ test('공유와 관계없는 해시 변경은 게임을 다시 시작하지 않�
   app.setHash('');
   assert.equal(app.reloads, 0);
 });
+
+test('온라인 방문 링크로 들어가거나 나올 때 원래 집을 다시 불러온다', () => {
+  const app = fakeWindow();
+  watchShareHash(app.win);
+  app.setHash('#visit=ownerAa123456789');
+  assert.equal(app.reloads, 1);
+  app.setHash('');
+  assert.equal(app.reloads, 2);
+});
+
+test('온라인 방문 중 다른 사람의 온라인 집 주소로 옮겨도 다시 읽는다', () => {
+  const app = fakeWindow('#visit=ownerAa123456789');
+  watchShareHash(app.win);
+  app.setHash('#visit=friendBb987654321');
+  assert.equal(app.reloads, 1);
+});
