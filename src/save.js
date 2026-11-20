@@ -41,7 +41,7 @@ export function parse(text) {
   const same = (r) => r.reason?.startsWith('이미 그'); // 기본값과 같은 것은 버린 것이 아니다
 
   // 집의 단계는 한 단계씩 올린다
-  const level = LEVELS[src.house?.level] ? src.house.level : 1;
+  const level = Number.isInteger(src.house?.level) && Object.hasOwn(LEVELS, src.house.level) ? src.house.level : 1;
   for (let l = 2; l <= level; l++) put({ type: 'setLevel', level: l });
   for (const slot of ['roof', 'siding', 'door']) {
     const r = store.dispatch({ type: 'setExterior', slot, value: src.house?.[slot] });
@@ -54,7 +54,7 @@ export function parse(text) {
   for (const space of SPACES) {
     const known = [];
     for (const o of Object.values(src.spaces?.[space]?.objects || {})) {
-      if (o && PARTS[o.part]) known.push(o); else dropped++;
+      if (o && Object.hasOwn(PARTS, o.part)) known.push(o); else dropped++;
     }
     // 소품은 받치는 가구가 놓인 뒤에 놓는다
     known.sort((a, b) => (layerOf(a.part) === 'top') - (layerOf(b.part) === 'top'));

@@ -163,6 +163,31 @@
   .cam #place-toggle { background: var(--moss); border-color: var(--panel-edge); color: var(--on-moss); font-family: var(--font-display); font-size: 16px; padding: 0 14px; box-shadow: 0 2px 0 var(--panel-edge); }
   .tool-label { font-size: 12px; line-height: 1.15; white-space: nowrap; }
 
+  /* 공유 링크는 현재 화면 위에서 보여 주어 3D 화면의 위치와 도구 높이를 바꾸지 않는다 */
+  .share-layer {
+    position: absolute; inset: 0; z-index: 6;
+    display: flex; align-items: center; justify-content: center;
+    box-sizing: border-box; padding: 12px;
+    background: rgba(17, 35, 29, 0.68);
+  }
+  .share-layer[hidden] { display: none; }
+  .share-panel {
+    width: min(460px, 100%); max-height: 100%; overflow: auto; box-sizing: border-box;
+    background: var(--panel); border: 2px solid var(--panel-edge); border-radius: 16px;
+    padding: 16px; color: var(--ink);
+  }
+  .share-panel h2 { font: 400 21px var(--font-display); margin: 0 0 8px; }
+  .share-panel p { margin: 0 0 10px; font-size: 13px; }
+  .share-panel textarea {
+    box-sizing: border-box; width: 100%; min-height: 56px; max-height: 100px; resize: none;
+    font: 13px/1.45 monospace; word-break: break-all;
+    padding: 8px; border: 1px solid var(--tile-edge); background: var(--tile); color: var(--ink);
+    border-radius: 9px;
+  }
+  .share-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .share-actions button { min-height: 44px; padding: 7px 12px; flex: 1 1 auto; }
+  #share-copy { background: var(--moss); color: var(--on-moss); border-color: var(--panel-edge); }
+
   .loading {
     position: absolute; inset: 0; display: grid; place-items: center;
     background: linear-gradient(var(--sky-top), var(--sky-bottom));
@@ -195,6 +220,8 @@
       </div>
       <div class="cam" role="group" aria-label="카메라와 설정">
         <button type="button" id="place-toggle">집 안으로</button>
+        <button type="button" id="share-house">집 공유</button>
+        <button type="button" id="my-home" hidden>내 집으로</button>
         <button type="button" id="cam-left" aria-label="카메라를 왼쪽으로 돌리기" title="카메라 돌리기 (Q)"><span class="glyph">↶</span></button>
         <button type="button" id="cam-right" aria-label="카메라를 오른쪽으로 돌리기" title="카메라 돌리기 (E)"><span class="glyph">↷</span></button>
         <button type="button" id="zoom-in" aria-label="확대"><span class="glyph">＋</span></button>
@@ -244,6 +271,20 @@
         <div class="tools" id="tools" hidden></div>
       </div>
     </div>
+  </div>
+
+  <div class="share-layer" id="share-layer" hidden>
+    <section class="share-panel" role="dialog" aria-modal="true" aria-labelledby="share-title">
+      <h2 id="share-title">내 집 보여 주기</h2>
+      <p>지금 꾸민 집을 친구가 그대로 구경할 수 있습니다. 구경하는 사람은 수정할 수 없고, 원래 자기 집도 그대로 남습니다.</p>
+      <textarea id="share-link" rows="3" readonly aria-label="집 공유 주소"></textarea>
+      <div class="share-actions">
+        <button type="button" id="share-native">친구에게 보내기</button>
+        <button type="button" id="share-copy">주소 복사</button>
+        <button type="button" id="share-close">닫기</button>
+      </div>
+      <p style="margin-top: 10px; margin-bottom: 0">이 링크는 공유한 순간의 집 모습입니다. 이후 바꾼 모습은 새 링크를 보내야 보입니다.</p>
+    </section>
   </div>
 
   <div class="loading" id="loading">집터를 준비하고 있습니다</div>

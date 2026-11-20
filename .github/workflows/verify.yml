@@ -1,0 +1,82 @@
+name: 게임 자동 검증
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: 전체 단위 시험
+        run: npm test
+
+      - name: 게시 파일이 page.html과 일치하는지 검사
+        run: |
+          npm run index
+          git diff --exit-code -- index.html
+
+      - name: Chromium 자동 시험 준비
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+
+      - name: 로컬 게임 서버 실행
+        run: |
+          node tools/serve.mjs > /tmp/maeul-server.log 2>&1 &
+          for attempt in $(seq 1 40); do
+            if curl -fsS http://localhost:5173/ > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/maeul-server.log
+          exit 1
+
+      - name: 마우스·휴대폰 터치·공유 브라우저 시험
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p shots
+          run_tour() {
+            local label="$1" width="$2" height="$3" script="$4" touch="$5"
+            echo "=== ${label} ==="
+            if [ "$touch" = "yes" ]; then
+              TOUCH=1 timeout 210 node tools/shot.mjs / "shots/${label}" "$width" "$height" "$script" | tee "shots/${label}.log"
+            else
+              timeout 210 node tools/shot.mjs / "shots/${label}" "$width" "$height" "$script" | tee "shots/${label}.log"
+            fi
+            if grep -E '^실패  |^\[pageerror\]|^\[shot\] __ready' "shots/${label}.log"; then
+              echo "브라우저 시험 실패: ${label}"
+              exit 1
+            fi
+          }
+          run_tour tour 1280 800 test/tour.mjs no
+          run_tour decor 1280 800 test/decor.mjs no
+          run_tour sit 1280 800 test/sit.mjs no
+          run_tour touch 390 844 test/touch.mjs yes
+          run_tour sit-touch 390 844 test/sit.mjs yes
+          run_tour share 390 844 test/share.mjs yes
+
+      - name: 브라우저 시험 로그·화면 보관
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-browser-test
+          path: shots/
+          if-no-files-found: ignore
+          retention-days: 7

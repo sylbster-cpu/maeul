@@ -28,7 +28,7 @@ const TOUCH_HINTS = {
   carry: '옮길 자리를 누릅니다. 돌리기와 그만두기 버튼을 쓸 수 있습니다.',
 };
 
-export function createInput({ canvas, view, store, history, character, ui, audio, travel }) {
+export function createInput({ canvas, view, store, history, character, ui, audio, travel, readOnly = false }) {
   const s = { mode: 'walk', tool: 'select', rot: 0, drag: null, carry: null, pointer: null, press: null, lastPlaced: null };
   const keys = new Set();
   const coarse = window.matchMedia('(pointer: coarse)').matches;
@@ -60,6 +60,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
     view.clearGhosts();
   }
   function setMode(mode) {
+    if (readOnly && mode === 'build') return; // 공유된 집은 걷기와 구경만 가능
     if (mode === s.mode) return;
     cancel();
     s.mode = mode;
@@ -69,6 +70,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
     syncUI();
   }
   function setTool(tool) {
+    if (readOnly) return;
     cancel();
     s.tool = tool;
     if (s.mode !== 'build') setMode('build');
@@ -312,8 +314,9 @@ export function createInput({ canvas, view, store, history, character, ui, audio
     refresh();
   }
   window.addEventListener('keydown', (e) => {
+    if (!document.getElementById('share-layer').hidden) return; // 공유 팝업이 열려 있으면 게임 키 조작을 하지 않는다
     // Ctrl+Z 되돌리기, Ctrl+Shift+Z 또는 Ctrl+Y 다시 하기 (맥은 Cmd)
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.code === 'KeyZ' || e.code === 'KeyY')) {
+    if (!readOnly && (e.ctrlKey || e.metaKey) && !e.altKey && (e.code === 'KeyZ' || e.code === 'KeyY')) {
       e.preventDefault();
       if (e.code === 'KeyY' || e.shiftKey) redo(); else undo();
       return;
@@ -323,7 +326,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
     if (e.repeat) return;
     switch (e.code) {
       case 'KeyB': case 'Tab': setMode(s.mode === 'build' ? 'walk' : 'build'); e.preventDefault(); break;
-      case 'KeyR': rotate(); break;
+      case 'KeyR': if (!readOnly) rotate(); break;
       case 'KeyQ': view.rotateCamera(-1); refresh(); break;
       case 'KeyE': view.rotateCamera(1); refresh(); break;
       case 'Escape': if (s.carry || s.drag) { cancel(); syncUI(); } else if (s.mode === 'build') setTool('select'); break;
