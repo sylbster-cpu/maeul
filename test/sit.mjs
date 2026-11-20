@@ -57,6 +57,9 @@ export default async function sitTour(page, { out, logs }) {
   await tapEl('#place-toggle');
   await waitPlace('main');
   const walkHint = await hint();
+  // 안내나 알림이 바뀌어도 방이 화면에서 움직이지 않아야 한다. 방의 한 점이 화면의 어디인지로 본다
+  const still = async (from) => { const now = await at(3, 0, 3); return Math.abs(now.x - from.x) < 0.5 && Math.abs(now.y - from.y) < 0.5; };
+  const roomAt = await at(3, 0, 3);
   const chairA = await idAt('main', 2, 2); // 동쪽을 보는 의자 (탁자 쪽)
   const chairB = await idAt('main', 5, 3); // 서쪽을 보는 의자
 
@@ -68,6 +71,7 @@ export default async function sitTour(page, { out, logs }) {
   say('의자가 보는 쪽을 보고 앉는다', near(Math.cos(w.turn), Math.cos(Math.PI / 2)) && near(Math.sin(w.turn), Math.sin(Math.PI / 2)), w.turn.toFixed(2));
   say('서 있는 자리는 의자 옆의 빈 칸으로 남는다', !w.standsOnFurniture && Math.hypot(w.pos[0] - 2.5, w.pos[1] - 2.5) < 1.1, JSON.stringify(w.pos));
   say('앉으면 안내가 바뀐다', (await hint()).startsWith('앉았습니다'), await hint());
+  say('안내가 바뀌어도 화면이 움직이지 않는다', await still(roomAt));
   await page.screenshot({ path: `${out}-1-seated.png` });
 
   // 2) 다른 곳을 누르면 일어나 걸어간다
@@ -126,6 +130,9 @@ export default async function sitTour(page, { out, logs }) {
   w = await who();
   const toast = await g(() => { const t = document.getElementById('toast'); return t.hidden ? '' : t.textContent; });
   say('막힌 의자는 알리고 앉지 않는다', !!stool && toast.includes('설 자리가 없습니다') && w.seat?.id === chairA, toast);
+  await page.waitForTimeout(150);
+  say('알림이 떠 있어도 화면이 움직이지 않는다', toast !== '' && await still(roomAt));
+  await page.screenshot({ path: `${out}-2b-toast.png` });
 
   // 9) 마당의 스툴에 앉은 채 저장하고 다시 열면, 의자 옆에 서 있다
   await tapEl('#place-toggle');
