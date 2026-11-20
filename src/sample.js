@@ -11,7 +11,8 @@ export function sampleCommands(store) {
   thing('main', 'rug', 2, 2, 0);
   thing('main', 'table', 3, 2, 0);
   thing('main', 'chair', 2, 2, 1);
-  thing('main', 'chair', 5, 3, 3);
+  // 오른쪽 의자는 탁자 앞에 둔다. 옆 통로(x=5)를 열어 탁자 뒤편까지 걸을 수 있게 한다.
+  thing('main', 'chair', 4, 4, 2);
   thing('main', 'plant', 0, 5, 0);
   // 올려놓은 소품과 벽에 건 것
   thing('main', 'small_plant', 4, 0, 0);
