@@ -1,53 +1,69 @@
-# 온라인 저장과 비동기 방명록 실험 설계 (미구현)
+# Firebase 온라인 집과 비동기 방문 인사 — 두 번째 실험
 
-> 기준: 2026-11-20. 사용자가 집 링크 공유와 비동기 흔적 남기기를 모두 실험하기로 승인했다. 첫 실험은 `#home=`으로 시작하는 서버 없는 집 스냅샷 공유다. **이 문서는 두 번째 실험의 설계이지, Firebase가 연결되었다는 뜻이 아니다.**
+> 작성 2026-11-20, GPT. **프로그램·보안 규칙·검증 시험은 구현했으나, 사용자의 Firebase 프로젝트와 웹 앱 공개 설정이 아직 없어 실서버에는 연결되지 않았다.** 정식 서비스가 아니라 두 기기에서 영속적인 흔적이 남는지 확인하는 소규모 실험이다.
 
-## 목적과 구분
+## 목적과 현재 범위
 
-- 첫 번째 실험: `집 공유`를 눌러 링크에 **현재 상태의 사본**을 담는다. 수신자는 읽기 전용이며 자신의 `localStorage`를 덮어쓰지 않는다. 링크 생성에 서버, 로그인, 비용이 필요 없다.
-- 두 번째 실험: **서로 다른 두 기기**가 하나의 서버 저장 집을 보고, 방문자가 짧은 메시지 한 줄을 남긴 뒤 집주인이 나중에 확인한다. 이것은 영속성과 접근 권한의 기술 시험이지 4인 실시간 협동의 완료가 아니다.
-- 앱의 기존 Three.js 및 순수 ES 모듈과 GitHub Pages 호스팅은 유지한다.
+기존 `#home=` 집 공유는 서버 없이 링크에 집의 사본을 담아 전달하므로, 인사를 남길 수 없고 이후 집의 수정 상태가 자동으로 보이지 않는다.
 
-## Firebase 사용 제안
+이번 `#visit=집주인UID` 링크는 Firebase Authentication(익명 인증) + Cloud Firestore(서버 데이터베이스)를 이용한다. 집주인이 **온라인 집 게시**를 눌렀을 때만 현재 집을 서버에 올린다. 친구는 짧은 온라인 주소로 집을 방문해 **방문 인사 한 줄**을 한 번 남긴다. 집주인은 접속해 **방명록 보기**, **삭제**, **공개 중지**를 할 수 있다.
 
-**Firebase Authentication(초기에는 익명 사용자) + Cloud Firestore**를 시험용으로 연결한다. 프로젝트는 무료 Spark 계획에서 시작하고 사용량을 확인한다. 브라우저에 필요한 공개 웹 설정(config)과 비밀 관리 자격 증명(서비스 계정 키)은 다르다. **비밀 키와 관리자 권한을 절대 저장소에 올리지 않는다.**
+기존 로컬 자동 저장과 `#home=` 링크는 그대로 유지한다. Firebase 설정이 없으면 온라인 버튼은 숨고 기존 게임은 동일하게 작동한다. 서버 오류나 공유 링크 오류로 로컬 집을 덮어쓰지 않는다. 4인 실시간 이동·동기화는 이 실험에 포함되지 않는다.
 
-Firebase 프로젝트가 준비되지 않았으므로 두 번째 실험은 아직 실행할 수 없다. 프로젝트 준비 및 인증·보안 규칙 설정은 관리 권한이 있는 계정에서 해야 한다. 현재 GitHub 연결만으로 Firebase 프로젝트 생성이나 보안 규칙 배포를 수행하지 않는다.
+## 운영 연결 절차: 실제 Firebase 프로젝트 관리자에게 필요한 일
 
-## 제안 데이터 구조 (확정 아님)
+관리자 계정 없이 AI가 Firebase 콘솔의 프로젝트를 만들거나 보안 규칙을 배포할 수는 없다. 휴대폰에서도 가능한 범위로 안내하지만 모바일 콘솔 동작은 아직 실기기 확인하지 못했다.
 
-```
+1. `https://console.firebase.google.com/` 에서 Firebase 프로젝트를 만들고 **웹 앱(`</>`)** 을 등록한다. 프로젝트에서 보여 주는 공개 웹 설정 `firebaseConfig` 객체(보통 `apiKey`, `authDomain`, `projectId`, `appId` 포함)를 복사한다. 관리자 개인 키나 비밀번호는 필요하지 않다.
+2. **Authentication → Sign-in method → Anonymous** 를 사용 설정한다. Authentication의 **Settings → Authorized domains**에 `sylbster-cpu.github.io`가 있는지 확인하고 없으면 추가한다(필요하면 로컬 시험 주소도 추가).
+3. **Firestore Database → 데이터베이스 생성**에서 `(default)` 데이터베이스를 만든다. 이 앱은 Cloud Firestore **Standard 에디션**을 전제로 한다. 공개 시험 모드 규칙을 계속 쓰지 말고 처음부터 접근을 막는 모드로 시작한다.
+4. Firestore → Rules(규칙)에서 저장소의 `firestore.rules` 전체를 붙여 넣고 **게시(Publish)** 한다. 규칙에는 집주인만 쓰기, 집 목록 열람 금지, 방명록 본인 한 번 작성, 집주인만 방명록 목록·삭제, 글자 수와 서버 시각 검사 등이 있다. 보안 규칙 검증은 별도 에뮬레이터 자동 시험에서 확인한다.
+5. 공개 웹 설정 객체를 GPT 또는 Claude에게 보내 `src/firebase-config.js`의 `FIREBASE_CONFIG = null`을 **공개 설정**으로 바꾸는 별도 PR을 작성하도록 한다. 공개 웹 설정은 클라이언트에 노출될 수 있지만, 서비스 계정 키/관리자 인증 토큰은 절대 공개하지 않는다. Google 서비스 결제 수단을 등록할 필요가 없는 Spark 범위에서 시작한다.
+6. 그 PR을 병합한 뒤 GitHub Pages에서 **온라인** 버튼이 나타나면 기기 A가 **내 집 온라인 게시**를 누르고 링크를 기기 B에 전달한다. B가 방문해 인사말 하나를 남긴 뒤 A에서 **방명록 보기**를 누른다. A가 공개 중지를 누르면 이후 방문은 거부되어야 한다.
+
+**순서 중요:** 보안 규칙을 게시한 후에 Firebase 웹 설정을 켠다. 규칙을 `allow read, write: if true`로 여는 것은 금지한다.
+
+## 코드와 데이터
+
+- `src/firebase-config.js`: 웹 앱 공개 설정(초기에는 `null`; 없는 동안 접속하지 않음)
+- `src/online-data.js`: 주소 검증, 집 스냅샷 검사, 140자 인사말 검사
+- `src/online.js`: 필요한 순간에만 Firebase CDN의 모듈 SDK 로드(13.4.0 고정), 익명 로그인
+- `src/online-service.js`: 게시, 단건 방문 조회, 작성자 UID별 한 번 인사, 목록 확인, 집주인의 삭제·비공개
+- `src/online-ui.js`: 휴대폰 터치 UI, 텍스트만 표시, 방명록 팝업
+- `firestore.rules`, `firebase.json`, `test/firestore-rules.mjs`: 보안 규칙 및 에뮬레이터 시험
+- `test/online-data.test.mjs`, `test/online-service.test.mjs`: 원격 접근을 일으키지 않는 단위 시험
+
+저장 구조:
+
+```text
 houses/{ownerUid}
-  ownerUid: Firebase Auth UID
-  snapshot: 검증된 현재 집 저장 형식의 JSON 문자열
-  isPublic: true
+  ownerUid: 소유자 Firebase Auth UID
+  snapshot: 사용자 승인 시점의 집(저장 형식 v2 JSON, 80KB 이내)
+  isPublic: true/false
   updatedAt: 서버 시각
-  houses/{ownerUid}/notes/{visitorUid}
-    authorUid: 방문자의 Firebase Auth UID
-    body: 1~140자 일반 텍스트
-    createdAt: 서버 시각
+
+houses/{ownerUid}/notes/{visitorUid}
+  authorUid: 작성자 Firebase Auth UID
+  body: 1~140자 일반 텍스트
+  createdAt: 서버 시각
 ```
 
-- **한 사용자가 집 하나를 공개하고, 한 방문자는 집마다 한 메시지만 남기는 최소 실험**을 우선한다. 반복 메시지나 거래 기능은 넣지 않는다.
-- `houses` 문서는 소유자만 생성·수정한다. 공개된 집 단건 조회만 허용하고 전체 사용자 목록 조회는 금지한다. 방명록은 집주인이 삭제할 수 있게 한다.
-- 규칙에서 `request.auth.uid`, 필드 종류, 문자열 길이, 서버 시각을 검증하고, 나머지 경로는 기본 거부한다. 방문자가 자기 UID로만 글을 만들게 한다.
-- 클라이언트는 메시지를 HTML로 해석하지 않고 텍스트로만 표시한다. 집 데이터도 읽은 즉시 현재 게임의 명령·배치 규칙으로 재검증한다.
-- 로그인 없이 URL만 아는 사람이 메시지를 마음대로 쓰도록 열어 두지 않는다. 단, **익명 인증은 실제 친구 신원을 증명하지 않는다**. 쿠키를 지우면 별도 익명 사용자가 될 수 있어 중복·스팸 방지에도 한계가 있다.
-- 메시지 신고·삭제, 공개 취소, 요청 빈도 제한, 남용 방지(App Check 등)는 외부 시험 공개 범위에 따라 추가 검토한다.
+- `houses`는 공개된 문서만 인증 사용자에게 **단건 읽기**를 허용하고 목록 조회를 거부한다. 집주인만 게시/변경/비공개할 수 있다.
+- `notes`는 공개된 집에서 인증한 다른 사용자가 자기 UID의 문서로 한 번 작성한다. 덮어쓰기와 남의 UID로 작성은 거부한다. 집주인만 방명록 목록을 읽고 삭제한다. 방문자는 자신의 글만 단건 읽을 수 있다.
+- 서버의 JSON은 **믿지 않는다.** 받아서 기존 `save.parse`의 배치 규칙 검사를 통과시킨 후에만 구경 모드로 열며, 데이터가 잘못되었으면 원래 집을 그대로 연다.
+- 외부 데이터는 HTML로 렌더링하지 않고 `textContent`로만 출력한다. 주민 이름/이메일을 저장하지 않고 Firebase UID만 쓴다.
+- 기존 `localStorage`는 개인 집 저장의 원본이다. Firebase에는 명시적으로 온라인 게시한 사본만 쓴다. 가구 이동마다 서버에 기록하지 않는다.
 
-## 저장 분리
+## 보안과 한계
 
-1. `localStorage`: 현재 개인 집의 자동 저장과 단말별 초안을 그대로 유지한다. 서버 오류가 발생해도 이 초안이 없어지면 안 된다.
-2. 온라인 공개: 사용자가 명시적으로 공개 버튼을 눌렀을 때만 집의 **검증된 공유본**을 올린다. 모든 가구 이동을 서버에 전송하지 않는다.
-3. 방명록: 서버에만 저장한다. 비동기 방문·재방문으로 읽히는지 두 기기에서 확인한다.
-4. 장기 실시간 4인 이동·전투·합주는 Firestore에 프레임별 위치를 쓰는 방식으로 처리하지 않는다. 향후 별도 동기화 계층을 실험한다.
+- **익명 로그인은 친구의 실제 신원을 확인하지 않는다.** 사용자 스스로 브라우저 데이터를 지우면 같은 익명 UID로 돌아오지 못할 수 있고, 기존 온라인 집의 수정 권한도 잃는다. 향후 계정 연동·복구·집 백업이 필수다.
+- 방문자별 한 번 쓰기 제한은 익명 계정을 새로 생성하면 회피할 수 있다. URL을 아는 불특정 다수가 접근할 수 있으므로 공개 배포 전에 신고/차단, App Check, 과금·빈도 모니터링을 추가 검토해야 한다.
+- 방명록은 최대 30개만 한 번에 읽는 시제품이다. 정식 게임이라면 페이지네이션·삭제/스팸 대응을 설계한다.
+- Firestore 보안 규칙만으로 JSON 내부 가구의 모든 관계를 완전히 검증하지 못한다. 현재는 크기, 타입, 소유권 제한을 서버 규칙에서 검사하고 **클라이언트에서 재검증**한다. 신뢰할 수 없는 클라이언트가 가구를 변조해 올리는 것을 서버가 완전히 막는 구조는 아니다.
+- 실시간 4인 이동/전투/합주는 별도의 동기화 방법이 필요하다.
 
-## 두 번째 실험 구현 전 확인
+## 시험
 
-- Firebase 프로젝트·웹 앱을 만들고 익명 인증을 켠다.
-- Firestore를 만들되 **테스트 모드의 전체 공개 규칙을 그대로 배포하지 않는다**. 이 구조에 맞는 규칙을 작성하고 에뮬레이터에서 권한별 허용·차단을 확인한다.
-- 소유자 A와 방문자 B는 다른 기기에서 사용한다. B가 A의 공유본을 보고 한 줄을 남긴다. A가 다시 접속해서 확인한다.
-- 제3자가 집을 수정할 수 없는지, 다른 브라우저의 원래 집이 보존되는지, 허용되지 않은 URL과 잘못된 데이터가 거부되는지 확인한다.
-- 무료 이용량과 서비스 남용 위험을 관찰한다. 익명 UID의 데이터 복구 문제 때문에 정식 운영 전 계정 연동·백업/내보내기가 필요하다.
+기본 `npm test`는 서버 없이 도는 게임 규칙과 온라인 데이터 단위 시험이다. `test/firestore-rules.mjs`는 `@firebase/rules-unit-testing` 및 Firestore 에뮬레이터가 있는 환경에서 따로 실행한다. GitHub Actions의 `Firebase 보안 규칙 검증` 워크플로에 자동화했다. 별도 웹 설정과 실서버 연결 시험은 **아직 수행하지 않았다**.
 
-참고: [Firebase 웹 시작](https://firebase.google.com/docs/web/setup), [익명 인증](https://firebase.google.com/docs/auth/web/anonymous-auth), [Firestore 보안 규칙](https://firebase.google.com/docs/firestore/security/get-started), [무료 할당량](https://firebase.google.com/docs/firestore/quotas).
+Firebase 공식 문서: https://firebase.google.com/docs/web/alt-setup , https://firebase.google.com/docs/auth/web/anonymous-auth , https://firebase.google.com/docs/firestore/security/rules-fields , https://firebase.google.com/docs/firestore/security/test-rules-emulator .
