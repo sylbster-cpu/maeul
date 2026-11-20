@@ -70,6 +70,8 @@ export default async function sitTour(page, { out, logs }) {
   say('의자를 눌러 앉기', ok && w.seat?.id === chairA && near(w.fig[0], 2.5) && near(w.fig[2], 2.5) && w.fig[1] > 0.2, JSON.stringify(w.fig.map((n) => +n.toFixed(2))));
   say('의자가 보는 쪽을 보고 앉는다', near(Math.cos(w.turn), Math.cos(Math.PI / 2)) && near(Math.sin(w.turn), Math.sin(Math.PI / 2)), w.turn.toFixed(2));
   say('서 있는 자리는 의자 옆의 빈 칸으로 남는다', !w.standsOnFurniture && Math.hypot(w.pos[0] - 2.5, w.pos[1] - 2.5) < 1.1, JSON.stringify(w.pos));
+  // 입구에서 오면 바로 옆인 남쪽 칸(2,3)에 선다. 탁자를 돌아 북쪽 칸(2,1)까지 가지 않는다
+  say('가까운 쪽 옆 칸에서 앉는다', near(w.pos[0], 2.5, 0.15) && near(w.pos[1], 3.5, 0.15), JSON.stringify(w.pos.map((n) => +n.toFixed(2))));
   say('앉으면 안내가 바뀐다', (await hint()).startsWith('앉았습니다'), await hint());
   say('안내가 바뀌어도 화면이 움직이지 않는다', await still(roomAt));
   await page.screenshot({ path: `${out}-1-seated.png` });
@@ -113,6 +115,10 @@ export default async function sitTour(page, { out, logs }) {
   await g((id) => window.__game.store.dispatch({ type: 'moveObject', space: 'main', id, x: 2, y: 2, rot: 1 }), chairA);
 
   // 7) 깔개를 누른 뒤 곧바로 의자를 누르면 나가지 않고 앉는다
+  // 깔개에서 먼 칸(탁자 뒤 오른쪽)에서 시작한다. 깔개 가까이 서 있으면 둘째 누름이 닿기 전에
+  // 정말로 밖에 나가 버려(터치 흉내에서는 둘째 누름이 0.4초쯤 뒤에 닿는다) 시험이 까닭 없이 실패한다
+  await g(() => window.__game.character.teleport(5.5, 1.5));
+  await page.waitForTimeout(150);
   await tapFloor(3, 5.5);
   await tapSeat(2.5, 2.5);
   ok = await waitSit(true);

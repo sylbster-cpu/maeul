@@ -95,9 +95,9 @@ export function seatSpots(obj) {
     return { x: cx + lx * cos + lz * sin, z: cz - lx * sin + lz * cos, y: part.seat.h * s + o[1], face: obj.rot * Math.PI / 2 };
   });
 }
-// 앉으러 갈 때 설 수 있는 칸들. 가구 둘레의 칸을 앞, 옆, 뒤 순서로, 같은 쪽에서는 앉는 자리에 가까운 순서로 준다.
-// 그 칸이 비어 있는지는 따지지 않는다
-export function seatApproach(obj, spot) {
+// 가구 둘레의 칸들. side 는 앞(0), 옆(1), 뒤(2)이고 dist 는 앉는 자리까지의 거리다.
+// 앞, 옆, 뒤 순서로, 같은 쪽에서는 앉는 자리에 가까운 순서로 준다
+function approachCells(obj, spot) {
   const { fw, fh } = footprint(obj);
   const [fx, fy] = [[0, 1], [1, 0], [0, -1], [-1, 0]][obj.rot]; // 앞쪽
   const around = [];
@@ -108,8 +108,26 @@ export function seatApproach(obj, spot) {
       const toward = dx * fx + dy * fy;
       return { x, y, side: toward > 0 ? 0 : toward === 0 ? 1 : 2, dist: Math.hypot(x + 0.5 - spot.x, y + 0.5 - spot.z) };
     })
-    .sort((a, b) => a.side - b.side || a.dist - b.dist)
-    .map((c) => [c.x, c.y]);
+    .sort((a, b) => a.side - b.side || a.dist - b.dist);
+}
+// 앉으러 갈 때 설 수 있는 칸들을 앞, 옆, 뒤 순서로 준다. 그 칸이 비어 있는지는 따지지 않는다
+export function seatApproach(obj, spot) {
+  return approachCells(obj, spot).map((c) => [c.x, c.y]);
+}
+
+// 앉는 자리 바로 옆으로 치는 거리. 의자의 앞과 옆 칸(1)과 소파 끝자리의 앞 칸(약 1.4)은 들고,
+// 소파의 먼 앞 칸과 안락의자의 옆 칸(1.5 넘음)은 빠진다. 멀리서 옆으로 크게 뛰어 앉지 않게 한다
+export const SEAT_REACH = 1.5;
+// 앉으러 갈 칸을 고른다. steps(x, y) 는 그 칸까지의 걸음 수이고, 닿을 수 없거나 막힌 칸이면 null 이다.
+// 앉는 자리 바로 옆의 앞이나 옆 칸 가운데 가장 적게 걷는 칸을 고른다. 걸음 수가 같으면 앞, 옆 순서다.
+// 그런 칸에 닿을 수 없을 때만 나머지(뒤 칸, 먼 칸)를 앞, 옆, 뒤 순서로 본다. 둘 다 없으면 null
+export function chooseSeatApproach(obj, spot, steps) {
+  const reachable = approachCells(obj, spot)
+    .map((c) => ({ ...c, steps: steps(c.x, c.y) }))
+    .filter((c) => c.steps !== null && c.steps !== undefined);
+  const near = reachable.filter((c) => c.side < 2 && c.dist <= SEAT_REACH);
+  const pick = near.length ? near.reduce((best, c) => (c.steps < best.steps ? c : best)) : reachable[0];
+  return pick ? [pick.x, pick.y] : null;
 }
 
 // 파생 자료: 곳마다의 칸 점유와 막힌 칸
