@@ -260,7 +260,8 @@ export function createInput({ canvas, view, store, history, character, ui, audio
       if (trySit(hit, at)) return;
       const walking = character.goTo(at.pt.x, at.pt.z);
       if (character.routeBlocked) {
-        ui.toast('가구 때문에 그곳으로 갈 수 없습니다. 꾸미기에서 통로를 만들어 주세요', 'error');
+        // 구경하는 사람은 꾸미기를 쓸 수 없으므로 고치는 방법은 집주인에게만 알린다
+        ui.toast(readOnly ? '가구 때문에 그곳으로 갈 수 없습니다' : '가구 때문에 그곳으로 갈 수 없습니다. 꾸미기에서 통로를 만들어 주세요', 'error');
         audio.play('error');
       } else if (walking) view.showMarker(at.pt.x, at.pt.z);
       return;
