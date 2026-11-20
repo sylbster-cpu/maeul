@@ -160,7 +160,7 @@ function supportAt(state, derived, space, x, y) {
 
 function checkObjectFits(state, derived, space, obj, ignoreId) {
   const part = PARTS[obj.part];
-  if (!part) return no('놓을 수 없는 부품입니다');
+  if (!Object.hasOwn(PARTS, obj.part)) return no('놓을 수 없는 부품입니다');
   const layer = layerOf(obj.part);
   if (layer === 'wall') {
     if (!WALLS.includes(obj.wall) || !Number.isInteger(obj.i)) return no('벽의 자리가 잘못되었습니다');
@@ -201,16 +201,16 @@ export function validate(state, derived, cmd) {
     case 'removeObject':
       return state.spaces[cmd.space]?.objects[cmd.id] ? ok : no('물건이 없습니다');
     case 'setFinish': {
-      if (cmd.space !== 'main' || !FINISH[cmd.slot]) return no('바꿀 수 없는 곳입니다');
-      if (!FINISH[cmd.slot][cmd.value]) return no('없는 마감입니다');
+      if (cmd.space !== 'main' || !Object.hasOwn(FINISH, cmd.slot)) return no('바꿀 수 없는 곳입니다');
+      if (!Object.hasOwn(FINISH[cmd.slot], cmd.value)) return no('없는 마감입니다');
       return state.spaces.main[cmd.slot] === cmd.value ? no('이미 그 마감입니다') : ok;
     }
     case 'setExterior': {
-      if (!EXTERIOR[cmd.slot] || !EXTERIOR[cmd.slot][cmd.value]) return no('없는 겉모습입니다');
+      if (!Object.hasOwn(EXTERIOR, cmd.slot) || !Object.hasOwn(EXTERIOR[cmd.slot], cmd.value)) return no('없는 겉모습입니다');
       return state.house[cmd.slot] === cmd.value ? no('이미 그 겉모습입니다') : ok;
     }
     case 'setLevel': {
-      if (!LEVELS[cmd.level]) return no(cmd.level > MAX_LEVEL ? '더 키울 수 없습니다' : '없는 단계입니다');
+      if (!Number.isInteger(cmd.level) || !Object.hasOwn(LEVELS, cmd.level)) return no(cmd.level > MAX_LEVEL ? '더 키울 수 없습니다' : '없는 단계입니다');
       if (Math.abs(cmd.level - state.house.level) !== 1) return no('한 단계씩만 바꿀 수 있습니다');
       // 집이 커지면 마당을 더 차지하고, 작아지면 방이 줄어든다. 걸리는 물건이 있으면 바꾸지 않는다
       for (const space of SPACES) {
