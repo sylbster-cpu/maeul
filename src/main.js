@@ -8,7 +8,8 @@ import { createInput } from './input.js';
 import { createHistory } from './history.js';
 import { createUI } from './ui.js';
 import { createAudio } from './audio.js';
-import { createSaver } from './save.js';
+import { createSaver, parse, serialize } from './save.js';
+import { makeShareLink, readShareHash } from './share.js';
 import { sampleCommands } from './sample.js';
 
 // 브라우저 저장소. 막혀 있는 환경(사생활 보호 창 등)에서는 null 을 돌려준다
@@ -26,11 +27,23 @@ async function start(saved = {}) {
   try { assets = await loadAssets(); }
   catch (error) { document.getElementById('loading').textContent = '모델을 불러오지 못했습니다. 새로 고쳐 주세요.'; throw error; }
 
-  // 불러오는 순서: 열어 둔 화면에서 넘겨받은 상태 → 브라우저에 저장된 집 → 처음 배치
+  // 공유 링크를 열었다면 저장된 내 집보다 공유된 집을 우선하되, 절대 내 저장소에 쓰지 않는다.
+  let sharedState = null;
+  let shareError = '';
+  if (window.location.hash.startsWith('#home=')) {
+    try {
+      const received = await readShareHash(window.location.hash);
+      const checked = parse(serialize(received)); // 배치 규칙으로 다시 검증한다
+      if (!checked.ok || checked.dropped) throw new Error('공유된 집에 사용할 수 없는 가구가 있습니다');
+      sharedState = checked.state;
+    } catch (error) { shareError = error.message || '공유 링크를 읽지 못했습니다'; }
+  }
+  const guest = !!sharedState;
+  // 불러오는 순서: 공유 스냅샷 → 열어 둔 화면에서 넘겨받은 상태 → 브라우저에 저장된 집 → 처음 배치
   const saver = createSaver(openStorage());
-  const handed = saved.state?.version === 2 ? saved : null;
-  const loaded = handed ? null : saver.load();
-  const kept = handed?.state || (loaded?.ok ? loaded.state : null);
+  const handed = guest ? null : (saved.state?.version === 2 ? saved : null);
+  const loaded = guest ? null : (handed ? null : saver.load());
+  const kept = sharedState || handed?.state || (loaded?.ok ? loaded.state : null);
   const store = createStore(kept || createState(), 'p1');
   if (!kept) for (const cmd of sampleCommands(store)) store.dispatch(cmd);
 
@@ -41,8 +54,8 @@ async function start(saved = {}) {
   const canvas = document.getElementById('scene');
   const view = createView({ canvas, assets, store });
   const audio = createAudio();
-  const startPlace = handed?.place || (loaded?.ok && loaded.place) || 'yard';
-  const keptPos = handed?.pos || (loaded?.ok && loaded.pos);
+  const startPlace = guest ? 'main' : (handed?.place || (loaded?.ok && loaded.place) || 'yard');
+  const keptPos = guest ? null : (handed?.pos || (loaded?.ok && loaded.pos));
   const inYard = (p) => p && p.x > -2 && p.z > -2 && p.x < YARD.w + 2 && p.z < YARD.h + 2;
   const startAt = startPlace === 'yard' ? (inYard(keptPos) ? keptPos : { x: HOUSE_CENTER_X, z: doorFront().z + 2.4 }) : matSpot();
   const character = createCharacter({ view, store, assets, start: startAt, place: startPlace });
@@ -87,8 +100,18 @@ async function start(saved = {}) {
   };
 
   const ui = createUI({
+    guest,
     thumbs: view.thumbnails(Object.keys(PARTS)),
     on: {
+      share: async () => {
+        try { ui.openShare(await makeShareLink(store.state, window.location.href)); }
+        catch (error) { ui.toast(error.message || '공유 링크를 만들지 못했습니다', 'error'); }
+      },
+      home: () => {
+        const url = new URL(window.location.href);
+        url.hash = '';
+        window.location.assign(url.href);
+      },
       tool: (id) => input.setTool(id),
       mode: (mode) => input.setMode(mode),
       camera: (step) => { view.rotateCamera(step); input.refresh(); },
@@ -107,15 +130,16 @@ async function start(saved = {}) {
     },
   });
   const history = createHistory(store); // 처음 놓인 가구는 기록에 넣지 않는다
-  input = createInput({ canvas, view, store, history, character, ui, audio, travel });
+  input = createInput({ canvas, view, store, history, character, ui, audio, travel, readOnly: guest });
   history.subscribe((status) => ui.setHistory(status));
   ui.setHistory(history.status());
-  if (handed?.mode === 'build') input.setMode('build');
+  if (!guest && handed?.mode === 'build') input.setMode('build');
   ui.loaded();
 
   // ---- 자동 저장: 집이 바뀌면 잠시 뒤에, 화면을 떠날 때는 바로 저장한다 ----
   let saveTimer = 0;
   const saveNow = () => {
+    if (guest) return false;
     clearTimeout(saveTimer);
     saveTimer = 0;
     const ok = saver.save(store.state, { place: character.place, pos: { x: character.pos.x, z: character.pos.z } });
@@ -123,15 +147,18 @@ async function start(saved = {}) {
     return ok;
   };
   function saveSoon() {
-    if (!saver.available) return;
+    if (guest || !saver.available) return;
     ui.setSaveStatus('pending');
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveNow, 400);
   }
-  store.subscribe(saveSoon);
-  window.addEventListener('pagehide', saveNow);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
-  ui.setSaveStatus(saver.available ? 'saved' : 'off');
+  if (!guest) {
+    store.subscribe(saveSoon);
+    window.addEventListener('pagehide', saveNow);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
+  }
+  ui.setSaveStatus(guest ? 'guest' : (saver.available ? 'saved' : 'off'));
+  if (shareError) ui.toast(`공유 링크 오류: ${shareError}. 내 집으로 열었습니다`, 'error');
   if (loaded && !loaded.ok) ui.toast(`${loaded.reason}. 처음 배치로 시작합니다`, 'error');
   else if (loaded?.dropped) ui.toast(`저장된 것 가운데 ${loaded.dropped}개는 지금 규칙에 맞지 않아 빼고 불러왔습니다`, 'error');
 
