@@ -19,7 +19,7 @@ export default async function shareTour(page, { out, logs }) {
     return makeShareLink(copy, PUBLIC_SHARE_URL);
   });
   say('공유 주소는 GitHub Pages 주소', link.startsWith('https://sylbster-cpu.github.io/maeul/#home='));
-  await page.evaluate((hash) => { location.hash = hash; }, new URL(link).hash);
+  await Promise.all([page.waitForEvent('load'), page.evaluate((hash) => { location.hash = hash; }, new URL(link).hash)]);
   await wait(() => window.__ready === true && window.__game?.store.state.house.roof === 'terracotta'
     && document.getElementById('my-home').hidden === false);
 
@@ -32,7 +32,7 @@ export default async function shareTour(page, { out, logs }) {
   say('방문해도 내 집 저장 내용은 그대로다', guest.saved === original);
 
   // 내 집으로 돌아오면 B의 지붕색이 다시 보인다.
-  await page.click('#my-home');
+  await Promise.all([page.waitForEvent('load'), page.click('#my-home')]);
   await wait(() => window.__ready === true && window.__game?.store.state.house.roof === 'slate'
     && document.getElementById('my-home').hidden === true);
   say('내 집으로 돌아오면 원래 집이 보인다', await page.evaluate(() => !location.hash.startsWith('#home=')
@@ -46,7 +46,7 @@ export default async function shareTour(page, { out, logs }) {
     copy.spaces.main.floor = 'constructor';
     return makeShareLink(copy, PUBLIC_SHARE_URL);
   });
-  await page.evaluate((hash) => { location.hash = hash; }, new URL(altered).hash);
+  await Promise.all([page.waitForEvent('load'), page.evaluate((hash) => { location.hash = hash; }, new URL(altered).hash)]);
   await wait(() => window.__ready === true && document.getElementById('loading').hidden
     && document.getElementById('my-home').hidden === true);
   const result = await page.evaluate(() => ({
