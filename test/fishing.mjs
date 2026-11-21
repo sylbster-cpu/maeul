@@ -12,7 +12,19 @@ export default async function fishingTour(page, { out, logs }) {
   };
   const g = (fn, arg) => page.evaluate(fn, arg);
   const say = (name, ok, details = '') => logs.push(`${ok ? '통과' : '실패'}  ${name} ${details}`);
-  const groundTap = async (x, z) => { const p = await g(([a, b]) => window.__game.view.screenPoint(a, b), [x, z]); await tap(p.x, p.y); };
+  // 카메라는 캐릭터를 천천히 따라간다. 움직이는 중에 좌표를 구하면 누르는 순간 다른 곳이 된다. 멈출 때까지 기다린다
+  const screenOf = (x, z) => g(([a, b]) => window.__game.view.screenPoint(a, b), [x, z]);
+  const groundTap = async (x, z) => {
+    let p = await screenOf(x, z);
+    for (let i = 0; i < 40; i++) {
+      await page.waitForTimeout(100);
+      const q = await screenOf(x, z);
+      const still = Math.hypot(q.x - p.x, q.y - p.y) < 0.5;
+      p = q;
+      if (still) break;
+    }
+    await tap(p.x, p.y);
+  };
   const phase = () => g(() => window.__game.fishing.phase);
   const waitPhase = (name, timeout = 25000) => page.waitForFunction((n) => window.__game.fishing.phase === n, name, { timeout, polling: 'raf' }).then(() => true).catch(() => false);
   const toast = () => g(() => document.getElementById('toast').textContent);
@@ -28,8 +40,7 @@ export default async function fishingTour(page, { out, logs }) {
   const houseBefore = await g(() => JSON.stringify(window.__game.store.state));
 
   // 1) 멀리서 물을 누르면 물가로 걸어가 던진다
-  await g(() => { window.__game.character.teleport(20.5, 12.5); window.__game.view.snapFocus(23, 16); });
-  await page.waitForTimeout(250);
+  await g(() => { window.__game.character.teleport(20.5, 12.5); window.__game.view.snapFocus(20.5, 12.5); });
   await setRandom(0.05);
   await groundTap(26.4, 17.5);
   say('물을 누르면 물가로 걸어간다', (await phase()) === 'walk');
@@ -72,7 +83,7 @@ export default async function fishingTour(page, { out, logs }) {
   // 5) 물고기가 오기 전에 누르면 찌를 거둔다. 던지는 동안 누른 것은 흘려보낸다
   await groundTap(26.6, 18.2);
   await waitPhase('cast', 10000);
-  await pull();
+  { const p = await screenOf(27.5, 18.8); await tap(p.x, p.y); } // 던지는 시간(0.5초) 안에 바로 누른다
   say('던지는 동안 누른 것은 흘려보낸다', ['cast', 'wait'].includes(await phase()) && !(await g(() => window.__game.character.walking)));
   await waitPhase('wait', 10000);
   await pull();
