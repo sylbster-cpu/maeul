@@ -52,6 +52,14 @@ export default async function routeTour(page, { out, logs }) {
   say('의자에서 일어나 탁자 반대편까지 돌아서 걸어간다', crossed, JSON.stringify(pos.map((n) => +n.toFixed(2))));
   await page.screenshot({ path: `${out}-open-passage.png` });
 
+  // 탁자 뒤에서 탁자 앞 의자를 누르면 가까운 오른쪽 칸(5,4)으로 가서 앉는다. 탁자를 크게 돌아 왼쪽 칸(3,4)으로 가지 않는다
+  await seatTap(4.5, 4.5);
+  const satNear = await page.waitForFunction(() => window.__game.character.seated?.id &&
+    window.__game.character.sitAmount === 1, null, { timeout: 8500 }).then(() => true).catch(() => false);
+  const stand = await page.evaluate(() => [window.__game.character.pos.x, window.__game.character.pos.z]);
+  say('탁자 뒤에서 앞 의자를 누르면 가까운 쪽에서 앉는다', satNear && Math.hypot(stand[0] - 5.5, stand[1] - 4.5) < 0.2,
+    JSON.stringify(stand.map((n) => +n.toFixed(2))));
+
   // 가구나 벽, 바닥 바깥을 누르면 그 근처로 걸어갈 뿐 길이 막혔다고 하지 않는다
   const clearToast = () => page.evaluate(() => { const t = document.getElementById('toast'); t.textContent = ''; t.hidden = true; });
   const quietWalk = async (label, x, z) => {

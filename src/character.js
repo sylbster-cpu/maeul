@@ -1,7 +1,7 @@
 // 캐릭터. 걷기, 가구와 집에 대한 충돌, 누른 곳까지 길 찾기, 의자에 앉기. 마당과 방을 오간다.
 import * as THREE from './three.js';
 import { PARTS, YARD, HOUSE_CENTER_X, MAT_X, LEVELS } from './parts.js';
-import { footprint, cellKey, layerOf, houseRect, seatSpots, seatApproach } from './state.js';
+import { footprint, cellKey, layerOf, houseRect, seatSpots, chooseSeatApproach } from './state.js';
 
 const RADIUS = 0.34;
 const SPEED = 5.2;
@@ -81,11 +81,11 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
   }
   buildColliders();
 
-  // 가구의 앉는 자리 하나와 그리로 갈 때 설 칸들
+  // 가구의 앉는 자리 하나
   function seatOf(id, index) {
     const obj = store.state.spaces[place].objects[id];
     const spot = obj && seatSpots(obj)[index];
-    return spot ? { id, index, ...spot, cells: seatApproach(obj, spot) } : null;
+    return spot ? { id, index, ...spot } : null;
   }
   function standNow() { goal = null; seat = null; anchor = null; sitK = 0; }
   store.subscribe(() => {
@@ -186,12 +186,14 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
     return points.length > 0;
   }
 
-  // 의자 옆의 빈 칸까지 걸어가 앉는다. 설 칸에 닿을 수 없으면 false
+  // 의자 옆의 빈 칸까지 걸어가 앉는다. 설 칸에 닿을 수 없으면 false.
+  // 정해진 쪽으로 돌아가지 않고, 앉는 자리 바로 옆 칸 가운데 지금 자리에서 가장 가까운 칸으로 간다
   function sit(id, index = 0) {
     const target = seatOf(id, index);
     if (!target) return false;
     const prev = flood();
-    const cell = target.cells.find(([cx, cy]) => prev.has(cellKey(cx, cy)) && !solidCell(cx, cy));
+    const steps = (cx, cy) => (prev.has(cellKey(cx, cy)) && !solidCell(cx, cy) ? trace(prev, [cx, cy]).length : null);
+    const cell = chooseSeatApproach(store.state.spaces[place].objects[id], target, steps);
     if (!cell) return false;
     const stand = { x: cell[0] + 0.5, z: cell[1] + 0.5 };
     path = trace(prev, cell);
