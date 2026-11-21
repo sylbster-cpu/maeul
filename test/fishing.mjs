@@ -32,7 +32,8 @@ export default async function fishingTour(page, { out, logs }) {
   const inWater = (p, pad = 0) => ((p.x - 27.5) / (2.6 + pad)) ** 2 + ((p.z - 18) / (3.1 + pad)) ** 2 < 1;
   const ready = async () => { await page.waitForFunction(() => window.__ready === true, null, { timeout: 20000 }); await page.waitForTimeout(300); };
   // 줄을 당기는 누름. 화면 어디를 눌러도 되지만, 넓은 화면에서는 조작법 창이 열려 있으므로 연못 위를 누른다
-  const pull = () => groundTap(27.5, 18.8);
+  // 기다리지 않고 바로 누른다. 낚시 중에는 화면 어디를 눌러도 당기므로 카메라가 움직여도 상관없다
+  const pull = async () => { const p = await screenOf(27.5, 18.8); await tap(p.x, p.y); };
   // r 하나로 물고기·입질·크기가 정해진다. 0.05 송사리(빨리 문다), 0.5 붕어, 0.75 잉어, 0.99 메기
   const setRandom = (r) => g((v) => window.__game.fishing.setRandom(() => v), r);
 
@@ -49,12 +50,10 @@ export default async function fishingTour(page, { out, logs }) {
   say('물가에 닿으면 찌를 던진다', cast, JSON.stringify(s.pos));
   say('물에 들어가지 않고 물가에 선다', !inWater(s.pos, 0.3) && inWater(s.pos, 1.4), JSON.stringify(s.pos));
   say('던지면 찌가 잠길 때 누르라고 안내한다', await g(() => document.getElementById('hint').textContent.includes('완전히 잠기면')));
-  await page.screenshot({ path: `${out}-1-cast.png` });
 
   // 2) 찌가 완전히 잠길 때 누르면 낚는다
   const bit = await waitPhase('bite');
-  await page.screenshot({ path: `${out}-2-bite.png` });
-  await pull();
+  await pull(); // 누를 시간은 1초뿐이다. 화면 찍기는 누른 뒤에 한다
   s = await fishState();
   say('찌가 잠길 때 누르면 낚는다', bit && s.last?.verdict === 'caught' && s.log.medaka?.count === 1, JSON.stringify(s.last));
   say('낚은 물고기와 크기를 알린다', (await toast()).includes('송사리를 낚았습니다') && (await toast()).includes('처음 잡은'), await toast());
@@ -76,6 +75,9 @@ export default async function fishingTour(page, { out, logs }) {
 
   // 4) 잠긴 뒤 누르지 않으면 늦는다
   await groundTap(26.6, 18.2);
+  // 누르지 않는 판에서 던진 모습과 잠긴 모습을 찍는다. 찍는 데 걸리는 시간이 누를 시간을 잡아먹지 않게 한다
+  if (await waitPhase('wait')) await page.screenshot({ path: `${out}-1-cast.png` });
+  if (await waitPhase('bite')) await page.screenshot({ path: `${out}-2-bite.png` });
   const late = await page.waitForFunction(() => window.__game.fishing.last?.verdict === 'late' && window.__game.fishing.phase !== 'bite', null, { timeout: 30000 }).then(() => true).catch(() => false);
   say('잠긴 뒤 한참 누르지 않으면 늦었다고 알린다', late && (await toast()).includes('늦었습니다'), await toast());
   await waitPhase('idle', 10000);
@@ -83,7 +85,7 @@ export default async function fishingTour(page, { out, logs }) {
   // 5) 물고기가 오기 전에 누르면 찌를 거둔다. 던지는 동안 누른 것은 흘려보낸다
   await groundTap(26.6, 18.2);
   await waitPhase('cast', 10000);
-  { const p = await screenOf(27.5, 18.8); await tap(p.x, p.y); } // 던지는 시간(0.5초) 안에 바로 누른다
+  await pull(); // 던지는 시간(0.5초) 안에 바로 누른다
   say('던지는 동안 누른 것은 흘려보낸다', ['cast', 'wait'].includes(await phase()) && !(await g(() => window.__game.character.walking)));
   await waitPhase('wait', 10000);
   await pull();
