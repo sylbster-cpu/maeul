@@ -609,6 +609,7 @@ export function createView({ canvas, assets, store }) {
 
   return {
     scene, camera, renderer, rebuild, showGhosts, pop, groundPoint, wallPoint, pick, pickFront, thumbnails,
+    outside, // 마당 장면. 연못(fishing-view.js)이 여기에 붙는다
     clearGhosts: () => emptyGroup(ghostGroup),
     // 세계 좌표가 화면의 어디인지 (자동 확인 스크립트가 쓴다)
     screenPoint(x, z) {

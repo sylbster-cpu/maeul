@@ -8,6 +8,13 @@ export function createAudio() {
     error: [150, 120, 0.12, 'square', 0.05],
     step: [660, 880, 0.08, 'sine', 0.08],
     sit: [420, 300, 0.1, 'sine', 0.1],
+    // 낚시. 찌를 건드릴 때(nibble)와 완전히 잠길 때(bite)를 귀로도 분명히 가른다
+    cast: [480, 760, 0.12, 'sine', 0.08],
+    splash: [320, 140, 0.12, 'triangle', 0.1],
+    nibble: [900, 840, 0.05, 'sine', 0.06],
+    bite: [760, 190, 0.26, 'triangle', 0.24],
+    catch: [520, 1100, 0.24, 'triangle', 0.16],
+    miss: [330, 210, 0.2, 'sine', 0.1],
   };
   return {
     get muted() { return muted; },

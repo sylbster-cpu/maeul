@@ -1,11 +1,12 @@
 // 캐릭터. 걷기, 가구와 집에 대한 충돌, 누른 곳까지 길 찾기, 의자에 앉기. 마당과 방을 오간다.
 import * as THREE from './three.js';
-import { PARTS, YARD, HOUSE_CENTER_X, MAT_X, LEVELS } from './parts.js';
+import { PARTS, YARD, YARD_MARGIN, HOUSE_CENTER_X, MAT_X, LEVELS } from './parts.js';
 import { footprint, cellKey, layerOf, houseRect, seatSpots, chooseSeatApproach } from './state.js';
+import { inWater } from './fishing.js';
 
 const RADIUS = 0.34;
 const SPEED = 5.2;
-const MARGIN = 3; // 마당 밖으로 걸어 나갈 수 있는 칸 수
+const MARGIN = YARD_MARGIN; // 마당 밖으로 걸어 나갈 수 있는 칸 수
 const SIT_TIME = 0.26; // 올라앉고 일어나는 데 걸리는 시간 (초)
 const SIT_SINK = 0.2; // 앉으면 몸의 아랫부분이 앉는 면 아래로 이만큼 내려간다
 
@@ -102,6 +103,7 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
   function blocked(x, z, r = RADIUS) {
     if (place === 'yard') {
       if (x < -MARGIN || z < -MARGIN || x > YARD.w + MARGIN || z > YARD.h + MARGIN) return true;
+      if (inWater(x, z, r)) return true; // 연못에는 들어가지 않는다
     } else {
       const [w, h] = roomSize();
       // 현관 깔개 쪽으로는 벽 밖까지 한 걸음 나갈 수 있다 (나가는 자리)
@@ -125,10 +127,11 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
     return true;
   }
 
-  // 가구나 집이 차지해 걸을 수 없는 칸인지
+  // 가구나 집, 연못이 차지해 걸을 수 없는 칸인지. 연못은 칸 가운데에 설 수 없으면 걸을 수 없는 칸이다
   function solidCell(cx, cy) {
     if (store.derived.occ[place].furniture.has(cellKey(cx, cy))) return true;
     if (place !== 'yard') return false;
+    if (inWater(cx + 0.5, cy + 0.5, RADIUS)) return true;
     const house = houseRect(store.state.house.level);
     return cx >= house.x0 && cx < house.x0 + house.w && cy >= house.z0 && cy < house.z0 + house.d;
   }
@@ -282,6 +285,8 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
       figure.rotation.y = facing;
     },
     teleport(x, z) { pos.x = x; pos.z = z; path = []; standNow(); },
+    // 서 있는 채로 한 곳을 바라본다 (낚시할 때 물 쪽)
+    face(x, z) { if (Math.hypot(x - pos.x, z - pos.z) > 0.01) facing = Math.atan2(x - pos.x, z - pos.z); },
     // 문 앞에 서 있는지 (마당), 현관 밖으로 나갔는지 (방)
     atHouseDoor() {
       if (place !== 'yard') return false;

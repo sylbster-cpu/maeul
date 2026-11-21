@@ -193,6 +193,7 @@ export function createUI({ thumbs, on, guest = false }) {
       tools.hidden = mode !== 'build';
       $('tabs').hidden = mode !== 'build';
       $('build-extras').hidden = mode !== 'build';
+      $('walk-extras').hidden = mode !== 'walk';
       document.body.dataset.mode = mode;
     },
     setTool(tool) {
