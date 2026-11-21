@@ -1,4 +1,4 @@
-// 낚시 기록 창. 잡아 본 물고기만 보여 주고, 아직 못 본 물고기는 수만 알린다.
+// 낚시 기록 창과 낚은 순간의 카드. 기록 창은 잡아 본 물고기만 보여 주고, 아직 못 본 물고기는 수만 알린다.
 import { FISH, FISH_ORDER } from './fishing.js';
 
 const dayText = (day) => { const [, m, d] = day.split('-').map(Number); return `${m}월 ${d}일`; };
@@ -41,4 +41,27 @@ export function createFishingUI({ fishing }) {
   // 창을 연 채 다른 탭에서 낚아도 바로 보이게 한다
   fishing.store.subscribe(() => { if (!layer.hidden) render(); });
   return { open, close };
+}
+
+// 낚은 순간 화면 가운데에 크게 뜨는 카드. 누르는 것을 막지 않는다
+export function createCatchCard() {
+  const $ = (id) => document.getElementById(id);
+  const card = $('catch-card');
+  const dock = document.querySelector('.dock');
+  const hint = $('hint');
+  return {
+    show({ label, size, note }) {
+      $('catch-name').textContent = label;
+      $('catch-size').textContent = `${size}cm`;
+      $('catch-note').textContent = note || '낚았습니다!';
+      $('catch-note').dataset.kind = note ? 'record' : 'plain';
+      card.style.bottom = `${dock.offsetHeight + 8}px`; // 쟁반 바로 위, 안내 문구 자리
+      card.hidden = false;
+      hint.style.visibility = 'hidden'; // 카드 양옆으로 안내가 비치지 않게 한다. 자리는 그대로 둔다
+      card.classList.remove('pop');
+      void card.offsetWidth; // 다시 뜰 때도 처음부터 움직이게 한다
+      card.classList.add('pop');
+    },
+    hide() { card.hidden = true; hint.style.visibility = ''; },
+  };
 }

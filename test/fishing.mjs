@@ -54,13 +54,17 @@ export default async function fishingTour(page, { out, logs }) {
   // 2) 찌가 완전히 잠길 때 누르면 낚는다
   const bit = await waitPhase('bite');
   await pull(); // 누를 시간은 1초뿐이다. 화면 찍기는 누른 뒤에 한다
+  const closeAtBite = await g(() => window.__game.view.closeAmount);
   s = await fishState();
   say('찌가 잠길 때 누르면 낚는다', bit && s.last?.verdict === 'caught' && s.log.medaka?.count === 1, JSON.stringify(s.last));
-  say('낚은 물고기와 크기를 알린다', (await toast()).includes('송사리를 낚았습니다') && (await toast()).includes('처음 잡은'), await toast());
+  const card = await g(() => ({ shown: !document.getElementById('catch-card').hidden, name: document.getElementById('catch-name').textContent, size: document.getElementById('catch-size').textContent, note: document.getElementById('catch-note').textContent }));
+  say('낚은 물고기와 크기를 화면 가운데 카드로 알린다', card.shown && card.name === '송사리' && card.size === '3cm' && card.note.includes('처음 잡은'), JSON.stringify(card));
+  say('낚시하는 동안 카메라가 물가와 찌를 가까이 본다', closeAtBite > 0.9, String(closeAtBite));
   say('낚을 때 누른 것으로 걷지 않는다', !(await g(() => window.__game.character.walking)));
   await page.waitForTimeout(150);
   await page.screenshot({ path: `${out}-3-caught.png` });
   await waitPhase('idle', 10000);
+  say('결과를 보인 뒤 카드가 사라지고, 물가에 있는 동안 카메라는 가까이 둔다', (await g(() => document.getElementById('catch-card').hidden)) && (await g(() => window.__game.view.closeAmount)) > 0.9);
 
   // 3) 건드릴 때 누르면 너무 이르다
   await setRandom(0.5); // 붕어: 두 번 건드린 뒤 문다
@@ -107,6 +111,10 @@ export default async function fishingTour(page, { out, logs }) {
   const kst = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
   say('다른 탭에서 남긴 기록과 함께 저장한다', s.log.carp?.count === 1 && s.log.catfish?.count === 3 && s.log.medaka?.count === 1, JSON.stringify(s.log));
   say('처음 잡은 날은 한국 날짜다', s.log.carp?.first === kst, s.log.carp?.first);
+  // 게임 시계로 0.6초를 기다린다. 화면 수가 적은 환경에서는 게임 시계가 실제 시간보다 느리다
+  await page.waitForFunction(() => window.__game.fishing.phase === 'result' && window.__game.fishing.elapsed >= 0.6, null, { timeout: 10000, polling: 'raf' }).catch(() => {});
+  await pull();
+  say('낚은 카드를 보는 중에 누르면 바로 넘어간다', (await phase()) === 'idle' && (await g(() => document.getElementById('catch-card').hidden)));
   await waitPhase('idle', 10000);
 
   // 7) 낚시 기록 창
@@ -126,7 +134,8 @@ export default async function fishingTour(page, { out, logs }) {
   await page.click('#mode-walk');
   await groundTap(22, 17);
   say('물가에서 땅을 누르면 걸어간다', (await phase()) === 'idle' && (await g(() => window.__game.character.walking)));
-  await page.waitForTimeout(800);
+  const zoomBack = await page.waitForFunction(() => window.__game.view.closeAmount < 0.05, null, { timeout: 10000 }).then(() => true).catch(() => false);
+  say('물가를 떠나면 카메라가 평소대로 돌아온다', zoomBack);
 
   // 9) 집 저장과 섞이지 않고, 새로 고쳐도 기록과 물가의 자리가 남는다
   const houseAfter = await g(() => JSON.stringify(window.__game.store.state));

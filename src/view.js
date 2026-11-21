@@ -384,7 +384,7 @@ export function createView({ canvas, assets, store }) {
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 400);
   let place = 'yard';
   const cam = {
-    quadrant: 0, azimuth: Math.PI / 4, target: yardCenter.clone(), focus: yardCenter.clone(), bottomInset: 0,
+    quadrant: 0, azimuth: Math.PI / 4, target: yardCenter.clone(), focus: yardCenter.clone(), bottomInset: 0, topInset: 0,
     sizes: { yard: coarse ? 10.5 : 12.5, main: 8 }, // 손가락으로 누르기 쉽게 터치 기기는 조금 더 가까이
   };
   const targetAzimuth = () => Math.PI / 4 + cam.quadrant * Math.PI / 2;
@@ -393,19 +393,32 @@ export function createView({ canvas, assets, store }) {
     const a = targetAzimuth();
     return [Math.sign(Math.round(Math.sin(a) * 10)), Math.sign(Math.round(Math.cos(a) * 10))];
   };
+  // 낚시할 때는 찌 가까이 당겨 본다. close 는 0(평소)에서 1(가까이)까지 서서히 바뀐다.
+  // 사용자가 고른 확대(cam.sizes)는 바꾸지 않고, 그보다 멀 때만 가까이 당긴다
+  const CLOSE_SIZE = 4.6;
+  let close = 0, closeGoal = 0;
+  const closeAt = new THREE.Vector3();
+  let shake = 0; // 찌가 잠길 때 화면이 살짝 흔들리는 정도
   function resize() {
     const w = canvas.clientWidth, h = canvas.clientHeight;
     if (!w || !h) return;
     renderer.setSize(w, h, false);
     const aspect = w / h;
-    const base = cam.sizes[place];
+    const k = place === 'yard' ? close * close * (3 - 2 * close) : 0;
+    const base = cam.sizes[place] + (Math.min(cam.sizes[place], CLOSE_SIZE) - cam.sizes[place]) * k;
     const size = aspect < 1 ? base / Math.max(aspect, 0.45) * 0.62 : base;
-    const lift = (cam.bottomInset / h) * size; // 가려진 높이의 절반만큼 초점을 위로
+    // 가려진 높이의 절반만큼 초점을 옮긴다. 아래쪽 쟁반은 늘, 위쪽 버튼은 낚시로 가까이 볼 때만 셈한다
+    const lift = ((cam.bottomInset - cam.topInset * k) / h) * size;
     camera.left = -size * aspect; camera.right = size * aspect; camera.top = size - lift; camera.bottom = -size - lift;
     camera.updateProjectionMatrix();
   }
   new ResizeObserver(resize).observe(canvas);
   function updateCamera(dt) {
+    if (close !== closeGoal) {
+      const step = calm ? 1 : Math.min(1, dt * 2.6);
+      close += Math.max(-step, Math.min(step, closeGoal - close));
+      resize();
+    }
     const goal = targetAzimuth();
     let diff = goal - cam.azimuth;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
@@ -414,6 +427,11 @@ export function createView({ canvas, assets, store }) {
     const dir = new THREE.Vector3(Math.sin(cam.azimuth) * Math.cos(ELEVATION), Math.sin(ELEVATION), Math.cos(cam.azimuth) * Math.cos(ELEVATION));
     camera.position.copy(cam.target).addScaledVector(dir, CAMERA_DISTANCE);
     camera.lookAt(cam.target);
+    if (shake > 0) {
+      shake = Math.max(0, shake - dt * 0.5);
+      camera.position.x += (Math.random() - 0.5) * shake;
+      camera.position.z += (Math.random() - 0.5) * shake;
+    }
   }
 
   // ---- 상태에서 장면 다시 만들기 ----
@@ -625,12 +643,19 @@ export function createView({ canvas, assets, store }) {
       outside.visible = place === 'yard';
       inside.visible = place !== 'yard';
       hiddenObject = null;
+      close = closeGoal = 0;
       emptyGroup(ghostGroup);
       if (place !== 'yard') { roomFocus(); cam.target.copy(cam.focus); }
       rebuild();
       resize();
     },
-    setFocus(x, z) { if (place === 'yard') cam.focus.set(x, 0, z); },
+    setFocus(x, z) { if (place === 'yard') { if (closeGoal) cam.focus.copy(closeAt); else cam.focus.set(x, 0, z); } },
+    // 낚시하는 곳을 가까이 본다. null 이면 평소대로
+    // 땅이 아니라 1.5 높이를 겨눈다. 찌부터 캐릭터 머리 위의 느낌표까지가 화면 가운데에 오게 한다
+    setCloseUp(point) { closeGoal = point ? 1 : 0; if (point) closeAt.set(point.x, 1.5, point.z); },
+    get closeAmount() { return close; },
+    // 화면을 살짝 흔든다 (움직임 줄이기를 켠 사람에게는 흔들지 않는다)
+    shake(amount) { if (!calm) shake = Math.max(shake, amount); },
     snapFocus(x, z) { if (place === 'yard') { cam.focus.set(x, 0, z); cam.target.copy(cam.focus); } },
     rotateCamera(step) { cam.quadrant = (cam.quadrant + step + 4) % 4; rebuild(); },
     zoomBy(factor) { cam.sizes[place] = THREE.MathUtils.clamp(cam.sizes[place] * factor, 4.5, 24); resize(); },
@@ -646,6 +671,7 @@ export function createView({ canvas, assets, store }) {
     },
     setHidden(id) { if (hiddenObject !== id) { hiddenObject = id; rebuild(); } },
     setBottomInset(px) { if (Math.abs(px - cam.bottomInset) > 1) { cam.bottomInset = px; resize(); } },
+    setTopInset(px) { if (Math.abs(px - cam.topInset) > 1) { cam.topInset = px; resize(); } },
     showMarker(x, z) { marker.position.x = x; marker.position.z = z; markerLife = 1; },
     update(dt, who) {
       if (dirty) rebuild();

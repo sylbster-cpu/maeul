@@ -17,7 +17,7 @@ import { getOnlineService, ONLINE_TIMEOUT_MS } from './online.js';
 import { createOnlineUI } from './online-ui.js';
 import { createPondView } from './fishing-view.js';
 import { createFishing } from './fishing-play.js';
-import { createFishingUI } from './fishing-ui.js';
+import { createFishingUI, createCatchCard } from './fishing-ui.js';
 
 watchShareHash(window);
 
@@ -142,6 +142,7 @@ async function start(saved = {}) {
       rotate: () => input.rotate(),
       mute: () => { audio.setMuted(!audio.muted); return audio.muted; },
       inset: (px) => view.setBottomInset(px),
+      topInset: (px) => view.setTopInset(px),
       clear: () => input.clearAll(),
       undo: () => input.undo(),
       redo: () => input.redo(),
@@ -161,7 +162,7 @@ async function start(saved = {}) {
   const history = createHistory(store); // 처음 놓인 가구는 기록에 넣지 않는다
   // 낚시. 기록은 이 브라우저에 집과 따로 저장한다. 친구 집을 구경하는 중에도 내 낚시 기록에 남는다
   const fishing = createFishing({
-    character, ui, audio, storage: openStorage(),
+    character, ui, audio, storage: openStorage(), catchCard: createCatchCard(),
     pondView: createPondView({ view, figure: character.figure }),
     onChange: () => input?.syncUI(),
   });
@@ -213,6 +214,7 @@ async function start(saved = {}) {
     if (seated !== wasSeated) { wasSeated = seated; input.syncUI(); if (seated) audio.play('sit'); }
     if (!busy) {
       if (character.place === 'yard') {
+        view.setCloseUp(fishing.focus()); // 낚시하는 동안은 물가와 찌 사이를 가까이 본다
         view.setFocus(character.pos.x, character.pos.z);
         // 문 앞에서 집 쪽으로 걷거나, 집을 눌러 문 앞에 닿으면 들어간다
         if (character.atHouseDoor() && ((dir && dir.z < -0.3) || pending)) go('main');

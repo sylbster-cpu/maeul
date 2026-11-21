@@ -8,7 +8,9 @@ import {
 import { POND } from './parts.js';
 
 const CAST_TIME = 0.5;
-const RESULT_TIME = 0.7;
+const RESULT_TIME = 0.8; // 놓쳤을 때 결과를 보이는 시간
+const CATCH_TIME = 2.0; // 낚은 물고기를 들어 보이는 시간
+const SKIP_AFTER = 0.5; // 결과를 보이는 중 이만큼 지나 누르면 바로 넘어간다
 const REACH = 3.2; // 찌를 던지는 가장 먼 거리
 const SHORE = 1.4; // 물가에서 이만큼 안에 서 있어야 던질 수 있다
 
@@ -18,7 +20,7 @@ const objectParticle = (word) => {
   return code >= 0 && code <= 11171 && code % 28 !== 0 ? '을' : '를';
 };
 
-export function createFishing({ character, pondView, ui, audio, storage, random: rng = Math.random, now = Date.now, onChange = () => {} }) {
+export function createFishing({ character, pondView, ui, audio, storage, catchCard = null, random: rng = Math.random, now = Date.now, onChange = () => {} }) {
   let random = rng;
   const saver = createFishingSaver(storage);
   const first = saver.load();
@@ -32,6 +34,9 @@ export function createFishing({ character, pondView, ui, audio, storage, random:
   let aim = null;
   let nibbles = 0;
   let wasNear = false;
+  let stand = null; // 던진 자리. 걸어서 떠나기 전까지 카메라가 물가와 찌 사이를 가까이 본다
+  let resultTime = RESULT_TIME;
+  const buzz = (pattern) => { try { navigator.vibrate?.(pattern); } catch { /* 진동이 없는 기기 */ } };
   let last = null; // 마지막 결과 (자동 시험이 읽는다)
 
   function setPhase(next) { phase = next; t = 0; onChange(); }
@@ -71,6 +76,7 @@ export function createFishing({ character, pondView, ui, audio, storage, random:
     plan = planBite(fish, random);
     size = rollSize(fish, random);
     nibbles = 0;
+    stand = { x: character.pos.x, z: character.pos.z };
     pondView.cast(spot);
     audio.play('cast');
     setPhase('cast');
@@ -92,10 +98,15 @@ export function createFishing({ character, pondView, ui, audio, storage, random:
       const label = FISH[fish].label;
       const was = store.state.log[fish];
       const saved = record({ type: 'recordCatch', fish, size, day: kstDay(now()) });
-      const note = !was ? ' 처음 잡은 물고기입니다' : size > was.best ? ' 최고 기록입니다' : '';
-      ui.toast(`${label}${objectParticle(label)} 낚았습니다! ${size}cm.${note}${saved ? '' : ' (이 브라우저에서는 기록이 저장되지 않습니다)'}`);
+      const note = !was ? '처음 잡은 물고기입니다' : size > was.best ? '최고 기록입니다' : '';
+      // 낚은 순간은 작은 알림 대신 화면 가운데 카드로 크게 보여 준다
+      if (catchCard) catchCard.show({ label, size, note });
+      else ui.toast(`${label}${objectParticle(label)} 낚았습니다! ${size}cm. ${note}`);
+      if (!saved) ui.toast('이 브라우저에서는 낚시 기록이 저장되지 않습니다', 'error');
       pondView.catchFish(fish, size);
       audio.play('catch');
+      buzz([30, 40, 30]);
+      resultTime = CATCH_TIME;
     } else {
       ui.toast({
         reeled: '찌를 거두었습니다',
@@ -104,9 +115,13 @@ export function createFishing({ character, pondView, ui, audio, storage, random:
       }[verdict], verdict === 'reeled' ? 'info' : 'error');
       pondView.escape();
       audio.play(verdict === 'reeled' ? 'step' : 'miss');
+      resultTime = RESULT_TIME;
     }
     setPhase('result');
   }
+
+  // 결과 보이기를 끝내고 다음 던지기를 기다린다. 낚싯대는 내려놓고 카메라는 그대로 둔다
+  function endResult() { pondView.reset(); catchCard?.hide(); setPhase('idle'); }
 
   return {
     store,
@@ -115,6 +130,7 @@ export function createFishing({ character, pondView, ui, audio, storage, random:
     get last() { return last; },
     get plan() { return plan; },
     get nibbled() { return nibbles; },
+    get elapsed() { return t; }, // 지금 단계에 들어선 뒤 흐른 게임 시간(초). 찌가 물에 닿은 뒤로는 입질 계획과 같은 시계다
     // 자동 시험이 물고기와 입질을 정해 둘 때 쓴다
     setRandom(fn) { random = fn; },
     // 낚시를 하고 있으면 화면 누름은 줄을 당기는 데 쓴다 (걷지 않는다)
@@ -127,14 +143,23 @@ export function createFishing({ character, pondView, ui, audio, storage, random:
       if (character.goTo(point.x, point.z)) setPhase('walk');
       else arrive();
     },
-    // 화면을 눌러 줄을 당긴다. 던지는 중과 결과를 보이는 중에는 누름을 흘려보낸다
+    // 화면을 눌러 줄을 당긴다. 던지는 중에는 누름을 흘려보낸다. 결과를 보이는 중에는 조금 지나 누르면 넘어간다
     pull() {
       if (phase === 'wait' || phase === 'bite') finish(judge(plan, t));
+      else if (phase === 'result' && t >= SKIP_AFTER) endResult();
     },
     cancel() {
+      stand = null;
       if (phase === 'idle') return;
       pondView.reset();
+      catchCard?.hide();
       setPhase('idle');
+    },
+    // 카메라가 가까이 볼 곳 (물가와 찌 사이). 낚시를 하지 않거나 물가를 떠났으면 null
+    focus() {
+      if (!stand || !aim || phase === 'walk') return null;
+      if (Math.hypot(character.pos.x - stand.x, character.pos.z - stand.z) > 0.4) { stand = null; return null; }
+      return { x: (stand.x + aim.x) / 2, z: (stand.z + aim.z) / 2 };
     },
     hint() {
       switch (phase) {
@@ -156,13 +181,13 @@ export function createFishing({ character, pondView, ui, audio, storage, random:
         return;
       }
       if (phase === 'wait') {
-        while (nibbles < plan.nibbles.length && t >= plan.nibbles[nibbles]) { nibbles++; pondView.nibble(); audio.play('nibble'); }
+        while (nibbles < plan.nibbles.length && t >= plan.nibbles[nibbles]) { nibbles++; pondView.nibble(); audio.play('nibble'); buzz(12); }
         // 찌가 물에 닿은 때부터 재므로 시간을 되돌리지 않고 이어 간다
-        if (t >= plan.bite) { phase = 'bite'; pondView.bite(); audio.play('bite'); navigator.vibrate?.(90); onChange(); }
+        if (t >= plan.bite) { phase = 'bite'; pondView.bite(); audio.play('bite'); buzz([70, 30, 70]); onChange(); }
         return;
       }
       if (phase === 'bite') { if (t > plan.bite + plan.window) finish('late'); return; }
-      if (phase === 'result' && t >= RESULT_TIME) { pondView.reset(); setPhase('idle'); }
+      if (phase === 'result' && t >= resultTime) endResult();
     },
   };
 }
