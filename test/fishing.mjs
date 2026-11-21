@@ -37,7 +37,7 @@ export default async function fishingTour(page, { out, logs }) {
   let s = await fishState();
   say('물가에 닿으면 찌를 던진다', cast, JSON.stringify(s.pos));
   say('물에 들어가지 않고 물가에 선다', !inWater(s.pos, 0.3) && inWater(s.pos, 1.4), JSON.stringify(s.pos));
-  say('낚싯대와 찌가 보인다', await g(() => window.__game.fishing && document.getElementById('hint').textContent.includes('잠기면')));
+  say('던지면 찌가 잠길 때 누르라고 안내한다', await g(() => document.getElementById('hint').textContent.includes('완전히 잠기면')));
   await page.screenshot({ path: `${out}-1-cast.png` });
 
   // 2) 찌가 완전히 잠길 때 누르면 낚는다
