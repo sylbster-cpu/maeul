@@ -19,7 +19,7 @@ function wallChip(def) {
   return `linear-gradient(${def.bottom}, ${def.bottom}) bottom / 100% 34% no-repeat, ${top}`;
 }
 
-export function createUI({ thumbs, on, guest = false }) {
+export function createUI({ thumbs, on, guest = false, canImport = false }) {
   const $ = (id) => document.getElementById(id);
   const tools = $('tools');
   const toolButtons = new Map();
@@ -126,9 +126,11 @@ export function createUI({ thumbs, on, guest = false }) {
   $('sample').addEventListener('click', () => on.sample());
   $('cancel-carry').addEventListener('click', () => on.cancelCarry());
   $('place-toggle').addEventListener('click', () => on.travel());
-  $('share-house').addEventListener('click', () => on.share());
+  $('share-house').addEventListener('click', () => canImport ? on.importHouse() : on.share());
   $('my-home').addEventListener('click', () => on.home());
-  $('share-house').hidden = guest;
+  // 공유 링크(#home=)에서만 복사 버튼을 제공하고 Firebase 방문 링크에서는 제공하지 않는다.
+  $('share-house').hidden = guest && !canImport;
+  $('share-house').textContent = canImport ? '집 가져오기' : '집 공유';
   $('my-home').hidden = !guest;
   $('mode-build').hidden = guest;
   $('sound').addEventListener('click', () => {
@@ -161,6 +163,7 @@ export function createUI({ thumbs, on, guest = false }) {
   const shareLink = $('share-link');
   const closeShare = () => { shareLayer.hidden = true; $('share-house').focus(); };
   $('share-close').addEventListener('click', closeShare);
+  $('share-restore-previous').addEventListener('click', () => on.restorePreviousHouse());
   shareLayer.addEventListener('click', (event) => { if (event.target === shareLayer) closeShare(); });
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !shareLayer.hidden) { event.preventDefault(); event.stopImmediatePropagation(); closeShare(); }
@@ -220,7 +223,7 @@ export function createUI({ thumbs, on, guest = false }) {
     },
     setHistory({ canUndo, canRedo }) { $('undo').disabled = !canUndo; $('redo').disabled = !canRedo; },
     setSaveStatus(status) {
-      $('save-status').textContent = { saved: '자동 저장됨', pending: '저장하는 중', off: '이 브라우저에서는 저장되지 않습니다', guest: '친구 집 구경 중 · 내 집 유지' }[status] || '';
+      $('save-status').textContent = { saved: '자동 저장됨', pending: '저장하는 중', off: '이 브라우저에서는 저장되지 않습니다', guest: '친구 집 구경 중 · 내 집 유지', conflict: '다른 탭에서 집이 바뀌어 자동 저장 중지 · 새로고침 필요' }[status] || '';
     },
     toast: showToast,
     openShare(link, options = {}) {
@@ -230,8 +233,21 @@ export function createUI({ thumbs, on, guest = false }) {
       $('share-footnote').textContent = options.footnote ||
         '이 링크는 공유한 순간의 집 모습입니다. 이후 바꾼 모습은 새 링크를 보내야 보입니다.';
       shareLink.value = link;
+      const linkAvailable = typeof link === 'string' && link.length > 0;
+      shareLink.hidden = !linkAvailable;
+      $('share-copy').hidden = !linkAvailable;
+      $('share-native').hidden = !linkAvailable || typeof navigator.share !== 'function';
+      // Firebase 온라인 공유 링크(#visit=)에는 로컬 집 교환 버튼을 보이지 않는다.
+      const localShare = link === '' || link.includes('#home=');
+      const canSwap = !guest && localShare && on.canRestorePrevious();
+      $('share-restore-previous').hidden = !canSwap;
       shareLayer.hidden = false;
-      $('share-copy').focus();
+      (linkAvailable ? $('share-copy') : canSwap ? $('share-restore-previous') : $('share-close')).focus();
+    },
+    setHouseTransition(busy) {
+      $('share-restore-previous').disabled = busy;
+      $('share-house').disabled = busy;
+      $('my-home').disabled = busy;
     },
     loaded() { $('loading').hidden = true; },
   };

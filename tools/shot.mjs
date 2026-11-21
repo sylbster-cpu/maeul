@@ -14,7 +14,8 @@ const port = process.env.PORT || 5173;
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 // TOUCH=1 이면 손가락으로 쓰는 휴대폰처럼 연다
 const touch = process.env.TOUCH === '1';
-const page = await browser.newPage({ viewport: { width: Number(w), height: Number(h) }, deviceScaleFactor: 1, colorScheme: process.env.SCHEME || 'light', hasTouch: touch, isMobile: touch });
+const context = await browser.newContext({ viewport: { width: Number(w), height: Number(h) }, deviceScaleFactor: 1, colorScheme: process.env.SCHEME || 'light', hasTouch: touch, isMobile: touch });
+const page = await context.newPage();
 const logs = [];
 page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));

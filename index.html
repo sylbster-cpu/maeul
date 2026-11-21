@@ -200,6 +200,7 @@ img { max-width: 100%; }
   .share-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .share-actions button { min-height: 44px; padding: 7px 12px; flex: 1 1 auto; }
   #share-copy { background: var(--moss); color: var(--on-moss); border-color: var(--panel-edge); }
+  #share-restore-previous { width: 100%; min-height: 44px; margin-top: 8px; }
 
   /* 온라인 대화창도 게임 화면 위에 나타나므로 3D 화면이 움직이지 않는다 */
   .online-layer {
@@ -334,6 +335,7 @@ img { max-width: 100%; }
         <button type="button" id="share-copy">주소 복사</button>
         <button type="button" id="share-close">닫기</button>
       </div>
+      <button type="button" id="share-restore-previous" hidden>보관된 다른 집과 맞바꾸기</button>
       <p id="share-footnote" style="margin-top: 10px; margin-bottom: 0">이 링크는 공유한 순간의 집 모습입니다. 이후 바꾼 모습은 새 링크를 보내야 보입니다.</p>
     </section>
   </div>
