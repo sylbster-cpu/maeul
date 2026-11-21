@@ -1,7 +1,7 @@
 // 캐릭터. 걷기, 가구와 집에 대한 충돌, 누른 곳까지 길 찾기, 의자에 앉기. 마당과 방을 오간다.
 import * as THREE from './three.js';
 import { PARTS, YARD, HOUSE_CENTER_X, MAT_X, LEVELS } from './parts.js';
-import { footprint, cellKey, layerOf, houseRect, seatSpots, seatApproach } from './state.js';
+import { footprint, cellKey, layerOf, houseRect, seatSpots, chooseSeatApproach } from './state.js';
 
 const RADIUS = 0.34;
 const SPEED = 5.2;
@@ -81,11 +81,11 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
   }
   buildColliders();
 
-  // 가구의 앉는 자리 하나와 그리로 갈 때 설 칸들
+  // 가구의 앉는 자리 하나
   function seatOf(id, index) {
     const obj = store.state.spaces[place].objects[id];
     const spot = obj && seatSpots(obj)[index];
-    return spot ? { id, index, ...spot, cells: seatApproach(obj, spot) } : null;
+    return spot ? { id, index, ...spot } : null;
   }
   function standNow() { goal = null; seat = null; anchor = null; sitK = 0; }
   store.subscribe(() => {
@@ -132,11 +132,16 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
     const house = houseRect(store.state.house.level);
     return cx >= house.x0 && cx < house.x0 + house.w && cy >= house.z0 && cy < house.z0 + house.d;
   }
-  // 지금 선 칸에서 걸어서 닿는 칸들을 가까운 순서로 훑는다. 칸마다 바로 앞 칸을 적어 돌려준다
-  function flood(visit) {
+  // 걸을 수 있는 범위(방, 또는 마당과 그 둘레) 안에서 가구나 집이 차지하지 않은 칸인지
+  function openCell(cx, cy) {
     const [w, h] = place === 'yard' ? [YARD.w, YARD.h] : roomSize();
     const pad = place === 'yard' ? MARGIN : 0;
-    const inRange = (cx, cy) => cx >= -pad && cy >= -pad && cx < w + pad && cy < h + pad;
+    return cx >= -pad && cy >= -pad && cx < w + pad && cy < h + pad && !solidCell(cx, cy);
+  }
+  // 지금 선 칸에서 걸어서 닿는 칸들을 가까운 순서로 훑는다. 칸마다 바로 앞 칸을 적어 돌려준다
+  function flood(visit) {
+    const h = place === 'yard' ? YARD.h : roomSize()[1];
+    const pad = place === 'yard' ? MARGIN : 0;
     const sx = Math.floor(pos.x), sy = Math.min(Math.floor(pos.z), h + pad - 1);
     const prev = new Map([[cellKey(sx, sy), null]]);
     const queue = [[sx, sy]];
@@ -145,7 +150,7 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
       visit?.(cx, cy);
       for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
         const nx = cx + dx, ny = cy + dy, nk = cellKey(nx, ny);
-        if (!inRange(nx, ny) || prev.has(nk) || solidCell(nx, ny)) continue;
+        if (prev.has(nk) || !openCell(nx, ny)) continue;
         prev.set(nk, [cx, cy]);
         queue.push([nx, ny]);
       }
@@ -170,7 +175,10 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
     });
     // 기존 집에서 가구가 길을 막더라도 저장된 배치를 함부로 바꾸지 않는다.
     // 가장 가까이 걸을 수는 있지만, 목적지까지 이어지지 않는 사실은 조작 화면에 알린다.
-    routeBlocked = !prev.has(cellKey(Math.floor(x), Math.floor(z)));
+    // 막혔다고 알리는 것은 누른 칸이 걸을 수 있는 빈 칸인데 닿지 못할 때뿐이다.
+    // 가구나 벽, 바닥 바깥을 누른 것은 그 근처로 가려는 뜻이므로 예전처럼 가장 가까운 칸으로 조용히 간다
+    const tx = Math.floor(x), tz = Math.floor(z);
+    routeBlocked = openCell(tx, tz) && !prev.has(cellKey(tx, tz));
     const points = trace(prev, best);
     if (Math.floor(x) === best[0] && Math.floor(z) === best[1] && !blocked(x, z)) points.push([x, z]);
     path = points;
@@ -178,12 +186,14 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
     return points.length > 0;
   }
 
-  // 의자 옆의 빈 칸까지 걸어가 앉는다. 설 칸에 닿을 수 없으면 false
+  // 의자 옆의 빈 칸까지 걸어가 앉는다. 설 칸에 닿을 수 없으면 false.
+  // 정해진 쪽으로 돌아가지 않고, 앉는 자리 바로 옆 칸 가운데 지금 자리에서 가장 가까운 칸으로 간다
   function sit(id, index = 0) {
     const target = seatOf(id, index);
     if (!target) return false;
     const prev = flood();
-    const cell = target.cells.find(([cx, cy]) => prev.has(cellKey(cx, cy)) && !solidCell(cx, cy));
+    const steps = (cx, cy) => (prev.has(cellKey(cx, cy)) && !solidCell(cx, cy) ? trace(prev, [cx, cy]).length : null);
+    const cell = chooseSeatApproach(store.state.spaces[place].objects[id], target, steps);
     if (!cell) return false;
     const stand = { x: cell[0] + 0.5, z: cell[1] + 0.5 };
     path = trace(prev, cell);

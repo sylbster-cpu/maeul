@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createState, createStore, clearCommands, houseRect, blockedCells, cellKey, seatSpots, seatApproach } from '../src/state.js';
+import { createState, createStore, clearCommands, houseRect, blockedCells, cellKey, seatSpots, seatApproach, chooseSeatApproach } from '../src/state.js';
 import { sampleCommands } from '../src/sample.js';
 import { createHistory } from '../src/history.js';
 import { serialize, parse, createSaver, SAVE_KEY, SAVE_VERSION } from '../src/save.js';
@@ -336,4 +336,36 @@ test('앉으러 갈 때는 의자의 앞, 옆, 뒤 순서로 설 칸을 찾는�
   assert.deepEqual(around.slice(0, 3), [[6, 8], [5, 8], [4, 8]]);
   assert.equal(around.length, 10); // 둘레의 칸 전부 (가로 3칸 x 2 + 세로 2칸 x 2)
   assert.ok(!around.some(([x, y]) => x >= 4 && x < 7 && y >= 6 && y < 8)); // 소파가 차지한 칸은 없다
+});
+
+test('앉으러 갈 때는 앉는 자리 바로 옆 칸 가운데 가장 적게 걷는 칸으로 간다', () => {
+  // 동쪽을 보는 의자. 앞(3,2), 옆(2,1)과 (2,3), 뒤(1,2)
+  const chair = { part: 'chair', x: 2, y: 2, rot: 1 };
+  const spot = seatSpots(chair)[0];
+  const stepsFrom = (table) => (x, y) => (cellKey(x, y) in table ? table[cellKey(x, y)] : null);
+  // 앞이 탁자로 막혔으면 두 옆 칸 가운데 가까운 쪽. 순서상 먼저인 쪽으로 돌아가지 않는다
+  assert.deepEqual(chooseSeatApproach(chair, spot, stepsFrom({ '2,1': 9, '2,3': 1 })), [2, 3]);
+  assert.deepEqual(chooseSeatApproach(chair, spot, stepsFrom({ '2,1': 1, '2,3': 9 })), [2, 1]);
+  // 옆에 서 있으면 앞으로 돌아가지 않고 그 자리에서 앉는다
+  assert.deepEqual(chooseSeatApproach(chair, spot, stepsFrom({ '3,2': 2, '2,1': 0, '2,3': 4, '1,2': 1 })), [2, 1]);
+  // 걸음 수가 같으면 앞이 먼저다
+  assert.deepEqual(chooseSeatApproach(chair, spot, stepsFrom({ '3,2': 1, '2,1': 1, '2,3': 1 })), [3, 2]);
+  // 뒤에 서 있어도 등받이를 넘지 않고 옆으로 돌아 앉는다
+  assert.deepEqual(chooseSeatApproach(chair, spot, stepsFrom({ '3,2': 2, '2,1': 1, '2,3': 1, '1,2': 0 })), [2, 1]);
+  // 뒤로만 갈 수 있으면 뒤에서 앉는다. 아무 데도 못 가면 null
+  assert.deepEqual(chooseSeatApproach(chair, spot, stepsFrom({ '1,2': 6 })), [1, 2]);
+  assert.equal(chooseSeatApproach(chair, spot, stepsFrom({})), null);
+
+  // 소파의 오른쪽 자리: 앞 칸이라도 먼 칸(왼쪽 끝)에서는 뛰어 앉지 않는다
+  const couch = { part: 'couch', x: 4, y: 6, rot: 0 };
+  const right = seatSpots(couch)[2];
+  assert.deepEqual(chooseSeatApproach(couch, right, stepsFrom({ '4,8': 0, '5,8': 1, '6,8': 2, '7,7': 4 })), [6, 8]);
+  // 오른쪽 옆에 서 있으면 옆에서 앉는다
+  assert.deepEqual(chooseSeatApproach(couch, right, stepsFrom({ '6,8': 3, '7,7': 0 })), [7, 7]);
+  // 오른쪽 자리 가까이의 칸에 못 가면 먼 앞 칸이라도 간다
+  assert.deepEqual(chooseSeatApproach(couch, right, stepsFrom({ '4,8': 0 })), [4, 8]);
+
+  // 안락의자의 옆 칸은 앉는 자리에서 멀어(1.5 넘음) 앞 칸이 닿으면 앞으로 간다
+  const armchair = { part: 'armchair', x: 2, y: 2, rot: 0 };
+  assert.deepEqual(chooseSeatApproach(armchair, seatSpots(armchair)[0], stepsFrom({ '1,3': 0, '2,4': 3 })), [2, 4]);
 });
