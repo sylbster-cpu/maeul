@@ -248,7 +248,11 @@
   #catch-note[data-kind="record"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
   .catch-card.pop { animation: catch-pop 0.42s cubic-bezier(.2, 1.4, .4, 1) both; }
   @keyframes catch-pop { from { transform: translateX(-50%) scale(0.55); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
-  @media (prefers-reduced-motion: reduce) { .catch-card.pop { animation: none; } }
+  /* 크기 숫자는 카드가 뜬 뒤 한 번 튀어나왔다 들어간다 (1.45배 → 1배, 약 0.15초) */
+  #catch-size { display: inline-block; transform-origin: left bottom; }
+  .catch-card.pop #catch-size { animation: size-pop 0.16s 0.12s ease-out both; }
+  @keyframes size-pop { from { transform: scale(1.45); } to { transform: scale(1); } }
+  @media (prefers-reduced-motion: reduce) { .catch-card.pop, .catch-card.pop #catch-size { animation: none; } }
 
 
   .loading {

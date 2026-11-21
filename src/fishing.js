@@ -16,6 +16,11 @@ export const FISH_ORDER = Object.keys(FISH);
 
 // 찌가 완전히 잠긴 뒤 누를 수 있는 시간(초). 느린 휴대폰과 사람에게도 넉넉하게 둔다
 export const BITE_WINDOW = 1.0;
+// 진짜로 물기 직전의 잠잠한 시간(초). 이때 물고기 그림자가 흔들림을 멈추고 살짝 물러난다.
+// 진짜로 물기 전에만 오므로 속이는 신호가 아니다. 마지막으로 건드린 뒤 찌가 다 떠오른 다음에 시작하게
+// 마지막 건드림과 무는 때 사이를 HUSH_GAP 만큼은 띄운다
+export const HUSH = 0.4;
+export const HUSH_GAP = 0.75;
 
 // 물 위인지. pad 만큼 넓히거나(+) 좁힌(-) 타원으로 본다
 export function inWater(x, z, pad = 0) {
@@ -37,7 +42,8 @@ export function rollSize(fish, rng) {
 }
 
 // 입질 계획(초, 찌가 물에 닿은 때부터). 물고기가 다가오고(approach), 찌를 몇 번 건드린 뒤(nibbles),
-// 찌를 완전히 끌고 들어간다(bite). steady 는 한두 번 느긋하게, tricky 는 여러 번 잦게 건드린다
+// 찌를 완전히 끌고 들어간다(bite). steady 는 한두 번 느긋하게, tricky 는 여러 번 잦게 건드린다.
+// 마지막 건드림과 무는 때 사이는 잠잠한 시간(HUSH)이 들어가도록 HUSH_GAP 이상 띄운다
 export function planBite(fish, rng) {
   const tricky = FISH[fish].pattern === 'tricky';
   const approach = 1.2 + rng() * 1.8;
@@ -45,8 +51,17 @@ export function planBite(fish, rng) {
   const gap = () => (tricky ? 0.4 + rng() * 0.5 : 0.7 + rng() * 0.5);
   const nibbles = [];
   let t = approach;
-  for (let i = 0; i < count; i++) { nibbles.push(t); t += gap(); }
+  for (let i = 0; i < count; i++) { nibbles.push(t); const g = gap(); t += i === count - 1 ? Math.max(HUSH_GAP, g) : g; }
   return { fish, approach, nibbles, bite: t, window: BITE_WINDOW };
+}
+
+// 낚은 물고기의 무게감(0~1). 연출의 크기를 여기에 맞춘다: 크고 드문 물고기일수록 크게.
+// 크기는 송사리 3cm 에서 메기 90cm 까지 로그로 재고, 드문 정도를 조금 더한다. 판정과 기록에는 쓰지 않는다
+export function catchWeight(fish, size) {
+  const most = Math.max(...FISH_ORDER.map((id) => FISH[id].weight));
+  const bySize = Math.log(Math.max(size, 3) / 3) / Math.log(30);
+  const rarity = 1 - FISH[fish].weight / most;
+  return Math.min(1, Math.max(0, bySize * 0.8 + rarity * 0.2));
 }
 
 // t 초에 눌렀을 때. 'reeled' 물고기가 오기 전에 거둠, 'early' 건드릴 때 당김, 'caught' 낚음, 'late' 놓침

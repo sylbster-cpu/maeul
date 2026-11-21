@@ -40,6 +40,15 @@ export default async function fishingTour(page, { out, logs }) {
   await ready();
   const houseBefore = await g(() => JSON.stringify(window.__game.store.state));
 
+  // 0) 처음 화면에서 빛과 움직임으로 연못을 알린다 (반짝임, 잠자리, 멀리 있을 때 가끔 뛰는 물고기)
+  const guided = await page.waitForFunction(() => window.__game.fishing.fx.glints.length > 0 && window.__game.fishing.fx.jumps > 0, null, { timeout: 20000, polling: 200 }).then(() => true).catch(() => false);
+  const guide = await g(() => {
+    const fx = window.__game.fishing.fx;
+    const on = (p) => { const q = window.__game.view.screenPoint(p.x, p.z); return q.x >= 0 && q.x <= innerWidth && q.y >= 0 && q.y <= innerHeight; };
+    return { glints: fx.glints.length, fliesOnScreen: fx.dragonflies.filter(on).length, jumps: fx.jumps };
+  });
+  say('처음 화면에서 반짝임과 잠자리, 뛰는 물고기로 연못을 알린다', guided && guide.fliesOnScreen >= 1, JSON.stringify(guide));
+
   // 1) 멀리서 물을 누르면 물가로 걸어가 던진다
   await g(() => { window.__game.character.teleport(20.5, 12.5); window.__game.view.snapFocus(20.5, 12.5); });
   await setRandom(0.05);
@@ -61,9 +70,16 @@ export default async function fishingTour(page, { out, logs }) {
   say('낚은 물고기와 크기를 화면 가운데 카드로 알린다', card.shown && card.name === '송사리' && card.size === '3cm' && card.note.includes('처음 잡은'), JSON.stringify(card));
   say('낚시하는 동안 카메라가 물가와 찌를 가까이 본다', closeAtBite > 0.9, String(closeAtBite));
   say('낚을 때 누른 것으로 걷지 않는다', !(await g(() => window.__game.character.walking)));
-  await page.waitForTimeout(150);
+  const fx2 = await g(() => ({ hushedAt: window.__game.fishing.hushedAt, bite: window.__game.fishing.plan.bite, fx: window.__game.fishing.fx }));
+  say('진짜로 물기 직전에 잠잠해진다', fx2.hushedAt !== null && fx2.bite - fx2.hushedAt > 0.3 && fx2.bite - fx2.hushedAt <= 0.4 + 1e-9, JSON.stringify([fx2.hushedAt, fx2.bite]));
+  say('낚아챈 순간 멈춤·흰 번쩍·흔들림·물보라가 함께 온다', fx2.fx.catches === 1 && fx2.fx.freeze > 0 && fx2.fx.shake > 0 && fx2.fx.splash > 0, JSON.stringify({ weight: fx2.fx.weight, freeze: fx2.fx.freeze, shake: fx2.fx.shake, splash: fx2.fx.splash }));
+  // 손에 떨어진 뒤 퍼덕임이 차츰 줄어드는지 게임 시계(들고 있은 시간)로 본다. 첫 값은 화면을 찍기 전에 잰다
+  const flapA = await page.waitForFunction(() => { const f = window.__game.fishing.fx; return f.flapAmp > 0 ? { amp: f.flapAmp, hold: f.holdTime } : null; }, null, { timeout: 10000, polling: 'raf' }).then((h) => h.jsonValue()).catch(() => null);
   await page.screenshot({ path: `${out}-3-caught.png` });
+  const flapB = flapA && await page.waitForFunction((h) => { const f = window.__game.fishing.fx; return f.holdTime >= h + 0.8 ? { amp: f.flapAmp, hold: f.holdTime } : null; }, flapA.hold, { timeout: 10000, polling: 'raf' }).then((h) => h.jsonValue()).catch(() => null);
+  say('머리 위 물고기의 퍼덕임이 차츰 줄어든다', !!flapB && flapB.amp < flapA.amp * 0.4, JSON.stringify({ flapA, flapB }));
   await waitPhase('idle', 10000);
+  const jumpsNear = await g(() => window.__game.fishing.fx.jumps);
   say('결과를 보인 뒤 카드가 사라지고, 물가에 있는 동안 카메라는 가까이 둔다', (await g(() => document.getElementById('catch-card').hidden)) && (await g(() => window.__game.view.closeAmount)) > 0.9);
 
   // 3) 건드릴 때 누르면 너무 이르다
@@ -96,6 +112,8 @@ export default async function fishingTour(page, { out, logs }) {
   s = await fishState();
   say('물고기가 오기 전에 누르면 찌를 거둔다', s.last?.verdict === 'reeled' && (await toast()).includes('거두었습니다'), JSON.stringify(s.last));
   await waitPhase('idle', 10000);
+  // 가까이서 뛰는 물고기는 던질 곳을 고르는 단서처럼 보일 수 있으므로 연못가에서는 뛰지 않는다
+  say('연못가에서 낚시하는 동안에는 물고기가 뛰지 않는다', (await g(() => window.__game.fishing.fx.jumps)) === jumpsNear);
 
   // 6) 다른 탭이 남긴 기록을 지우지 않는다. 처음 잡은 날은 한국 날짜다
   await g(() => {
@@ -111,6 +129,8 @@ export default async function fishingTour(page, { out, logs }) {
   const kst = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
   say('다른 탭에서 남긴 기록과 함께 저장한다', s.log.carp?.count === 1 && s.log.catfish?.count === 3 && s.log.medaka?.count === 1, JSON.stringify(s.log));
   say('처음 잡은 날은 한국 날짜다', s.log.carp?.first === kst, s.log.carp?.first);
+  const fx6 = await g(() => window.__game.fishing.fx);
+  say('큰 물고기일수록 멈춤·흔들림·물보라·나는 시간이 크다', fx6.weight > fx2.fx.weight + 0.3 && fx6.freeze > fx2.fx.freeze && fx6.shake > fx2.fx.shake && fx6.splash > fx2.fx.splash && fx6.leapTime > fx2.fx.leapTime, JSON.stringify({ medaka: fx2.fx.weight, carp: fx6.weight }));
   // 게임 시계로 0.6초를 기다린다. 화면 수가 적은 환경에서는 게임 시계가 실제 시간보다 느리다
   await page.waitForFunction(() => window.__game.fishing.phase === 'result' && window.__game.fishing.elapsed >= 0.6, null, { timeout: 10000, polling: 'raf' }).catch(() => {});
   await pull();

@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  FISH, FISH_ORDER, BITE_WINDOW, inWater, rollFish, rollSize, planBite, judge, kstDay,
+  FISH, FISH_ORDER, BITE_WINDOW, HUSH, HUSH_GAP, inWater, rollFish, rollSize, planBite, judge, kstDay, catchWeight,
   createFishingState, createFishingStore, validate, apply, inverseOf,
   serializeFishing, parseFishing, createFishingSaver, FISHING_KEY, FISHING_VERSION,
 } from '../src/fishing.js';
@@ -52,11 +52,24 @@ test('입질 계획: 느긋한 물고기는 한두 번, 까다로운 물고기�
       assert.ok(p.approach >= 1.2 && p.approach <= 3);
       assert.equal(p.nibbles[0], p.approach);
       for (let i = 1; i < p.nibbles.length; i++) assert.ok(p.nibbles[i] - p.nibbles[i - 1] >= 0.4 - 1e-9);
-      assert.ok(p.bite - p.nibbles[p.nibbles.length - 1] >= 0.4 - 1e-9);
+      assert.ok(p.bite - p.nibbles[p.nibbles.length - 1] >= HUSH_GAP - 1e-9, '물기 직전에 잠잠한 시간이 들어간다');
       assert.equal(p.window, BITE_WINDOW);
     }
   }
   assert.ok(BITE_WINDOW >= 0.8, '느린 기기에도 넉넉하다');
+  // 잠잠함은 마지막 건드림(찌가 떠오르는 데 0.3초)이 끝난 뒤에 시작한다
+  assert.ok(HUSH_GAP - HUSH >= 0.3 && HUSH >= 0.3 && HUSH <= 0.5);
+});
+
+test('무게감: 크고 드문 물고기일수록 크다. 0~1 안이다', () => {
+  for (const id of FISH_ORDER) {
+    const small = catchWeight(id, FISH[id].min), big = catchWeight(id, FISH[id].max);
+    assert.ok(small >= 0 && big <= 1 && small < big, id);
+  }
+  assert.ok(catchWeight('medaka', 6) < catchWeight('crucian', 12));
+  assert.ok(catchWeight('crucian', 32) < catchWeight('carp', 35));
+  assert.ok(catchWeight('carp', 60) < catchWeight('catfish', 60), '같은 크기면 드문 쪽이 크다');
+  assert.ok(catchWeight('medaka', 3) < 0.1 && catchWeight('catfish', 90) > 0.9);
 });
 
 test('누른 때의 판정', () => {

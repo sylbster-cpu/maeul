@@ -2,14 +2,14 @@
 // 흐름: idle → walk(물가로) → cast(던짐) → wait(다가오고 건드림) → bite(잠김) → result → idle
 // 기록은 fishing.js 의 명령으로만 바꾸고, 집 저장과 다른 열쇠에 둔다.
 import {
-  FISH, inWater, rollFish, rollSize, planBite, judge, kstDay,
+  FISH, HUSH, inWater, rollFish, rollSize, planBite, judge, kstDay, catchWeight,
   createFishingStore, createFishingSaver, FISHING_KEY,
 } from './fishing.js';
 import { POND } from './parts.js';
 
 const CAST_TIME = 0.5;
 const RESULT_TIME = 0.8; // 놓쳤을 때 결과를 보이는 시간
-const CATCH_TIME = 2.0; // 낚은 물고기를 들어 보이는 시간
+const CATCH_TIME = 2.0; // 낚은 물고기를 들어 보이는 시간. 무거운 물고기는 조금 더 길게 본다
 const SKIP_AFTER = 0.5; // 결과를 보이는 중 이만큼 지나 누르면 바로 넘어간다
 const REACH = 3.2; // 찌를 던지는 가장 먼 거리
 const SHORE = 1.4; // 물가에서 이만큼 안에 서 있어야 던질 수 있다
@@ -33,6 +33,7 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
   let size = 0;
   let aim = null;
   let nibbles = 0;
+  let hushedAt = null; // 물기 직전 잠잠해진 때 (자동 시험이 읽는다)
   let wasNear = false;
   let stand = null; // 던진 자리. 걸어서 떠나기 전까지 카메라가 물가와 찌 사이를 가까이 본다
   let resultTime = RESULT_TIME;
@@ -76,6 +77,7 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
     plan = planBite(fish, random);
     size = rollSize(fish, random);
     nibbles = 0;
+    hushedAt = null;
     stand = { x: character.pos.x, z: character.pos.z };
     pondView.cast(spot);
     audio.play('cast');
@@ -96,6 +98,7 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
     if (verdict === 'caught') {
       const fish = plan.fish;
       const label = FISH[fish].label;
+      const weight = catchWeight(fish, size);
       const was = store.state.log[fish];
       const saved = record({ type: 'recordCatch', fish, size, day: kstDay(now()) });
       const note = !was ? '처음 잡은 물고기입니다' : size > was.best ? '최고 기록입니다' : '';
@@ -103,10 +106,12 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
       if (catchCard) catchCard.show({ label, size, note });
       else ui.toast(`${label}${objectParticle(label)} 낚았습니다! ${size}cm. ${note}`);
       if (!saved) ui.toast('이 브라우저에서는 낚시 기록이 저장되지 않습니다', 'error');
-      pondView.catchFish(fish, size);
-      audio.play('catch');
-      buzz([30, 40, 30]);
-      resultTime = CATCH_TIME;
+      // 낚아챈 바로 그 순간에 신호를 몰아 준다: 멈춤·흰 번쩍·흔들림·물보라(pondView), 묵직한 소리, 진동.
+      // 크기는 무게감에 맞춘다. 송사리는 가볍게, 메기는 크게. 가락은 물고기가 손에 떨어질 때 울린다
+      pondView.catchFish(fish, size, weight, () => audio.play('catch', { pitch: 1.12 - 0.2 * weight }));
+      audio.play('hook', { pitch: 1.4 - 0.65 * weight, gain: 0.65 + 0.55 * weight });
+      buzz(weight < 0.35 ? [25] : weight < 0.7 ? [35, 30, 35] : [55, 35, 70]);
+      resultTime = CATCH_TIME + 0.3 * weight;
     } else {
       ui.toast({
         reeled: '찌를 거두었습니다',
@@ -130,6 +135,8 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
     get last() { return last; },
     get plan() { return plan; },
     get nibbled() { return nibbles; },
+    get hushedAt() { return hushedAt; },
+    get fx() { return pondView.fx; }, // 연출 상태 (자동 시험이 읽는다)
     get elapsed() { return t; }, // 지금 단계에 들어선 뒤 흐른 게임 시간(초). 찌가 물에 닿은 뒤로는 입질 계획과 같은 시계다
     // 자동 시험이 물고기와 입질을 정해 둘 때 쓴다
     setRandom(fn) { random = fn; },
@@ -182,6 +189,8 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
       }
       if (phase === 'wait') {
         while (nibbles < plan.nibbles.length && t >= plan.nibbles[nibbles]) { nibbles++; pondView.nibble(); audio.play('nibble'); buzz(12); }
+        // 진짜로 물기 직전에는 잠잠해진다. 마지막 건드림과 무는 때 사이는 규칙이 띄워 둔다(fishing.js HUSH_GAP)
+        if (hushedAt === null && t >= plan.bite - HUSH) { hushedAt = t; pondView.hush(); }
         // 찌가 물에 닿은 때부터 재므로 시간을 되돌리지 않고 이어 간다
         if (t >= plan.bite) { phase = 'bite'; pondView.bite(); audio.play('bite'); buzz([70, 30, 70]); onChange(); }
         return;

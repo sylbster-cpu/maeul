@@ -13,8 +13,11 @@ const SOUNDS = {
   splash: [{ noise: 1000, len: 0.16, gain: 0.18 }],
   nibble: [tone(980, 620, 0.07, 'sine', 0.16), { noise: 2600, len: 0.05, gain: 0.08 }],
   bite: [{ noise: 650, len: 0.4, gain: 0.42 }, tone(320, 110, 0.3, 'triangle', 0.2)],
-  catch: [{ noise: 900, len: 0.25, gain: 0.25 }, tone(523, 523, 0.1, 'triangle', 0.16, 0.08),
-    tone(659, 659, 0.1, 'triangle', 0.16, 0.18), tone(784, 1046, 0.26, 'triangle', 0.18, 0.28)],
+  // 낚아챈 바로 그 순간: 묵직한 '툭'과 물이 찢기는 소리. 물고기가 클수록 낮고 크게 낸다(play 의 pitch, gain)
+  hook: [tone(210, 62, 0.16, 'sine', 0.42), { noise: 760, len: 0.22, gain: 0.3 }, { noise: 2400, len: 0.06, gain: 0.12 }],
+  // 물고기가 머리 위 손에 떨어질 때: 철썩 한 번과 짧은 가락
+  catch: [tone(300, 170, 0.07, 'triangle', 0.16), tone(523, 523, 0.1, 'triangle', 0.15, 0.06),
+    tone(659, 659, 0.1, 'triangle', 0.15, 0.16), tone(784, 1046, 0.26, 'triangle', 0.17, 0.26)],
   miss: [tone(330, 200, 0.22, 'sine', 0.12)],
 };
 
@@ -29,10 +32,11 @@ export function createAudio() {
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     return noise;
   }
-  function part(p, now) {
+  // pitch 는 높이를, loud 는 크기를 곱한다
+  function part(p, now, pitch = 1, loud = 1) {
     const start = now + (p.at || 0);
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(p.gain, start);
+    gain.gain.setValueAtTime(Math.min(0.6, p.gain * loud), start);
     gain.gain.exponentialRampToValueAtTime(0.0008, start + p.len);
     let source;
     if (p.noise) {
@@ -40,14 +44,14 @@ export function createAudio() {
       source.buffer = noiseBuffer();
       const filter = ctx.createBiquadFilter();
       filter.type = 'bandpass';
-      filter.frequency.setValueAtTime(p.noise, start);
+      filter.frequency.setValueAtTime(p.noise * pitch, start);
       filter.Q.value = 0.9;
       source.connect(filter).connect(gain);
     } else {
       source = ctx.createOscillator();
       source.type = p.type;
-      source.frequency.setValueAtTime(p.from, start);
-      source.frequency.exponentialRampToValueAtTime(p.to, start + p.len);
+      source.frequency.setValueAtTime(p.from * pitch, start);
+      source.frequency.exponentialRampToValueAtTime(p.to * pitch, start + p.len);
       source.connect(gain);
     }
     gain.connect(ctx.destination);
@@ -61,11 +65,12 @@ export function createAudio() {
       if (ctx) return;
       try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch { ctx = null; }
     },
-    play(name) {
+    // pitch: 높이를 곱한다(1 보다 작으면 낮게). gain: 크기를 곱한다
+    play(name, { pitch = 1, gain = 1 } = {}) {
       if (muted || !ctx || !SOUNDS[name]) return;
       if (ctx.state === 'suspended') ctx.resume().catch(() => {});
       const now = ctx.currentTime;
-      for (const p of SOUNDS[name]) part(p, now);
+      for (const p of SOUNDS[name]) part(p, now, pitch, gain);
     },
   };
 }
