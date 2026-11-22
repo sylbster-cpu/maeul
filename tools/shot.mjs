@@ -26,12 +26,16 @@ await page.route('https://cdn.jsdelivr.net/npm/three@0.170.0/**', (route) => {
 await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
 await page.goto(`http://localhost:${port}${urlPath}`);
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 30000 }).catch(() => logs.push('[shot] __ready 신호 없음'));
-if (scriptFile) {
-  const mod = await import(path.resolve(scriptFile));
-  await mod.default(page, { out, logs });
-} else {
-  await page.waitForTimeout(400);
-  await page.screenshot({ path: out });
+try {
+  if (scriptFile) {
+    const mod = await import(path.resolve(scriptFile));
+    await mod.default(page, { out, logs });
+  } else {
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: out });
+  }
+} finally {
+  // 시험이 도중에 멈춰도 그때까지의 통과·실패 기록을 남긴다 (어디서 멈췄는지 보이게)
+  for (const l of logs) console.log(l);
 }
-for (const l of logs) console.log(l);
 await browser.close();
