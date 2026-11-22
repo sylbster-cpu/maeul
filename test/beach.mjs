@@ -1,4 +1,5 @@
-// 바닷가: 마당 남쪽으로 걸어 나가 모래사장에 서고, 바다에는 들어가지 않으며, 바다에 던져 바다 물고기를 낚는다.
+// 바닷가와 넓힌 바깥: 마당 남쪽으로 걸어 나가 모래사장에 서고, 바다에는 들어가지 않으며, 바다에 던져 바다 물고기를 낚는다.
+// 둘레의 나무 곁까지 걸어가되 줄기는 지나가지 못한다.
 // 실제 터치 흉내로 걷고 던지고 당긴다. 물고기와 입질은 setRandom 으로 정해 둔다. 실제 휴대폰의 손맛을 대신하지는 않는다.
 //   TOUCH=1 node tools/shot.mjs / shots/beach 390 844 test/beach.mjs
 export default async function beachTour(page, { out, logs }) {
@@ -110,7 +111,31 @@ export default async function beachTour(page, { out, logs }) {
   const w2 = await g(() => window.__game.view.beach);
   say('파도가 움직인다', Math.abs(w1.crestZ - w2.crestZ) > 0.05 || Math.abs(w1.foamZ - w2.foamZ) > 0.02, JSON.stringify({ w1, w2 }));
 
-  // 7) 집은 바뀌지 않고, 낚시 기록은 2판으로 저장되며, 바닷가에서 새로 고쳐도 그 자리에서 시작한다
+  // 7) 넓힌 바깥: 둘레의 나무 곁까지 걸어가고, 줄기는 지나가지 못한다 (2026-11-22 사용자 결정)
+  // 좁은 휴대폰 화면에서도 나무가 화면 안에 들어오게, 캐릭터와 나무 사이를 본다
+  await g(() => { window.__game.character.teleport(-1.5, 21); window.__game.view.snapFocus(-4, 22); });
+  await g(() => {
+    // 걷는 동안 나무줄기 (-6.5, 23.5) 에 가장 가까웠던 거리를 잰다
+    window.__trunk = { min: Infinity };
+    const step = () => {
+      const p = window.__game.character.pos;
+      window.__trunk.min = Math.min(window.__trunk.min, Math.hypot(p.x + 6.5, p.z - 23.5));
+      if (!window.__trunk.done) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+  await groundTap(-6.5, 23.2);
+  await page.waitForFunction(() => !window.__game.character.walking, null, { timeout: 15000, polling: 200 }).catch(() => {});
+  const trunk = await g(() => { window.__trunk.done = true; const p = window.__game.character.pos; const q = window.__game.view.screenPoint(-6.5, 23.2); return { min: window.__trunk.min, end: Math.hypot(p.x + 6.5, p.z - 23.5), p: { ...p }, screen: { x: Math.round(q.x), y: Math.round(q.y), w: innerWidth } }; });
+  say('마당 둘레 밖의 나무 곁까지 걸어간다', trunk.end < 1.6, JSON.stringify(trunk));
+  say('나무줄기는 지나가지 못한다', trunk.min > 0.5 + 0.34 - 0.06, JSON.stringify(trunk));
+  await frames(20);
+  const see = await g(() => window.__game.view.trees.find((t) => t.x === -6.5 && t.z === 23.5)?.see);
+  const others = await g(() => Math.min(...window.__game.view.trees.filter((t) => !(t.x === -6.5 && t.z === 23.5)).map((t) => t.see)));
+  say('나무 뒤에 서면 그 나무의 잎이 비쳐 캐릭터가 보인다', see < 0.6 && others > 0.95, JSON.stringify({ see, others }));
+  await page.screenshot({ path: `${out}-5-tree.png` });
+
+  // 8) 집은 바뀌지 않고, 낚시 기록은 2판으로 저장되며, 바닷가에서 새로 고쳐도 그 자리에서 시작한다
   say('바다 낚시는 집의 상태를 바꾸지 않는다', (await g(() => JSON.stringify(window.__game.store.state))) === houseBefore);
   const saved = await g(() => JSON.parse(localStorage.getItem('house-lab-web:fishing')));
   say('낚시 기록은 2판으로 저장된다', saved.version === 2 && saved.log.goby?.count === 1, JSON.stringify(saved));

@@ -1,6 +1,6 @@
 // 캐릭터. 걷기, 가구와 집에 대한 충돌, 누른 곳까지 길 찾기, 의자에 앉기. 마당과 방을 오간다.
 import * as THREE from './three.js';
-import { PARTS, OUTDOOR, HOUSE_CENTER_X, MAT_X, LEVELS } from './parts.js';
+import { PARTS, OUTDOOR, TREES, TREE_RADIUS, HOUSE_CENTER_X, MAT_X, LEVELS } from './parts.js';
 import { footprint, cellKey, layerOf, houseRect, seatSpots, chooseSeatApproach } from './state.js';
 import { inWater } from './fishing.js';
 import { wobble, squash } from './fx.js';
@@ -106,11 +106,15 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
     }
   });
 
+  // 나무줄기에 r 만큼 가까운지 (마당에서만)
+  const nearTrunk = (x, z, r) => TREES.some(([tx, tz]) => Math.hypot(x - tx, z - tz) < TREE_RADIUS + r);
+
   function blocked(x, z, r = RADIUS) {
     if (place === 'yard') {
-      // 마당과 그 둘레, 남쪽 바닷가까지 걸을 수 있다(parts.js OUTDOOR)
+      // 마당과 그 둘레(나무 곁까지), 남쪽 바닷가까지 걸을 수 있다(parts.js OUTDOOR)
       if (x < OUTDOOR.x0 || z < OUTDOOR.z0 || x > OUTDOOR.x1 || z > OUTDOOR.z1) return true;
       if (inWater(x, z, r)) return true; // 연못과 바다에는 들어가지 않는다
+      if (nearTrunk(x, z, r)) return true; // 나무줄기는 지나가지 못한다
     } else {
       const [w, h] = roomSize();
       // 현관 깔개 쪽으로는 벽 밖까지 한 걸음 나갈 수 있다 (나가는 자리)
@@ -134,11 +138,12 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
     return true;
   }
 
-  // 가구나 집, 연못이 차지해 걸을 수 없는 칸인지. 연못은 칸 가운데에 설 수 없으면 걸을 수 없는 칸이다
+  // 가구나 집, 물, 나무줄기가 차지해 걸을 수 없는 칸인지. 물과 줄기는 칸 가운데에 설 수 없으면 걸을 수 없는 칸이다
   function solidCell(cx, cy) {
     if (store.derived.occ[place].furniture.has(cellKey(cx, cy))) return true;
     if (place !== 'yard') return false;
     if (inWater(cx + 0.5, cy + 0.5, RADIUS)) return true;
+    if (nearTrunk(cx + 0.5, cy + 0.5, RADIUS)) return true;
     const house = houseRect(store.state.house.level);
     return cx >= house.x0 && cx < house.x0 + house.w && cy >= house.z0 && cy < house.z0 + house.d;
   }

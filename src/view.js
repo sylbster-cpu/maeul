@@ -3,7 +3,7 @@
 import * as THREE from './three.js';
 import { createFx, wobble, squash } from './fx.js';
 import { createBeachView } from './beach-view.js';
-import { PARTS, WALL_HEIGHT, YARD, HOUSE_CENTER_X, MAT_X, WINDOW_X, LEVELS, FLOORS, WALLPAPERS, ROOFS, SIDINGS, DOORS } from './parts.js';
+import { PARTS, WALL_HEIGHT, YARD, TREES, HOUSE_CENTER_X, MAT_X, WINDOW_X, LEVELS, FLOORS, WALLPAPERS, ROOFS, SIDINGS, DOORS } from './parts.js';
 import { footprint, layerOf, houseRect, cellKey } from './state.js';
 
 const ELEVATION = THREE.MathUtils.degToRad(36);
@@ -80,7 +80,8 @@ export function createView({ canvas, assets, store }) {
   sun.target.position.copy(yardCenter);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  const reach = Math.max(YARD.w, YARD.h) * 0.85;
+  // 그림자를 그리는 범위. 둘레의 나무 곁까지 걸어가도 캐릭터의 그림자가 보이게 넓혔다(2026-11-22)
+  const reach = Math.max(YARD.w, YARD.h) * 1.15;
   Object.assign(sun.shadow.camera, { left: -reach, right: reach, top: reach, bottom: -reach, near: 1, far: 120 });
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.04;
@@ -138,8 +139,8 @@ export function createView({ canvas, assets, store }) {
   const leafMats = [0x4f9d5d, 0x62ad62, 0x3f8f58].map((color) => flat(color, { roughness: 1, flatShading: true }));
   const trunkGeo = new THREE.CylinderGeometry(0.28, 0.36, 1.6, 6);
   const leafGeo = new THREE.IcosahedronGeometry(1.5, 0);
-  // 남쪽 바닷가(2026-11-22)를 만들며 바다와 모래사장에 있던 나무 넷을 뭍으로 옮겼다
-  const treeSpots = [[-7, -6], [-9, 5], [-8, 15], [-6.5, 23.5], [4, -8], [15, -9], [27, -7], [31, 2], [33, 14], [31.5, 23.5], [-11.5, 20], [36, 21], [12, -12.5], [-11, -11], [35, -10]];
+  // 나무 자리는 parts.js 의 TREES (걷기와 함께 쓴다). 남쪽 바닷가(2026-11-22)를 만들며 넷을 뭍으로 옮겼다
+  const treeSpots = TREES;
   // 나무는 저마다 다른 박자로 아주 조금 흔들리고(생동감), 캐릭터가 스쳐 지나가면 크게 흔들렸다 잦아들며
   // 잎을 몇 장 떨군다(따라오기: 줄기보다 위쪽 잎이 늦게, 더 크게)
   const trees = [];
@@ -147,10 +148,11 @@ export function createView({ canvas, assets, store }) {
     const tree = new THREE.Group();
     const trunk = new THREE.Mesh(trunkGeo, trunkMat);
     trunk.position.y = 0.8;
-    const crown = new THREE.Mesh(leafGeo, leafMats[i % 3]);
+    // 잎은 나무마다 따로 칠한다. 캐릭터가 나무 뒤에 서면 그 나무의 잎만 비쳐 보이게 하려고
+    const crown = new THREE.Mesh(leafGeo, Object.assign(leafMats[i % 3].clone(), { transparent: true }));
     crown.position.y = 2.6;
     crown.rotation.set(i, i * 2.1, 0);
-    const top = new THREE.Mesh(leafGeo, leafMats[(i + 1) % 3]);
+    const top = new THREE.Mesh(leafGeo, Object.assign(leafMats[(i + 1) % 3].clone(), { transparent: true }));
     top.position.set(0.3, 3.9, -0.2);
     top.scale.setScalar(0.62);
     top.rotation.set(i * 1.3, i, 0);
@@ -158,7 +160,7 @@ export function createView({ canvas, assets, store }) {
     tree.position.set(x, 0, z);
     tree.scale.setScalar(0.85 + ((i * 37) % 10) / 22);
     outside.add(tree);
-    trees.push({ crown, top, crownRot: crown.rotation.clone(), topRot: top.rotation.clone(), x, z, phase: i * 1.7, near: false, rustle: 9, color: leafMats[i % 3].color.getHex() });
+    trees.push({ crown, top, crownRot: crown.rotation.clone(), topRot: top.rotation.clone(), x, z, phase: i * 1.7, near: false, rustle: 9, color: leafMats[i % 3].color.getHex(), see: 1, size: tree.scale.x });
   });
 
   // 마당 남쪽의 바닷가: 모래사장, 바다, 파도 (src/beach-view.js)
@@ -737,6 +739,7 @@ export function createView({ canvas, assets, store }) {
     bump(id, amount = 0.06) { pop({ id }, { kind: 'bump', amount }); },
     // 연출 상태 (자동 시험이 읽는다)
     get beach() { return beach.waves; }, // 바닷가 파도 (자동 시험이 읽는다)
+    get trees() { return trees.map((t) => ({ x: t.x, z: t.z, see: t.see })); }, // 나무 잎이 비치는 정도 (자동 시험이 읽는다)
     get feel() {
       return { ...counts, pops: [...pops.entries()].map(([id, p]) => ({ id, kind: p.kind, landed: !!p.landed })), vanishing: vanishing.length, nope: nopeT < 0.4, houseBump: !!houseBump, particles: fx.count, rustling: trees.filter((t) => t.rustle < 0.5).length, door: doorAngle };
     },
@@ -805,9 +808,18 @@ export function createView({ canvas, assets, store }) {
         doorHinge.rotation.y = doorAngle;
       }
       if (place === 'yard') {
+        // 카메라가 있는 쪽 (땅 위의 방향)
+        const camX = Math.sin(cam.azimuth), camZ = Math.cos(cam.azimuth);
         for (const tr of trees) {
-          // 나무는 걸을 수 있는 둘레 바깥에 있다. 둘레 끝을 따라 걸으면 닿는 거리로 잰다
+          // 가까이(4.4) 지나가면 흔들린다. 2026-11-22부터 나무 곁까지 걸어갈 수 있다
           const near = Math.hypot(who.x - tr.x, who.z - tr.z) < 4.4;
+          // 캐릭터가 나무 뒤(카메라 반대쪽)에 서서 잎에 가리면 그 나무의 잎을 비쳐 보이게 한다
+          const dx = tr.x - who.x, dz = tr.z - who.z;
+          const along = dx * camX + dz * camZ, side = Math.abs(dx * camZ - dz * camX);
+          const hidden = along > -0.8 && along < 4.6 * tr.size && side < 1.8 * tr.size;
+          tr.see += ((hidden ? 0.35 : 1) - tr.see) * (calm ? 1 : Math.min(1, dt * 8));
+          tr.crown.material.opacity = tr.top.material.opacity = tr.see;
+          tr.crown.material.depthWrite = tr.top.material.depthWrite = tr.see > 0.99;
           if (near && !tr.near && !calm) { tr.rustle = 0; fx.leaf(tr.x, 3.2, tr.z, tr.color, { count: 3, parent: outside }); }
           tr.near = near;
           tr.rustle += dt;

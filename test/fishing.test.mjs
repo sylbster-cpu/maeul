@@ -6,7 +6,7 @@ import {
   createFishingState, createFishingStore, validate, apply, inverseOf,
   serializeFishing, parseFishing, createFishingSaver, FISHING_KEY, FISHING_VERSION,
 } from '../src/fishing.js';
-import { POND, YARD, YARD_MARGIN, BEACH, OUTDOOR, shoreZ } from '../src/parts.js';
+import { POND, YARD, YARD_MARGIN, BEACH, OUTDOOR, shoreZ, TREES, TREE_RADIUS } from '../src/parts.js';
 
 // 정해진 수를 차례로 돌려주는 가짜 우연
 const seq = (...values) => { let i = 0; return () => values[i++ % values.length]; };
@@ -67,6 +67,18 @@ test('바닷가: 바다는 마당·연못과 겹치지 않고, 모래사장은 �
   assert.ok(POND.z + POND.rz < BEACH.sand, '연못은 모래사장보다 북쪽');
   assert.deepEqual(WATER_ORDER, ['pond', 'sea']);
   assert.equal(WATERS.sea.label, '바다');
+});
+
+test('나무: 모두 걸을 수 있는 범위 안에 있고, 마당 칸·물과 겹치지 않으며, 둘레로 걸어 돌 수 있다', () => {
+  for (const [x, z] of TREES) {
+    assert.ok(x - TREE_RADIUS - 1 > OUTDOOR.x0 && x + TREE_RADIUS + 1 < OUTDOOR.x1, `${x},${z}: 동서로 범위 안, 곁을 지날 틈`);
+    assert.ok(z - TREE_RADIUS - 1 > OUTDOOR.z0 && z + TREE_RADIUS + 1 < shoreZ(x), `${x},${z}: 남북으로 범위 안, 물가선보다 북쪽`);
+    assert.equal(waterAt(x, z, TREE_RADIUS + 0.5), null, `${x},${z}: 물과 떨어져 있다`);
+    const inYard = x + TREE_RADIUS > 0 && x - TREE_RADIUS < YARD.w && z + TREE_RADIUS > 0 && z - TREE_RADIUS < YARD.h;
+    assert.equal(inYard, false, `${x},${z}: 마당 칸(가구를 놓는 곳) 밖`);
+  }
+  // 바닷가는 남쪽이고, 나머지 세 쪽은 마당 둘레(3칸)보다 넓다
+  assert.ok(OUTDOOR.x0 < -YARD_MARGIN && OUTDOOR.z0 < -YARD_MARGIN && OUTDOOR.x1 > YARD.w + YARD_MARGIN);
 });
 
 test('입질 계획: 느긋한 물고기는 한두 번, 까다로운 물고기는 여러 번 건드린 뒤 문다. 누를 시간은 모두 같다', () => {

@@ -71,10 +71,10 @@ export function createBeachView({ parent, calm }) {
   crest.position.y = WATER_Y + 0.005;
   group.add(foam, crest);
 
-  // 바위 몇 개. 걷는 범위(x -3 ~ 27) 바깥 모래와 얕은 물에만 두어 길을 막지 않는다
+  // 바위 몇 개. 걷는 범위(parts.js OUTDOOR, x -14 ~ 38.5) 바깥 모래와 얕은 물에만 두어 길을 막지 않는다
   const rockMat = new THREE.MeshStandardMaterial({ color: 0x9a9890, roughness: 0.95, flatShading: true });
   const rockGeo = new THREE.DodecahedronGeometry(1, 0);
-  for (const [x, dz, s] of [[-6.5, -0.6, 0.9], [-8, 0.8, 0.6], [31, -0.4, 1.1], [33.5, 1.2, 0.7], [-13, 2.5, 1.3]]) {
+  for (const [x, dz, s] of [[-16.5, -0.6, 0.9], [-18, 0.8, 0.6], [40.5, -0.4, 1.1], [43, 1.2, 0.7], [-22, 2.5, 1.3]]) {
     const rock = new THREE.Mesh(rockGeo, rockMat);
     rock.position.set(x, 0.1 * s, shoreZ(x) + dz);
     rock.scale.set(s, s * 0.55, s * 0.85);
