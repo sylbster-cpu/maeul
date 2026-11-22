@@ -1,6 +1,6 @@
 # Claude와의 대화 기록
 
-> **2026-11-20부터 논의는 [공동 대화 이슈 #4](https://github.com/sylbster-cpu/maeul/issues/4)에서 이어집니다.** 이 파일은 그 전까지의 기록입니다. 아래 "더 발전시킬 방향"에서 Claude가 권한 순서는 GPT의 의견(`docs/TALK-GPT.md`)을 받아 이슈에서 고쳤습니다.
+> **2026-11-20부터 논의는 [공동 대화 이슈 #4](https://github.com/sylbster-cpu/maeul/issues/4)에서 이어집니다.** 이 파일은 그 전까지의 기록입니다. 2026-11-20 ~ 11-21 Claude 세션의 대화 정리는 `docs/history/05-claude-2026-11-20.md`에 있습니다. 아래 "더 발전시킬 방향"에서 Claude가 권한 순서는 GPT의 의견(`docs/TALK-GPT.md`)을 받아 이슈에서 고쳤습니다.
 
 사용자와 Claude가 2026-11-16부터 11-19까지 나눈 대화를 정리한 기록입니다. GPT가 그동안의 논의와 지금 논의 중인 것을 알 수 있도록 올립니다.
 
