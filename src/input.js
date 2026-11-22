@@ -189,6 +189,10 @@ export function createInput({ canvas, view, store, history, character, ui, audio
   let pinch = null;
   let locked = false; // 두 손가락 동작이 끝나고 남은 손가락은 아무 일도 하지 않는다
   const pinchDistance = () => { const [a, b] = [...touches.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+  // 낚시 중의 손가락 누름은 아주 잠깐(0.07초) 두 번째 손가락이 오는지 본 뒤에 줄을 당긴다. 두 손가락 확대를 시작하는
+  // 첫 손가락이 줄을 당기지 않게 하려는 것이다. 판정은 처음 닿은 때로 하므로 기다린 만큼 불리하지 않다
+  const PINCH_WAIT = 70;
+  let pendingPull = 0;
 
   function onDown(e) {
     audio.unlock();
@@ -196,6 +200,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
     if (e.button !== 0) return;
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (touches.size >= 2) {
+      if (pendingPull) { clearTimeout(pendingPull); pendingPull = 0; fishing?.cancelPress(); } // 확대이면 줄을 당기지 않는다
       if (s.drag?.type === 'pick') { s.carry = null; view.setHidden(null); syncUI(); }
       s.drag = null; s.press = null; history.end();
       pinch = { dist: pinchDistance() };
@@ -204,8 +209,17 @@ export function createInput({ canvas, view, store, history, character, ui, audio
       return;
     }
     canvas.setPointerCapture?.(e.pointerId);
-    // 낚시 중에는 누르는 순간 줄을 당긴다. 뗄 때까지 기다리면 그만큼 늦어진다. 이 누름으로는 걷지 않는다
-    if (s.mode === 'walk' && fishing?.holding) { fishing.pull(); s.press = null; s.pointer = null; return; }
+    // 낚시 중에는 누르는 순간을 판정에 쓴다. 뗄 때까지 기다리면 그만큼 늦어진다. 이 누름으로는 걷지 않는다.
+    // 손가락이면 두 번째 손가락이 오는지 잠깐 보고, 마우스는 바로 당긴다
+    if (s.mode === 'walk' && fishing?.holding) {
+      fishing.press();
+      if (e.pointerType === 'touch') {
+        clearTimeout(pendingPull);
+        pendingPull = setTimeout(() => { pendingPull = 0; fishing.commitPress(); }, PINCH_WAIT);
+      } else fishing.commitPress();
+      s.press = null; s.pointer = null;
+      return;
+    }
     const at = locate(e);
     s.pointer = at;
     s.press = { x: e.clientX, y: e.clientY };

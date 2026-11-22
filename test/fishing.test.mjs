@@ -175,3 +175,19 @@ test('저장소: 없으면 새 기록, 읽지 못하면 원본을 옆에 남긴�
   const failing = { getItem: () => null, setItem: () => { throw new Error('full'); } };
   assert.equal(createFishingSaver(failing).save(store.state), false);
 });
+
+test('저장소: 더 새로운 판의 기록은 망가진 것으로 보지 않고, 그 위에 덮어쓰지 않는다', () => {
+  const storage = memory();
+  const saver = createFishingSaver(storage);
+  const newer = JSON.stringify({ format: 'fishing-log', version: FISHING_VERSION + 1, log: { medaka: { best: 5, first: '2026-12-01', count: 9 } }, extra: '새 판의 자료' });
+  storage.setItem(FISHING_KEY, newer);
+  const loaded = saver.load();
+  assert.equal(loaded.ok, false);
+  assert.equal(loaded.newer, true);
+  assert.equal(storage.getItem(`${FISHING_KEY}:broken`), null, '옆에 옮기지 않는다 (망가진 기록을 위한 자리를 남긴다)');
+  assert.equal(saver.newerStored(), true);
+  const store = createFishingStore();
+  store.dispatch({ type: 'recordCatch', fish: 'crucian', size: 20, day: '2026-11-22' });
+  assert.equal(saver.save(store.state), false, '1판 기록으로 덮어쓰지 않는다');
+  assert.equal(storage.getItem(FISHING_KEY), newer, '새 판의 기록이 그대로 남는다');
+});

@@ -219,8 +219,9 @@ export default async function feel(page, { out, logs }) {
     const atDown = { before: await ticks() };
     const pullAt = await screenOf(27.5, 18.8);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Math.round(pullAt.x), y: Math.round(pullAt.y), id: 1 }] });
+    // 판정은 두 번째 손가락이 오는지 0.07초 본 뒤 매듭지어진다. 손가락을 댄 채로 그때까지 기다린다
+    atDown.verdict = await page.waitForFunction(() => (window.__game.fishing.pressPending ? null : window.__game.fishing.last?.verdict || 'none'), null, { timeout: 3000, polling: 'raf' }).then((h) => h.jsonValue()).catch(() => null);
     atDown.down = await ticks();
-    atDown.verdict = await g(() => window.__game.fishing.last?.verdict);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await page.waitForTimeout(150);
     atDown.up = await ticks();
