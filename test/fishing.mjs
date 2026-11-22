@@ -40,6 +40,23 @@ export default async function fishingTour(page, { out, logs }) {
     await page.waitForFunction(() => !window.__game.fishing.pressPending, null, { timeout: 3000, polling: 'raf' }).catch(() => {});
   };
   const ambience = () => g(() => window.__game.fishing.ambience);
+  // 끌어올리는 데 걸린 게임 시간과 그동안 누르고 있던 시간을 잰다. 시작해 두고 일을 일으킨 뒤 받는다
+  const startReelProbe = () => g(() => {
+    window.__reelProbe = new Promise((done) => {
+      let last = performance.now(), dur = 0, held = 0, seen = false;
+      const begin = performance.now();
+      const step = (now) => {
+        const dt = Math.min(0.05, (now - last) / 1000); last = now;
+        const f = window.__game.fishing;
+        if (f.phase === 'reel') { seen = true; dur += dt; if (f.reeling?.holding) held += dt; }
+        else if (seen) { done({ dur, held, time: null }); return; }
+        if (now - begin > 30000) { done({ dur, held, timeout: true }); return; }
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+  });
+  const reelProbe = () => g(() => window.__reelProbe);
   // r 하나로 물고기·입질·크기가 정해진다. 0.05 송사리(빨리 문다), 0.5 붕어, 0.75 잉어, 0.99 메기
   const setRandom = (r) => g((v) => window.__game.fishing.setRandom(() => v), r);
 
@@ -69,14 +86,20 @@ export default async function fishingTour(page, { out, logs }) {
 
   // 2) 찌가 완전히 잠길 때 누르면 낚는다
   const bit = await waitPhase('bite');
+  await startReelProbe();
   await pull(); // 누를 시간은 1.3초뿐이다. 화면 찍기는 누른 뒤에 한다
   const closeAtBite = await g(() => window.__game.view.closeAmount);
+  say('낚아채면 끌어올리기가 시작된다', (await phase()) === 'reel', await phase());
+  // 톡 누르고 뗐으므로 느리게 끌어올린다. 놓치지는 않는다. 카드는 다 끌어올린 뒤에 뜬다
+  const reelTap = await reelProbe();
+  await waitPhase('result', 10000);
   // 기록은 탭끼리 차례를 지켜(웹 잠금) 조금 뒤에 쓰인다
   await page.waitForFunction(() => window.__game.fishing.store.state.log.medaka?.count === 1, null, { timeout: 3000 }).catch(() => {});
   s = await fishState();
   say('찌가 잠길 때 누르면 낚는다', bit && s.last?.verdict === 'caught' && s.log.medaka?.count === 1, JSON.stringify(s.last));
   const card = await g(() => ({ shown: !document.getElementById('catch-card').hidden, name: document.getElementById('catch-name').textContent, size: document.getElementById('catch-size').textContent, note: document.getElementById('catch-note').textContent }));
-  say('낚은 물고기와 크기를 화면 가운데 카드로 알린다', card.shown && card.name === '송사리' && card.size === '3cm' && card.note.includes('처음 잡은'), JSON.stringify(card));
+  say('손을 떼도 놓치지 않고 천천히 끌어올린다', !reelTap.timeout && reelTap.held < 0.1 && reelTap.dur > 1.2, JSON.stringify(reelTap));
+  say('다 끌어올리면 낚은 물고기와 크기를 화면 가운데 카드로 알린다', card.shown && card.name === '송사리' && card.size === '3cm' && card.note.includes('처음 잡은'), JSON.stringify(card));
   say('낚시하는 동안 카메라가 물가와 찌를 가까이 본다', closeAtBite > 0.9, String(closeAtBite));
   say('낚을 때 누른 것으로 걷지 않는다', !(await g(() => window.__game.character.walking)));
   const fx2 = await g(() => ({ hushedAt: window.__game.fishing.hushedAt, bite: window.__game.fishing.plan.bite, fx: window.__game.fishing.fx }));
@@ -164,6 +187,7 @@ export default async function fishingTour(page, { out, logs }) {
   await waitPhase('bite');
   await pull();
   await page.waitForFunction(() => window.__game.fishing.store.state.log.carp?.count === 1, null, { timeout: 3000 }).catch(() => {});
+  await waitPhase('result', 15000); // 끌어올리기가 끝나면 카드가 뜬다
   const locks = await g(() => window.__locks || []);
   say('낚시 기록은 탭끼리 차례를 지켜(웹 잠금) 읽고 쓴다', lockable && locks.includes('house-lab-web:fishing'), JSON.stringify({ lockable, locks }));
   s = await fishState();
@@ -220,4 +244,20 @@ export default async function fishingTour(page, { out, logs }) {
   say('읽을 수 없는 낚시 기록은 옆에 남기고 알린다', broken.kept === '{broken' && broken.toast.includes('낚시 기록') && Object.keys(broken.log).length === 0, broken.toast);
   say('그래도 집은 그대로 열린다', broken.house === houseReloaded);
   await page.screenshot({ path: `${out}-5-pond.png` });
+
+  // 11) 누르고 버티기: 낚아챈 뒤 손가락을 대고 있으면 빨리 끌어올린다 (손가락 흉내에서만)
+  if (cdp) {
+    await setRandom(0.05);
+    await groundTap(26.6, 18.2);
+    await waitPhase('bite');
+    await startReelProbe();
+    const at = await screenOf(27.5, 18.8);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Math.round(at.x), y: Math.round(at.y), id: 1 }] });
+    await waitPhase('reel', 3000);
+    const holdHint = await g(() => document.getElementById('hint').textContent);
+    const reelHold = await reelProbe();
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    say('누르고 있으면 버티는 동안 빨리 끌어올린다', !reelHold.timeout && reelHold.held >= reelHold.dur * 0.8 && reelHold.dur < reelTap.dur * 0.6 && holdHint.includes('누르고 있으면'), JSON.stringify({ reelHold, reelTap, holdHint }));
+    await waitPhase('idle', 10000);
+  }
 }

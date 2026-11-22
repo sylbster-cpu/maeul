@@ -303,6 +303,7 @@ export function createPondView({ view, figure }) {
   let fish = null; // 다가오는 물고기 { from, to, t, time, size, dir, jolt }
   let flee = null;
   let leap = null; // 물고기가 뛰어올라 머리 위로 오는 중, 그 뒤 들고 있는 중 { from, t, time, height, hold, onLand }
+  let reeling = null; // 낚아챈 뒤 끌어올리는 중 { from, to, p, holding, t, jolt, dir, size }
   let hushed = false; // 물기 직전 잠잠한 때
   let hushK = 0; // 잠잠해진 정도 (0 에서 1 로)
   let landT = 9; // 찌가 물에 닿은 뒤 흐른 시간. 닿을 때 출렁이다 멎는다
@@ -330,6 +331,7 @@ export function createPondView({ view, figure }) {
     flight = null; swing = null; lift = null; fish = null; flee = null; leap = null; dip = 0; under = false;
     throwTo = null; retract = null; twitch = null; bobber.scale.set(1, 1, 1);
     hushed = false; hushK = 0; freeze = 0; flashT = 0; body = null; fishSquash = null; flapAmp = 0;
+    reeling = null; figure.rotation.x = 0;
     fishMat.emissive.setHex(0x000000);
     figure.scale.set(1, 1, 1);
     leaperTail.rotation.set(0, 0, 0);
@@ -370,7 +372,8 @@ export function createPondView({ view, figure }) {
     flapSpeed: 21 - 9 * w, // 큰 물고기는 느리고 크게 퍼덕인다
   });
 
-  const nearBobber = (p, r) => bobber.visible && Math.hypot(p.x - bobber.position.x, p.z - bobber.position.z) < r;
+  // 찌(끌어올리는 동안은 줄 끝의 물고기) 가까이인지
+  const nearBobber = (p, r) => (bobber.visible || reeling) && Math.hypot(p.x - bobber.position.x, p.z - bobber.position.z) < r;
   // 연못 안내를 움직인다. 반짝임은 늘, 잠자리는 움직임 줄이기를 켜지 않았을 때, 뛰는 물고기는
   // 연못에서 멀리 있고 낚시를 하지 않을 때만 (가까이서는 던질 곳을 고르는 단서처럼 보이지 않게)
   function updateGuide(dt) {
@@ -508,29 +511,30 @@ export function createPondView({ view, figure }) {
       }
       ripple(bobber.position.x, bobber.position.z, 0.6, 0.7);
     },
-    // 낚았을 때. 그 순간에 신호를 몰아 준다: 장면이 잠깐 멈추고, 물고기가 하얗게 번쩍이고, 화면이 흔들리고,
-    // 물이 크게 튀고, 몸이 늘어나며 낚싯대를 든다. 그 뒤 물고기가 늘어난 모양으로 날아 머리 위 손에 떨어지고
-    // (몸과 물고기가 납작해졌다 돌아온다) 퍼덕임이 차츰 잦아든다. 크기는 무게감 w 에 맞춘다
-    catchFish(fishId, size, w = 0.5, onLand = null) {
-      under = false; mark.visible = false; hushed = false;
-      fish = null; shadow.visible = false;
+    // 낚아챘을 때(누르고 버티기의 시작). 그 순간에 신호를 몰아 준다: 장면이 잠깐 멈추고, 화면이 흔들리고, 물이 크게 튀고,
+    // 몸이 늘어나며 낚싯대를 홱 챈다. 찌는 물속으로 끌려 들어가고, 물고기 그림자가 버둥대며 버틴다. 크기는 무게감 w 에 맞춘다
+    hook(fishId, size, w = 0.5) {
+      mark.visible = false; hushed = false;
       weight = w;
       const k = scaleBy(w);
       fishScale = THREE.MathUtils.clamp(size / 45, 0.38, 1.4);
-      leaper.scale.setScalar(fishScale);
       fishMat.color.setHex(FISH[fishId].color);
-      const from = bobber.position.clone(); from.y = WATER_Y;
-      leap = { from, t: 0, time: k.leapTime, height: k.leapHeight, hold: 0, onLand };
-      leaper.position.copy(from);
-      leaper.visible = true;
-      leaper.rotation.set(-Math.PI / 2, 0, 0); // 물을 박차고 위로 솟는 모양
-      bobber.visible = false; line.visible = false;
-      // 누른 결과는 그 프레임에 바로 보인다: 멈추기 전에 낚싯대를 반쯤 들어 둔다
-      lift = { t: 0.12 };
-      rod.rotation.set(ROD_REST - ease(lift.t / 0.25) * 1.1, 0, 0);
+      const from = new THREE.Vector3(bobber.position.x, WATER_Y, bobber.position.z);
+      // 끌어올 끝자리: 캐릭터 쪽으로 가다가 물가에 닿기 직전
+      const dx = figure.position.x - from.x, dz = figure.position.z - from.z, len = Math.hypot(dx, dz) || 1;
+      const to = from.clone();
+      for (let d = 0; d < len; d += 0.1) {
+        const x = from.x + (dx / len) * d, z = from.z + (dz / len) * d;
+        if (!inWater(x, z, -0.35)) break;
+        to.set(x, WATER_Y, z);
+      }
+      reeling = { from, to, p: 0, holding: false, t: 0, jolt: 1, dir: Math.atan2(dx, dz) + Math.PI, size: FISH[fishId].shadow * 1.3 };
+      fish = null; flee = null;
+      under = true; // 줄을 팽팽하게 그린다
+      bobber.visible = false; line.visible = true;
+      lift = null;
+      rod.rotation.set(ROD_REST - 0.6, 0, 0); // 누른 결과는 그 프레임에 바로 보인다: 홱 챈 자세
       freeze = k.freeze;
-      flashT = Math.max(0.09, freeze + 0.03);
-      fishMat.emissive.setHex(0xffffff);
       body = { t: 0, amount: calm ? 0 : k.stretch };
       squash(figure, 1 + body.amount);
       view.shake?.(k.shake);
@@ -538,6 +542,35 @@ export function createPondView({ view, figure }) {
       splash(from.x, from.z, k.splash, k.splashPower);
       Object.assign(fx, { weight: w, freeze: k.freeze, shake: k.shake, splash: k.splash, leapTime: k.leapTime, catches: fx.catches + 1 });
     },
+    // 끌어올린 정도(0~1)와 누르고 있는지. 누르고 있으면 낚싯대가 크게 휘고 몸이 뒤로 버틴다
+    reel(p, holding) { if (reeling) { reeling.p = p; reeling.holding = holding; } },
+    // 물고기가 한 번 홱 당긴다: 그림자가 튀고 물이 튄다
+    tug() {
+      if (!reeling) return;
+      reeling.jolt = 1;
+      ripple(shadow.position.x, shadow.position.z, 0.7, 0.8);
+      splash(shadow.position.x, shadow.position.z, reeling.holding ? 4 : 2, 0.55);
+    },
+    // 다 끌어올렸다: 물고기가 하얗게 번쩍이며 물을 박차고 솟아 머리 위 손에 떨어진다
+    // (몸과 물고기가 납작해졌다 돌아오고) 퍼덕임이 차츰 잦아든다
+    leapOut(fishId, size, w = weight, onLand = null) {
+      const k = scaleBy(w);
+      const from = new THREE.Vector3(shadow.position.x, WATER_Y, shadow.position.z);
+      reeling = null; under = false; shadow.visible = false;
+      bobber.visible = false; line.visible = false;
+      figure.rotation.x = 0;
+      leaper.scale.setScalar(fishScale);
+      leaper.position.copy(from);
+      leaper.visible = true;
+      leaper.rotation.set(-Math.PI / 2, 0, 0); // 물을 박차고 위로 솟는 모양
+      leap = { from, t: 0, time: k.leapTime, height: k.leapHeight, hold: 0, onLand };
+      lift = { t: 0 }; // 낚싯대를 휙 들어 올린다
+      flashT = 0.09;
+      fishMat.emissive.setHex(0xffffff);
+      ripple(from.x, from.z, 0.8 + 0.6 * w, 1);
+      splash(from.x, from.z, Math.round(k.splash * 0.7), k.splashPower);
+    },
+    get reeling() { return reeling ? { p: reeling.p, holding: reeling.holding } : null; },
     reset: hideAll,
     update(dt) {
       // 흰 번쩍은 멈춘 동안에도 센다. 멈춘 동안에는 아무것도 움직이지 않는다 (줄만 맞춘다)
@@ -568,6 +601,16 @@ export function createPondView({ view, figure }) {
         twitch.t += dt;
         rod.rotation.x = ROD_REST - 0.45 * Math.exp(-twitch.t / 0.18);
         if (twitch.t > 0.8) twitch = null;
+      } else if (reeling) {
+        // 처음 0.15초는 홱 챈 자세, 그 뒤로는 물고기에 끌려 휘고 떨린다. 누르고 있으면 더 크게 휘고 몸이 뒤로 버틴다
+        reeling.t += dt;
+        if (reeling.t > 0.15) {
+          const bend = reeling.holding ? 0.5 : 0.25;
+          const tremble = calm ? 0 : Math.sin(floatT * (reeling.holding ? 41 : 23)) * (reeling.holding ? 0.06 : 0.03);
+          rod.rotation.x += (ROD_REST + bend + tremble - rod.rotation.x) * Math.min(1, dt * 18);
+          rod.rotation.z = calm ? 0 : Math.sin(floatT * 17) * (reeling.holding ? 0.07 : 0.035);
+        }
+        if (!calm) figure.rotation.x = reeling.holding ? -0.1 : -0.03;
       } else if (lift) {
         lift.t += dt;
         rod.rotation.x = ROD_REST - ease(Math.min(1, lift.t / 0.25)) * 1.1; // 휙 들어 올린다
@@ -614,6 +657,17 @@ export function createPondView({ view, figure }) {
         spot.set(fish.from.x + (fish.to.x - fish.from.x) * k + Math.sin(fish.dir) * push, 0, fish.from.z + (fish.to.z - fish.from.z) * k + Math.cos(fish.dir) * push);
         const wiggle = calm ? 0 : Math.sin(floatT * 6) * 0.14 * (1 - hushK);
         placeShadow(spot.x, spot.z, fish.dir + wiggle, fish.size, Math.min(SHADOW_OPACITY + 0.12 * hushK, fish.t * 1.4));
+      }
+      if (reeling) {
+        // 물가 쪽으로 끌려오면서 좌우로 버둥댄다. 홱 당길 때마다 크게 튄다. 줄 끝(찌 자리)이 그림자를 따라간다
+        reeling.jolt = Math.max(0, reeling.jolt - dt / 0.25);
+        spot.lerpVectors(reeling.from, reeling.to, reeling.p);
+        const side = calm ? 0 : Math.sin(floatT * (reeling.holding ? 9 : 6)) * 0.35 * (1 - reeling.p * 0.5) + Math.sin(Math.PI * reeling.jolt) * 0.2;
+        spot.x += Math.cos(reeling.dir) * side;
+        spot.z -= Math.sin(reeling.dir) * side;
+        placeShadow(spot.x, spot.z, reeling.dir + (calm ? 0 : Math.sin(floatT * 12) * 0.5), reeling.size, 0.62);
+        bobber.position.set(spot.x, WATER_Y, spot.z);
+        if (!calm && Math.random() < dt * (reeling.holding ? 5 : 2)) ripple(spot.x, spot.z, 0.5, 0.6);
       }
       if (flee) {
         flee.t += dt;
