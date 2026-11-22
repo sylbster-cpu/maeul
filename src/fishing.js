@@ -148,7 +148,7 @@ export const FISHING_VERSION = 2;
 export function createFishingState() { return { version: FISHING_VERSION, log: {} }; }
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const knownFish = (fish) => typeof fish === 'string' && Object.hasOwn(FISH, fish);
+const knownFish = (fish) => typeof fish === 'string' && Object.prototype.hasOwnProperty.call(FISH, fish);
 const sizeFits = (fish, size) => Number.isFinite(size) && size >= FISH[fish].min && size <= FISH[fish].max;
 function entryFits(fish, entry) {
   return !!entry && typeof entry === 'object' && sizeFits(fish, entry.best) &&

@@ -24,7 +24,7 @@ export default async function onlineTimeoutTour(page, { out, logs }) {
         async publish() { await hold('publish'); return 'https://sylbster-cpu.github.io/maeul/#visit=' + OWNER; },
         async ownStatus() { return { published: false, isPublic: false, updatedAt: null }; },
         async visit() { await hold('visit'); return createState(); },
-        async leaveNote() {}, async getNotes() { return []; }, async removeNote() {}, async unpublish() {},
+        async leaveNote() {}, async getNotes() { return { notes: [], next: null }; }, async removeNote() {}, async unpublish() {},
       });
     }
   `;

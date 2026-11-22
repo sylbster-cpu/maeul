@@ -2,6 +2,8 @@
 import { validUid, onlineVisitLink, prepareOnlineSnapshot,
   readPublishedSnapshot, normalizeVisitNote, MAX_NOTE_LENGTH } from './online-data.js';
 
+export const NOTE_PAGE = 30;
+
 export function createOnlineService({ uid, db, api }) {
   if (!validUid(uid)) throw new Error('온라인 사용자 확인에 실패했습니다');
   const houseRef = (ownerUid) => {
@@ -44,11 +46,15 @@ export function createOnlineService({ uid, db, api }) {
         authorUid: uid, body, createdAt: api.serverTimestamp(),
       });
     },
-    async getNotes() {
-      // 방명록 전체 조회는 집주인만 허용한다. 목록은 30개까지 읽는다.
-      const q = api.query(api.collection(db, 'houses', uid, 'notes'), api.limit(30));
-      const result = await api.getDocsFromServer(q);
-      return result.docs.map((doc) => {
+    // 방명록 전체 조회는 집주인만 허용한다. 새 인사부터 한 번에 NOTE_PAGE 개씩 읽는다.
+    // 더 있으면 next(마지막으로 읽은 문서)를 돌려주고, 그것을 넘기면 그다음부터 읽는다
+    async getNotes(after = null) {
+      const parts = [api.collection(db, 'houses', uid, 'notes'), api.orderBy('createdAt', 'desc')];
+      if (after) parts.push(api.startAfter(after));
+      parts.push(api.limit(NOTE_PAGE + 1)); // 하나 더 읽어 다음 장이 있는지 안다
+      const result = await api.getDocsFromServer(api.query(...parts));
+      const docs = result.docs.slice(0, NOTE_PAGE);
+      const notes = docs.map((doc) => {
         const item = doc.data();
         return {
           uid: doc.id,
@@ -56,6 +62,7 @@ export function createOnlineService({ uid, db, api }) {
           date: item.createdAt?.toDate?.() || null,
         };
       }).filter((note) => note.body && validUid(note.uid));
+      return { notes, next: result.docs.length > NOTE_PAGE ? docs[docs.length - 1] : null };
     },
     async removeNote(authorUid) {
       await api.deleteDoc(noteRef(uid, authorUid));

@@ -69,6 +69,9 @@ export function withOnlineTimeout(promise, ms) {
   });
 }
 
+// Firebase 모듈을 내려받지 못했을 때의 알림 (시험이 online.js 를 가짜로 바꿔도 쓸 수 있게 여기에 둔다)
+export const SDK_BLOCKED = '온라인 기능을 불러오지 못했습니다. 이 주소에서 막혔거나 인터넷이 끊겼을 수 있습니다. 친구에게 보내는 주소(GitHub Pages)에서 열어 주세요';
+
 export function onlineErrorText(error) {
   if (typeof error?.message === 'string' &&
       /^(집|인사말|온라인|공개|올릴|로그인|설정|방문|같은)/.test(error.message)) {
