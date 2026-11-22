@@ -223,6 +223,36 @@
   .online-note-row small { font-size: 12px; color: var(--ink-soft); padding-right: 10px; }
   #online-notes-list { max-height: 180px; overflow: auto; }
   #online-close { width: 100%; margin-top: 10px; }
+  /* 낚시 기록 창. 공유 창의 틀을 같이 쓴다 */
+  #fish-list { list-style: none; margin: 0 0 10px; padding: 0; }
+  #fish-list li { display: grid; grid-template-columns: auto 1fr; gap: 0 12px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--tile-edge); }
+  #fish-list strong { font: 400 18px/1.2 var(--font-display); }
+  #fish-list span { text-align: right; }
+  #fish-list small { grid-column: 1 / -1; color: var(--ink-soft); font-size: 12.5px; }
+  #fish-close { width: 100%; min-height: 44px; margin-top: 4px; }
+  /* 낚은 순간의 카드. 안내 문구 자리에 겹쳐 뜬다(낚은 동안 안내는 쓸모가 없다). 작은 화면에서도
+     물고기를 든 캐릭터를 가리지 않게 작게 둔다. 아래쪽 높이는 띄울 때 쟁반 높이에 맞춘다. 누르는 것은 막지 않는다 */
+  .catch-card {
+    position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); z-index: 4;
+    min-width: 200px; padding: 8px 20px 10px; box-sizing: border-box;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    background: var(--panel); color: var(--ink);
+    border: 3px solid var(--panel-edge); border-radius: 18px; box-shadow: 0 5px 0 var(--panel-edge);
+    pointer-events: none; text-align: center;
+  }
+  .catch-card[hidden] { display: none; }
+  .catch-head { display: flex; align-items: baseline; gap: 10px; white-space: nowrap; }
+  #catch-name { font: 400 30px/1.1 var(--font-display); }
+  #catch-size { font: 400 21px/1.1 var(--font-display); color: var(--moss); }
+  #catch-note { padding: 1px 10px; white-space: nowrap; border-radius: 999px; background: var(--tile); border: 1px solid var(--tile-edge); font-size: 13px; }
+  #catch-note[data-kind="record"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .catch-card.pop { animation: catch-pop 0.42s cubic-bezier(.2, 1.4, .4, 1) both; }
+  @keyframes catch-pop { from { transform: translateX(-50%) scale(0.55); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
+  /* 크기 숫자는 카드가 뜬 뒤 한 번 튀어나왔다 들어간다 (1.45배 → 1배, 약 0.15초) */
+  #catch-size { display: inline-block; transform-origin: left bottom; }
+  .catch-card.pop #catch-size { animation: size-pop 0.16s 0.12s ease-out both; }
+  @keyframes size-pop { from { transform: scale(1.45); } to { transform: scale(1); } }
+  @media (prefers-reduced-motion: reduce) { .catch-card.pop, .catch-card.pop #catch-size { animation: none; } }
 
 
   .loading {
@@ -275,6 +305,7 @@
         <dt>걷기</dt><dd>WASD, 방향키, 또는 땅 누르기</dd>
         <dt>드나들기</dt><dd>집이나 현관 깔개 누르기</dd>
         <dt>앉기</dt><dd>의자 누르기. 다른 곳을 누르면 일어남</dd>
+        <dt>낚시</dt><dd>마당 옆 연못의 물 누르기. 찌가 완전히 잠기면 화면 누르기</dd>
         <dt>꾸미기와 걷기</dt><dd><kbd>B</kbd> 로 바꾸기</dd>
         <dt>가구 돌리기</dt><dd><kbd>R</kbd></dd>
         <dt>카메라</dt><dd><kbd>Q</kbd> <kbd>E</kbd> 로 돌리고 휠로 확대</dd>
@@ -285,12 +316,19 @@
     </aside>
 
     <div class="bottom">
+      <div class="catch-card" id="catch-card" role="status" aria-live="polite" hidden>
+        <div class="catch-head"><strong id="catch-name"></strong><span id="catch-size"></span></div>
+        <span id="catch-note"></span>
+      </div>
       <p class="toast" id="toast" role="status" hidden></p>
       <p class="hint" id="hint"></p>
       <div class="dock">
         <div class="mode" role="group" aria-label="모드">
           <button type="button" id="mode-walk" aria-pressed="true">걷기</button>
           <button type="button" id="mode-build" aria-pressed="false">꾸미기</button>
+        </div>
+        <div class="extras" id="walk-extras">
+          <button type="button" id="fish-log">낚시 기록</button>
         </div>
         <div class="extras" id="build-extras" hidden>
           <button type="button" id="cancel-carry" hidden>그만두기</button>
@@ -347,6 +385,15 @@
     </section>
   </div>
 
+  <div class="share-layer" id="fish-layer" hidden>
+    <section class="share-panel" role="dialog" aria-modal="true" aria-labelledby="fish-title">
+      <h2 id="fish-title">낚시 기록</h2>
+      <ul id="fish-list"></ul>
+      <p id="fish-summary"></p>
+      <p>기록은 이 브라우저에만 저장됩니다. 다른 기기나 브라우저와 이어지지 않고, 집 공유 링크에도 들어가지 않습니다.</p>
+      <button type="button" id="fish-close">닫기</button>
+    </section>
+  </div>
   <div class="loading" id="loading">집터를 준비하고 있습니다</div>
 </div>
 
