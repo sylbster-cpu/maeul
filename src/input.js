@@ -28,7 +28,7 @@ const TOUCH_HINTS = {
   carry: '옮길 자리를 누릅니다. 돌리기와 그만두기 버튼을 쓸 수 있습니다.',
 };
 
-export function createInput({ canvas, view, store, history, character, ui, audio, travel, fishing = null, readOnly = false }) {
+export function createInput({ canvas, view, store, history, character, ui, audio, haptics = null, travel, fishing = null, readOnly = false }) {
   const s = { mode: 'walk', tool: 'select', rot: 0, drag: null, carry: null, pointer: null, press: null, lastPlaced: null };
   const keys = new Set();
   const coarse = window.matchMedia('(pointer: coarse)').matches;
@@ -137,7 +137,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
   function fail(result) {
     ui.toast(result.reason, 'error');
     audio.play('error');
-    if (s.mode === 'build') view.nope(); // 미리보기가 고개를 젓듯 흔들린다
+    if (s.mode === 'build') { view.nope(); haptics?.pulse([10, 50, 10], { ticks: 2 }); } // 미리보기가 고개를 젓듯 흔들린다
   }
 
   // ---- 포인터 ----
@@ -367,6 +367,10 @@ export function createInput({ canvas, view, store, history, character, ui, audio
     if (!meta.batch || meta.last) {
       if (cmd.type === 'setLevel') audio.play('upgrade');
       else audio.play(cmd.type === 'removeObject' ? 'remove' : 'place', { pitch: pitchFor(area) });
+      // 진동: 큰 가구일수록 조금 길게, 집 키우기는 드문 큰일이라 여러 번. 걷기처럼 잦은 일에는 넣지 않는다
+      if (cmd.type === 'setLevel') haptics?.pulse([30, 50, 30, 50, 70], { ticks: 3 });
+      else if (cmd.type === 'removeObject') haptics?.pulse(8);
+      else haptics?.pulse(Math.min(20, Math.max(8, 6 + 2 * area)));
     }
     if (cmd.type === 'placeObject') view.pop({ id: cmd.id });
     if (cmd.type === 'setLevel' || cmd.type === 'setFinish' || cmd.type === 'setExterior') {

@@ -59,6 +59,10 @@ export default async function feel(page, { out, logs }) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await ready();
+  // 진동을 받아 적는다 (안드로이드 쪽: navigator.vibrate)
+  const catchVibration = () => g(() => { window.__vib = []; Object.defineProperty(navigator, 'vibrate', { value: (p) => { window.__vib.push(p); return true; }, configurable: true }); });
+  const vibs = () => g(() => window.__vib.slice());
+  await catchVibration();
 
   // 1) 마을: 서 있으면 숨을 쉰다
   const breath = await sample('window.__game.character.figure.userData.body.scale.y', 2.2);
@@ -101,6 +105,8 @@ export default async function feel(page, { out, logs }) {
   const restAt = await screenOf(6.5, 18.5);
   const restHit = placed && await g(([x, y]) => window.__game.view.pick(x, y)?.id ?? null, [restAt.x, restAt.y]);
   say('연출이 끝나면 제자리로 돌아와 그 자리에서 집힌다', !!rest && restHit === placed, JSON.stringify({ placed, restHit }));
+  const placeVib = await vibs();
+  say('가구를 놓으면 짧게 진동한다(안드로이드)', placeVib.some((v) => typeof v === 'number' && v >= 8 && v <= 20), JSON.stringify(placeVib));
 
   // 6) 돌리면 조금 지나쳤다 돌아온다
   await g(() => window.__game.input.rotate());
@@ -112,6 +118,8 @@ export default async function feel(page, { out, logs }) {
   await groundTap(6.5, 18.5);
   const nopes = (await feelNow()).nopes;
   say('놓을 수 없는 자리에서는 미리보기가 좌우로 흔들린다', nopes >= 1, await g(() => document.getElementById('toast').textContent));
+  const nopeVib = await vibs();
+  say('놓을 수 없는 자리에서는 짧게 두 번 진동한다', nopeVib.some((v) => JSON.stringify(v) === '[10,50,10]'), JSON.stringify(nopeVib.slice(-2)));
 
   // 8) 치우면 살짝 부풀었다 오므라들며 사라진다
   await g(() => window.__game.input.setTool('erase'));
@@ -129,7 +137,14 @@ export default async function feel(page, { out, logs }) {
   say('집을 키우면 집이 늘어났다 내려앉고 먼지와 반짝임이 인다', !!bump && bump.particles > 6, JSON.stringify(bump && { particles: bump.particles }));
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${out}-2-upgrade.png` });
-  await g(() => window.__game.input.undo());
+  const upVib = await vibs();
+  say('집을 키우면 여러 번 이어 진동한다', upVib.some((v) => Array.isArray(v) && v.length === 5), JSON.stringify(upVib.slice(-1)));
+  // 소리를 끄면 진동도 꺼진다
+  await page.click('#sound');
+  await g(() => { window.__vib.length = 0; window.__game.input.undo(); });
+  const mutedVib = await vibs();
+  await page.click('#sound');
+  say('소리 버튼으로 소리를 끄면 진동도 하지 않는다', mutedVib.length === 0 && (await g(() => window.__game.haptics.enabled)), JSON.stringify(mutedVib));
 
   // 10) 앉으면 몸과 방석이 눌린다
   await g(() => window.__game.input.setTool('stool'));
@@ -177,7 +192,45 @@ export default async function feel(page, { out, logs }) {
   await page.waitForFunction(() => window.__game.character.place === 'yard', null, { timeout: 10000 });
   await g(() => window.__game.saveNow());
 
-  // 13) 움직임 줄이기를 켠 기기에서는 이런 움직임을 하지 않는다
+  // 13) 아이폰 쪽 진동: 표준 진동이 없으면 스위치의 진동을 빌리고, 손가락을 뗄 때 울린다
+  if (cdp) {
+    // (이 브라우저에서는 실제로 떨리지 않는다. 스위치가 바뀌는 때가 뗄 때인지만 본다)
+    await page.addInitScript(() => {
+      Object.defineProperty(Navigator.prototype, 'vibrate', { value: undefined, configurable: true });
+      Object.defineProperty(HTMLInputElement.prototype, 'switch', { value: false, writable: true, configurable: true });
+    });
+    await page.reload();
+    await ready();
+    const kind = await g(() => window.__game.haptics.kind);
+    await g(() => { window.__ticks = 0; window.__game.haptics.switchInput.addEventListener('click', () => { window.__ticks++; }); });
+    const ticks = () => g(() => window.__ticks);
+    await g(() => { window.__game.character.teleport(6, 16); window.__game.view.snapFocus(6, 16); });
+    await page.click('#mode-build');
+    await g(() => window.__game.input.setTool('stool'));
+    await page.waitForTimeout(200);
+    await groundTap(12.5, 18.5);
+    const placeTicks = await ticks();
+    await page.click('#mode-walk');
+    await g(() => { window.__game.character.teleport(24.4, 18); window.__game.view.snapFocus(24.4, 18); window.__game.fishing.setRandom(() => 0.05); });
+    await page.waitForTimeout(300);
+    await groundTap(26.2, 18);
+    await until(() => (window.__game.fishing.phase === 'bite' ? true : null), null, 25000);
+    await page.waitForTimeout(250); // 찌가 잠길 때의 진동(두 번, 0.09초 간격)이 끝난 뒤에 센다
+    const atDown = { before: await ticks() };
+    const pullAt = await screenOf(27.5, 18.8);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Math.round(pullAt.x), y: Math.round(pullAt.y), id: 1 }] });
+    atDown.down = await ticks();
+    atDown.verdict = await g(() => window.__game.fishing.last?.verdict);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(150);
+    atDown.up = await ticks();
+    say('아이폰에서는 스위치 진동을 빌리고, 가구를 놓는 탭에 울린다', kind === 'switch' && placeTicks >= 1, JSON.stringify({ kind, placeTicks }));
+    say('아이폰에서 낚아챈 진동은 손가락을 뗄 때 울린다', atDown.verdict === 'caught' && atDown.down === atDown.before && atDown.up > atDown.before, JSON.stringify(atDown));
+    await g(() => window.__game.input.setMode('build'));
+    await g(() => window.__game.input.setMode('walk'));
+  } else say('아이폰 쪽 진동은 터치 흉내(TOUCH=1)에서만 본다', true);
+
+  // 14) 움직임 줄이기를 켠 기기에서는 이런 움직임을 하지 않는다
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.reload();
   await ready();
