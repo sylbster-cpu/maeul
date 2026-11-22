@@ -82,6 +82,9 @@ export default async function beachTour(page, { out, logs }) {
   const reeled = await waitPhase('result', 15000);
   const caught = await g(() => ({ last: window.__game.fishing.last, log: window.__game.fishing.store.state.log, card: document.getElementById('catch-name').textContent }));
   say('찌가 잠길 때 누르면 바다 물고기를 낚아 기록한다', bit && reeled && caught.log.goby?.count === 1 && caught.card === '망둥어', JSON.stringify(caught));
+  const gobyLanding = await g(() => window.__game.fishing.last?.landing);
+  const gobyRare = await g(() => ({ dim: document.getElementById('rare-dim').classList.contains('on'), card: document.getElementById('catch-card').classList.contains('rare') }));
+  say('흔한 물고기는 처음 낚아도 화면을 어둡게 하지 않는다', gobyLanding?.tier === 0 && !gobyLanding.rareFirst && !gobyRare.dim && !gobyRare.card, JSON.stringify({ gobyLanding, gobyRare }));
   await page.screenshot({ path: `${out}-3-caught.png` });
   await page.waitForFunction(() => window.__game.fishing.phase === 'idle', null, { timeout: 15000, polling: 200 }).catch(() => {});
 
@@ -113,6 +116,36 @@ export default async function beachTour(page, { out, logs }) {
   await page.waitForTimeout(700);
   const w2 = await g(() => window.__game.view.beach);
   say('파도가 움직인다', Math.abs(w1.crestZ - w2.crestZ) > 0.05 || Math.abs(w1.foamZ - w2.foamZ) > 0.02, JSON.stringify({ w1, w2 }));
+
+  // 6-2) 가장 드문 바다 물고기(감성돔)를 처음 낚으면 주변을 약하게 어둡게 하고 이름을 강조한다.
+  // 크기는 낮고 묵직한 소리, 드문 정도는 높은 종소리로 나눈다 (2026-11-23 사용자 결정). 두 번째부터는 어둡게 하지 않는다
+  const catchPorgy = async () => {
+    await page.waitForFunction(() => window.__game.fishing.phase === 'idle', null, { timeout: 15000, polling: 200 }).catch(() => {});
+    await g(() => { window.__game.character.teleport(9, 27.5); window.__game.view.snapFocus(9, 27.5); window.__game.fishing.setRandom(() => 0.99); });
+    await groundTap(10, 33.2);
+    const bit2 = await waitPhase('bite', 30000);
+    await pull();
+    const got = await waitPhase('result', 20000);
+    await frames(2);
+    return g((ok) => ({
+      ok,
+      fish: window.__game.fishing.last?.fish,
+      landing: window.__game.fishing.last?.landing,
+      dim: document.getElementById('rare-dim').classList.contains('on'),
+      card: document.getElementById('catch-card').classList.contains('rare'),
+      name: document.getElementById('catch-name').textContent,
+    }), bit2 && got);
+  };
+  const porgy1 = await catchPorgy();
+  say('감성돔을 처음 낚으면 주변이 약하게 어두워지고 이름이 강조된다', porgy1.ok && porgy1.fish === 'porgy' && porgy1.landing?.rareFirst && porgy1.dim && porgy1.card && porgy1.name === '감성돔', JSON.stringify(porgy1));
+  say('드문 물고기일수록 종소리가 높다(흔함 1.0, 아주 드묾 1.5)', gobyLanding?.chime.pitch === 1 && porgy1.landing?.chime.pitch === 1.5, JSON.stringify({ goby: gobyLanding?.chime, porgy: porgy1.landing?.chime }));
+  say('큰 물고기일수록 철썩 소리가 낮고 크다', porgy1.landing?.land.pitch < gobyLanding?.land.pitch && porgy1.landing?.land.gain > gobyLanding?.land.gain, JSON.stringify({ goby: gobyLanding?.land, porgy: porgy1.landing?.land }));
+  await page.screenshot({ path: `${out}-3b-rare.png` });
+  await page.waitForFunction(() => window.__game.fishing.phase === 'idle', null, { timeout: 15000, polling: 200 }).catch(() => {});
+  say('카드가 사라지면 어둡게 한 것도 걷힌다', !(await g(() => document.getElementById('rare-dim').classList.contains('on'))));
+  const porgy2 = await catchPorgy();
+  say('두 번째 감성돔부터는 어둡게 하지 않는다', porgy2.ok && porgy2.fish === 'porgy' && !porgy2.landing?.rareFirst && !porgy2.dim && !porgy2.card, JSON.stringify(porgy2));
+  await page.waitForFunction(() => window.__game.fishing.phase === 'idle', null, { timeout: 15000, polling: 200 }).catch(() => {});
 
   // 7) 넓힌 바깥: 둘레의 나무 곁까지 걸어가고, 줄기는 지나가지 못한다 (2026-11-22 사용자 결정)
   // 좁은 휴대폰 화면에서도 나무가 화면 안에 들어오게, 캐릭터와 나무 사이를 본다

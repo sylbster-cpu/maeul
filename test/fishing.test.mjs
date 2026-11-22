@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  FISH, FISH_ORDER, WATERS, WATER_ORDER, fishIn, waterAt, BITE_WINDOW, HUSH, HUSH_GAP, FAVOR, inWater, rollFish, rollSize, planBite, judge, kstDay, todaysFish, catchWeight,
+  FISH, FISH_ORDER, WATERS, WATER_ORDER, fishIn, waterAt, BITE_WINDOW, HUSH, HUSH_GAP, FAVOR, inWater, rollFish, rollSize, planBite, judge, kstDay, todaysFish, catchWeight, sizeFeel, fishTier,
   createFishingState, createFishingStore, validate, apply, inverseOf,
   serializeFishing, parseFishing, createFishingSaver, FISHING_KEY, FISHING_VERSION,
 } from '../src/fishing.js';
@@ -109,6 +109,22 @@ test('무게감: 크고 드문 물고기일수록 크다. 0~1 안이다', () => 
   assert.ok(catchWeight('crucian', 32) < catchWeight('carp', 35));
   assert.ok(catchWeight('carp', 60) < catchWeight('catfish', 60), '같은 크기면 드문 쪽이 크다');
   assert.ok(catchWeight('medaka', 3) < 0.1 && catchWeight('catfish', 90) > 0.9);
+});
+
+test('드문 정도의 등급과 크기의 무게감: 소리를 나누는 기준 (2026-11-23 사용자 결정)', () => {
+  // 등급: 같은 물 안에서 나오는 몫으로 정한다. 0 흔함, 1 드묾, 2 아주 드묾
+  assert.deepEqual(Object.fromEntries(FISH_ORDER.map((id) => [id, fishTier(id)])), {
+    medaka: 0, crucian: 0, carp: 1, catfish: 2, goby: 0, mackerel: 0, porgy: 2,
+  });
+  // 가장 드문 등급은 물마다 하나씩, 메기와 감성돔이다
+  for (const water of WATER_ORDER) assert.equal(fishIn(water).filter((id) => fishTier(id) === 2).length, 1, water);
+  // 크기의 무게감은 크기만 본다(드문 정도를 섞지 않는다). 0~1, 클수록 크다
+  assert.equal(sizeFeel(3), 0);
+  assert.equal(sizeFeel(90), 1);
+  assert.equal(sizeFeel(200), 1);
+  assert.ok(sizeFeel(10) < sizeFeel(30) && sizeFeel(30) < sizeFeel(60));
+  // 같은 크기면 물고기가 달라도 같다
+  assert.equal(sizeFeel(40), sizeFeel(40));
 });
 
 test('누른 때의 판정', () => {

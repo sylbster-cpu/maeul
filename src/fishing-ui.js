@@ -52,8 +52,12 @@ export function createCatchCard() {
   const card = $('catch-card');
   const dock = document.querySelector('.dock');
   const hint = $('hint');
+  const dim = $('rare-dim');
   return {
-    show({ label, size, note }) {
+    // rare: 가장 드문 물고기를 처음 낚았을 때. 주변을 약하게 어둡게 하고 이름을 강조한다(2026-11-23 사용자 결정, 큰 흔들림은 없음)
+    show({ label, size, note, rare = false }) {
+      card.classList.toggle('rare', rare);
+      dim.classList.toggle('on', rare);
       $('catch-name').textContent = label;
       $('catch-size').textContent = `${size}cm`;
       $('catch-note').textContent = note || '낚았습니다!';
@@ -65,6 +69,7 @@ export function createCatchCard() {
       void card.offsetWidth; // 다시 뜰 때도 처음부터 움직이게 한다
       card.classList.add('pop');
     },
-    hide() { card.hidden = true; hint.style.visibility = ''; },
+    hide() { card.hidden = true; hint.style.visibility = ''; dim.classList.remove('on'); },
+    get rare() { return dim.classList.contains('on'); }, // 자동 시험이 읽는다
   };
 }
