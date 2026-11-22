@@ -14,10 +14,12 @@ export default async function feel(page, { out, logs }) {
   const say = (name, ok, details = '') => logs.push(`${ok ? '통과' : '실패'}  ${name} ${details}`);
   const screenOf = (x, z) => g(([a, b]) => window.__game.view.screenPoint(a, b), [x, z]);
   // 카메라가 멈춘 뒤에 누른다
+  // 화면이 몇 번 새로 그려질 때까지 기다린다. 느린 CI 에서는 0.1초 안에 한 번도 그려지지 않아, 움직이는 카메라를 멈췄다고 잘못 볼 수 있다
+  const frames = (n) => g((k) => new Promise((done) => { let i = 0; const step = () => (++i >= k ? done() : requestAnimationFrame(step)); requestAnimationFrame(step); }), n);
   const groundTap = async (x, z) => {
     let p = await screenOf(x, z);
     for (let i = 0; i < 40; i++) {
-      await page.waitForTimeout(100);
+      await frames(4);
       const q = await screenOf(x, z);
       const still = Math.hypot(q.x - p.x, q.y - p.y) < 0.5;
       p = q;
