@@ -29,11 +29,16 @@ export function inWater(x, z, pad = 0) {
   return dx * dx + dz * dz < 1;
 }
 
-// 어떤 물고기가 올지. rng 는 0 이상 1 미만의 수를 돌려주는 함수
-export function rollFish(rng) {
-  const total = FISH_ORDER.reduce((sum, id) => sum + FISH[id].weight, 0);
+// 오늘 잘 잡히는 물고기는 나오는 비율을 이만큼 곱한다(2026-11-22 사용자 결정: 확률만 조금).
+// 붕어 40%→50%, 메기 8%→11.5% 쯤이 된다. 누르는 시간 창과 크기는 그대로다
+export const FAVOR = 1.5;
+
+// 어떤 물고기가 올지. rng 는 0 이상 1 미만의 수를 돌려주는 함수. favored 는 오늘 잘 잡히는 물고기
+export function rollFish(rng, favored = null) {
+  const weightOf = (id) => FISH[id].weight * (id === favored ? FAVOR : 1);
+  const total = FISH_ORDER.reduce((sum, id) => sum + weightOf(id), 0);
   let r = rng() * total;
-  for (const id of FISH_ORDER) { r -= FISH[id].weight; if (r < 0) return id; }
+  for (const id of FISH_ORDER) { r -= weightOf(id); if (r < 0) return id; }
   return FISH_ORDER[FISH_ORDER.length - 1];
 }
 // 크기(cm, 소수 한 자리). 작은 쪽이 흔하고 큰 것은 드물다
@@ -76,6 +81,32 @@ export function judge(plan, t) {
 // 한국 날짜 (YYYY-MM-DD). 기기의 시간대와 상관없이 모두에게 같은 날이 되게 한다
 export function kstDay(now = Date.now()) {
   return new Date(now + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+// 정해진 씨앗으로 물고기 순서를 섞는다. 같은 씨앗이면 어느 기기에서나 같은 순서다
+function shuffledFish(seed) {
+  let a = (seed * 2654435761 + 0x9e3779b9) >>> 0;
+  const next = () => { // mulberry32
+    a = (a + 0x6d2b79f5) >>> 0;
+    let x = Math.imul(a ^ (a >>> 15), 1 | a);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+  const order = [...FISH_ORDER];
+  for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(next() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+  return order;
+}
+// 오늘 잘 잡히는 물고기(day 는 kstDay 의 한국 날짜). 날짜만으로 정하므로 모두에게 같고 저장하지 않는다.
+// 물고기 수만큼의 날을 한 묶음으로, 묶음마다 모든 물고기를 한 번씩 섞어 늘어놓는다(드문 메기의 날도 꼭 온다).
+// 같은 물고기가 이틀 잇달아 오지 않게, 묶음의 첫날이 앞 묶음의 끝날과 같으면 둘째 날과 바꾼다.
+// 바꾸는 것은 첫째·둘째 날뿐이라 앞 묶음의 끝날은 그 앞 묶음에 따라 달라지지 않는다
+export function todaysFish(day) {
+  const n = Math.round(Date.parse(`${day}T00:00:00Z`) / 86400000);
+  const len = FISH_ORDER.length;
+  const block = Math.floor(n / len);
+  const order = shuffledFish(block);
+  if (order[0] === shuffledFish(block - 1)[len - 1]) [order[0], order[1]] = [order[1], order[0]];
+  return order[n - block * len];
 }
 
 // ---- 낚시 기록 ----

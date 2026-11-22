@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  FISH, FISH_ORDER, BITE_WINDOW, HUSH, HUSH_GAP, inWater, rollFish, rollSize, planBite, judge, kstDay, catchWeight,
+  FISH, FISH_ORDER, BITE_WINDOW, HUSH, HUSH_GAP, FAVOR, inWater, rollFish, rollSize, planBite, judge, kstDay, todaysFish, catchWeight,
   createFishingState, createFishingStore, validate, apply, inverseOf,
   serializeFishing, parseFishing, createFishingSaver, FISHING_KEY, FISHING_VERSION,
 } from '../src/fishing.js';
@@ -85,6 +85,48 @@ test('누른 때의 판정', () => {
 test('한국 날짜는 기기 시간대와 상관없다', () => {
   assert.equal(kstDay(Date.UTC(2026, 10, 21, 14, 59)), '2026-11-21');
   assert.equal(kstDay(Date.UTC(2026, 10, 21, 15, 0)), '2026-11-22');
+});
+
+test('오늘 잘 잡히는 물고기: 날짜만으로 정해지고, 이틀 잇달아 같지 않으며, 물고기 수만큼의 날마다 모두 한 번씩 온다', () => {
+  const day = (n) => new Date(n * 86400000).toISOString().slice(0, 10);
+  const start = Math.round(Date.parse('2026-01-01T00:00:00Z') / 86400000);
+  const len = FISH_ORDER.length;
+  let prev = null;
+  const seen = Object.fromEntries(FISH_ORDER.map((id) => [id, 0]));
+  for (let n = start; n < start + 2000; n++) {
+    const id = todaysFish(day(n));
+    assert.ok(FISH_ORDER.includes(id), id);
+    assert.equal(todaysFish(day(n)), id, '같은 날은 언제 물어도 같다');
+    assert.notEqual(id, prev, `${day(n)} 이 전날과 같다`);
+    prev = id;
+    seen[id]++;
+    if (n % len === len - 1) {
+      // 묶음(n 을 물고기 수로 나눈 몫이 같은 날들)에는 모든 물고기가 한 번씩 있다
+      const block = new Set(Array.from({ length: len }, (_, k) => todaysFish(day(n - k))));
+      assert.equal(block.size, len, `${day(n)} 로 끝나는 묶음`);
+    }
+  }
+  for (const id of FISH_ORDER) assert.ok(Math.abs(seen[id] / 2000 - 1 / len) < 0.01, `${id} ${seen[id]}`);
+  // 한국 날짜가 바뀌는 때(한국 시각 0시 = 세계시 15시)에 바뀐다
+  assert.notEqual(todaysFish(kstDay(Date.UTC(2026, 10, 21, 14, 59))), todaysFish(kstDay(Date.UTC(2026, 10, 21, 15, 0))));
+});
+
+test('오늘 잘 잡히는 물고기는 나오는 비율만 FAVOR 배가 된다', () => {
+  const total = FISH_ORDER.reduce((s, id) => s + FISH[id].weight, 0);
+  const N = 20000;
+  for (const favored of FISH_ORDER) {
+    const count = Object.fromEntries(FISH_ORDER.map((id) => [id, 0]));
+    for (let i = 0; i < N; i++) count[rollFish(() => (i + 0.5) / N, favored)]++;
+    const sum = total + FISH[favored].weight * (FAVOR - 1);
+    for (const id of FISH_ORDER) {
+      const want = (FISH[id].weight * (id === favored ? FAVOR : 1)) / sum;
+      assert.ok(Math.abs(count[id] / N - want) < 0.001, `${favored}: ${id}`);
+    }
+    assert.ok(count[favored] / N > FISH[favored].weight / total, `${favored} 가 더 자주 온다`);
+  }
+  assert.ok(FAVOR > 1 && FAVOR <= 1.5, '확률만 조금');
+  // 모르는 물고기를 주면 평소와 같다
+  assert.equal(rollFish(() => 0.5, 'shark'), rollFish(() => 0.5));
 });
 
 test('잡은 물고기를 기록하고, 반대 명령으로 되돌린다', () => {

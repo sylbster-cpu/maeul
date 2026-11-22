@@ -59,7 +59,8 @@ export default async function fishingTour(page, { out, logs }) {
     });
   });
   const reelProbe = () => g(() => window.__reelProbe);
-  // r 하나로 물고기·입질·크기가 정해진다. 0.05 송사리(빨리 문다), 0.5 붕어, 0.75 잉어, 0.99 메기
+  // r 하나로 물고기·입질·크기가 정해진다. 0.05 송사리(빨리 문다), 0.5 붕어, 0.8 잉어, 0.99 메기.
+  // 오늘 잘 잡히는 물고기가 무엇이든(나오는 비율이 1.5배) 같은 물고기가 오는 값으로 골랐다
   const setRandom = (r) => g((v) => window.__game.fishing.setRandom(() => v), r);
 
   await ready();
@@ -74,6 +75,18 @@ export default async function fishingTour(page, { out, logs }) {
     return { glints: fx.glints.length, fliesOnScreen: fx.dragonflies.filter(on).length, jumps: fx.jumps };
   });
   say('처음 화면에서 반짝임과 잠자리, 뛰는 물고기로 연못을 알린다', guided && guide.fliesOnScreen >= 1, JSON.stringify(guide));
+
+  // 오늘 잘 잡히는 물고기 (한국 날짜로 정해져 모두에게 같다). 아직 잡아 보지 못했으면 이름을 밝히지 않는다
+  const todayExpect = () => g(async () => {
+    const { FISH, todaysFish, kstDay } = await import('./src/fishing.js');
+    const id = todaysFish(kstDay());
+    const known = !!window.__game.fishing.store.state.log[id];
+    return { id, text: known ? `오늘은 ${FISH[id].label}` : '오늘은 아직 잡아 보지 못한 물고기가 잘 잡힙니다.' };
+  });
+  await g(() => { window.__game.character.teleport(24.5, 18.5); window.__game.view.snapFocus(24.5, 18.5); });
+  await frames(2);
+  const firstHint = await g(() => document.getElementById('hint').textContent);
+  say('처음 온 사람에게는 물가에서 기록이 남는다고 안내한다', firstHint.includes('낚시 기록에 남습니다') && !firstHint.includes('오늘은'), firstHint);
 
   // 1) 멀리서 물을 누르면 물가로 걸어가 던진다
   await g(() => { window.__game.character.teleport(20.5, 12.5); window.__game.view.snapFocus(20.5, 12.5); });
@@ -177,7 +190,7 @@ export default async function fishingTour(page, { out, logs }) {
     data.log.catfish = { best: 60, first: '2026-11-01', count: 3 };
     localStorage.setItem('house-lab-web:fishing', JSON.stringify(data));
   });
-  await setRandom(0.75); // 잉어
+  await setRandom(0.8); // 잉어
   // 기록을 쓸 때 웹 잠금을 거치는지 센다 (탭끼리 차례를 지켜 읽고 쓰게 하는 장치)
   const lockable = await g(() => {
     if (!navigator.locks?.request) return false;
@@ -210,13 +223,28 @@ export default async function fishingTour(page, { out, logs }) {
   const panel = await g(() => ({ open: !document.getElementById('fish-layer').hidden, rows: [...document.querySelectorAll('#fish-list li strong')].map((e) => e.textContent), summary: document.getElementById('fish-summary').textContent }));
   say('낚시 기록 창에 잡은 물고기만 보인다', panel.open && panel.rows.join() === '송사리,잉어,메기', JSON.stringify(panel));
   say('못 잡은 물고기는 수만 알린다', panel.summary.includes('1종'), panel.summary);
+  const today = await todayExpect();
+  const todayLine = await g(() => document.getElementById('fish-today').textContent);
+  say('기록 창에 오늘 잘 잡히는 물고기가 나온다', todayLine.startsWith(today.text) && todayLine.includes('한국 날짜로 날마다 바뀝니다'), JSON.stringify({ todayLine, today }));
   await page.screenshot({ path: `${out}-4-log.png` });
   await page.click('#fish-close');
   say('기록 창을 닫는다', await g(() => document.getElementById('fish-layer').hidden));
 
-  // 8) 걷기를 바꾸거나 땅을 누르면 그만둔다
+  // 8) 걷기를 바꾸거나 땅을 누르면 그만둔다. 이 던지기로 오늘 잘 잡히는 물고기가 더 자주 오는지도 본다:
+  // 평소라면 다른 물고기가 오는 r 가운데, 오늘 잘 잡히는 물고기라서 그 물고기가 오는 값을 골라 던진다
+  const favor = await g(async () => {
+    const { rollFish, todaysFish, kstDay } = await import('./src/fishing.js');
+    const id = todaysFish(kstDay());
+    const rs = [];
+    for (let i = 0; i < 1000; i++) { const r = (i + 0.5) / 1000; if (rollFish(() => r, id) === id && rollFish(() => r) !== id) rs.push(r); }
+    const r = rs[Math.floor(rs.length / 2)];
+    window.__game.fishing.setRandom(() => r);
+    return { id, r, normally: rollFish(() => r) };
+  });
   await groundTap(26.6, 18.2);
   await waitPhase('wait', 10000);
+  const castFish = await g(() => window.__game.fishing.plan?.fish);
+  say('오늘 잘 잡히는 물고기는 평소보다 조금 더 자주 온다', castFish === favor.id && favor.normally !== favor.id, JSON.stringify({ ...favor, castFish }));
   await page.click('#mode-build');
   say('꾸미기로 바꾸면 낚시를 그만둔다', (await phase()) === 'idle');
   await page.click('#mode-walk');
@@ -237,7 +265,10 @@ export default async function fishingTour(page, { out, logs }) {
   s = await fishState();
   say('새로 고쳐도 낚시 기록이 남는다', s.log.medaka?.count === 1 && s.log.carp?.count === 1, JSON.stringify(s.log));
   say('연못가에서 새로 고쳐도 그 자리에서 시작한다', Math.abs(s.pos.x - 24.5) < 0.01 && Math.abs(s.pos.z - 18.5) < 0.01, JSON.stringify(s.pos));
-  say('연못가에 서면 낚시 안내가 나온다', (await g(() => document.getElementById('hint').textContent)).includes('물을 누르면'));
+  const nearHint = await g(() => document.getElementById('hint').textContent);
+  say('연못가에 서면 낚시 안내가 나온다', nearHint.includes('물을 누르면'));
+  const todayAfter = await todayExpect();
+  say('물고기를 잡아 본 뒤에는 물가에서 오늘 잘 잡히는 물고기를 알린다', nearHint.includes(todayAfter.text), JSON.stringify({ nearHint, todayAfter }));
 
   // 10) 읽을 수 없는 낚시 기록: 원본을 옆에 남기고 새로 시작한다. 집은 그대로 열린다
   await g(() => localStorage.setItem('house-lab-web:fishing', '{broken'));

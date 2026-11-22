@@ -29,6 +29,7 @@ export function createFishingUI({ fishing }) {
     $('fish-summary').textContent = !caught.length
       ? '아직 잡은 물고기가 없습니다. 마당 옆 연못의 물을 눌러 보세요.'
       : left ? `이 연못에는 아직 잡아 보지 못한 물고기가 ${left}종 더 있습니다.` : '이 연못의 물고기를 모두 잡아 보았습니다.';
+    $('fish-today').textContent = `${fishing.todayText()} 한국 날짜로 날마다 바뀝니다.`;
   }
   function open() { render(); layer.hidden = false; $('fish-close').focus(); }
   function close() { layer.hidden = true; button.focus(); }
