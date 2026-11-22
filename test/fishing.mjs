@@ -67,13 +67,17 @@ export default async function fishingTour(page, { out, logs }) {
   const houseBefore = await g(() => JSON.stringify(window.__game.store.state));
 
   // 0) 처음 화면에서 빛과 움직임으로 연못을 알린다 (반짝임, 잠자리, 멀리 있을 때 가끔 뛰는 물고기)
-  const guided = await page.waitForFunction(() => window.__game.fishing.fx.glints.length > 0 && window.__game.fishing.fx.jumps > 0, null, { timeout: 20000, polling: 200 }).then(() => true).catch(() => false);
-  const farAmbience = await ambience();
-  const guide = await g(() => {
+  // 잠자리는 무작위로 날아다녀 어느 한순간에는 화면 밖에 있을 수 있다. 그래서 한 번 재지 않고,
+  // 반짝임·뛰는 물고기가 있고 잠자리가 한 번이라도 화면에 들어오는 때를 20초까지 기다린다(2026-11-22 흔들림 고침)
+  const guided = await page.waitForFunction(() => {
     const fx = window.__game.fishing.fx;
     const on = (p) => { const q = window.__game.view.screenPoint(p.x, p.z); return q.x >= 0 && q.x <= innerWidth && q.y >= 0 && q.y <= innerHeight; };
-    return { glints: fx.glints.length, fliesOnScreen: fx.dragonflies.filter(on).length, jumps: fx.jumps };
-  });
+    const now = { glints: fx.glints.length, fliesOnScreen: fx.dragonflies.filter(on).length, jumps: fx.jumps };
+    window.__guide = now;
+    return now.glints > 0 && now.jumps > 0 && now.fliesOnScreen >= 1;
+  }, null, { timeout: 20000, polling: 100 }).then(() => true).catch(() => false);
+  const farAmbience = await ambience();
+  const guide = await g(() => window.__guide);
   say('처음 화면에서 반짝임과 잠자리, 뛰는 물고기로 연못을 알린다', guided && guide.fliesOnScreen >= 1, JSON.stringify(guide));
 
   // 오늘 잘 잡히는 물고기 (한국 날짜로 정해져 모두에게 같다). 아직 잡아 보지 못했으면 이름을 밝히지 않는다

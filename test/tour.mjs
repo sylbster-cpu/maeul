@@ -6,7 +6,18 @@ export default async function tour(page, { out, logs }) {
   const g = (fn) => page.evaluate(fn);
   const info = () => g(() => { const { store, character } = window.__game; const s = store.state; return `${character.place} 단계${s.house.level} 방가구${Object.keys(s.spaces.main.objects).length} 마당가구${Object.keys(s.spaces.yard.objects).length} ${s.spaces.main.floor}/${s.spaces.main.wall} ${s.house.roof}/${s.house.siding}/${s.house.door}`; });
   const say = (label, ok, extra = '') => logs.push(`${ok ? '통과' : '실패'}  ${label} ${extra}`);
-  const waitPlace = (place) => page.waitForFunction((p) => window.__game.character.place === p, place, { timeout: 8000 }).then(() => page.waitForTimeout(350)).catch(() => {});
+  // 마당과 방 사이를 옮겨 갔는지 기다린다. 느린 CI 에서는 8초로 모자랄 때가 있었다(2026-11-22 흔들림 고침).
+  // 그래도 옮겨 가지 못하면 그냥 지나가지 않고, 그때의 상태와 함께 실패로 적는다
+  const waitPlace = async (place) => {
+    const ok = await page.waitForFunction((p) => window.__game.character.place === p, place, { timeout: 25000 }).then(() => true).catch(() => false);
+    if (ok) { await page.waitForTimeout(350); return true; }
+    const st = await page.evaluate(() => {
+      const { character, input } = window.__game;
+      return { place: character.place, mode: input.state.mode, pos: { ...character.pos }, walking: character.walking, fading: document.getElementById('scene').classList.contains('fading') };
+    });
+    logs.push(`실패  ${place}(으)로 옮겨 가지 않았다(25초) ${JSON.stringify(st)}`);
+    return false;
+  };
   const reload = async () => { await page.reload(); await page.waitForFunction(() => window.__ready === true); await page.waitForTimeout(300); };
 
   await page.waitForTimeout(400);
