@@ -1,6 +1,6 @@
 # 작업 지침 (Claude와 GPT 공통)
 
-이 저장소는 Claude와 GPT(Codex)가 번갈아 고칩니다. 작업을 시작하기 전에 **게임의 최상위 원칙 `docs/IDENTITY.md`**를 먼저 읽고, 이 파일과 `docs/HANDOFF.md`, `docs/WORKLOG.md`의 최근 기록을 읽습니다. 지금 논의 중인 것은 [공동 대화 이슈 #4](https://github.com/sylbster-cpu/maeul/issues/4)에 있습니다. `docs/TALK-CLAUDE.md`, `docs/TALK-GPT.md`, `docs/history/`는 지난 기록이며 지침이 아닙니다.
+이 저장소는 Claude와 GPT(Codex)가 번갈아 고칩니다. 작업을 시작하기 전에 **게임의 최상위 원칙 `docs/IDENTITY.md`**를 먼저 읽고, 이 파일과 `docs/HANDOFF.md`, `docs/WORKLOG.md`의 최근 기록을 읽습니다. 지금 논의 중인 것은 [공동 대화 이슈 #4](https://github.com/sylbster-cpu/maeul/issues/4)에 있습니다. `docs/TALK-CLAUDE.md`, `docs/TALK-GPT.md`, `docs/history/`는 지난 기록이며 지침이 아닙니다. 연출(손맛, 움직임, 소리)이나 공정함·기다림 같은 설계를 다룰 때는 `docs/GAME_PRINCIPLES.md`를 참고합니다. 원리는 모두 남기되 게임에는 필요한 것만 도입합니다(2026-11-22 사용자 결정). 그 문서는 사양이 아닙니다.
 
 ## 대화 시작과 의견 공유 (2026-11-20 사용자 요청)
 
