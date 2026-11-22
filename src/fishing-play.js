@@ -25,7 +25,8 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
   const saver = createFishingSaver(storage);
   const first = saver.load();
   const store = createFishingStore(first?.ok ? first.state : undefined);
-  const loadProblem = first && !first.ok ? `${first.reason}. 새 기록으로 시작합니다`
+  const loadProblem = first?.newer ? '더 새로운 판에서 저장한 낚시 기록이 있어, 이 화면에서는 낚시 기록을 저장하지 않습니다. 새로 고쳐 주세요'
+    : first && !first.ok ? `${first.reason}. 새 기록으로 시작합니다`
     : first?.dropped ? `낚시 기록 가운데 ${first.dropped}개는 맞지 않아 빼고 불러왔습니다` : '';
   let phase = 'idle';
   let t = 0;
@@ -34,6 +35,8 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
   let aim = null;
   let nibbles = 0;
   let hushedAt = null; // 물기 직전 잠잠해진 때 (자동 시험이 읽는다)
+  let pressed = null; // 눌렀지만 아직 판정하지 않은 누름 { t, phase }. 두 손가락 확대인지 잠깐 본다(input.js)
+  let plopWait = 3; // 연못가의 물소리 사이사이 작은 퐁 소리까지 남은 시간
   let wasNear = false;
   let stand = null; // 던진 자리. 걸어서 떠나기 전까지 카메라가 물가와 찌 사이를 가까이 본다
   let resultTime = RESULT_TIME;
@@ -43,12 +46,19 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
   function setPhase(next) { phase = next; t = 0; onChange(); }
   const nearWater = () => character.place === 'yard' && inWater(character.pos.x, character.pos.z, SHORE);
 
-  // 다른 탭에서 낚은 기록을 먼저 읽고 더한다. 덮어써서 지우지 않게 한다
+  // 다른 탭에서 낚은 기록을 먼저 읽고 더한다. 덮어써서 지우지 않게 한다.
+  // 웹 잠금(Web Locks)이 있는 브라우저에서는 탭끼리 차례를 지켜 읽고 쓴다. 거의 동시에 낚아도 하나가 빠지지 않는다.
+  // 없는 브라우저에서는 차례를 지킬 수 없어, 두 탭에서 거의 동시에 낚으면 하나가 빠질 수 있다
   function record(cmd) {
-    const latest = saver.load();
-    if (latest?.ok) store.replace(latest.state);
-    const r = store.dispatch(cmd);
-    return r.ok ? saver.save(store.state) : false;
+    const run = () => {
+      const latest = saver.load();
+      if (latest?.ok) store.replace(latest.state);
+      const r = store.dispatch(cmd);
+      return r.ok ? saver.save(store.state) : false;
+    };
+    const locks = typeof navigator !== 'undefined' ? navigator.locks : null;
+    if (locks?.request) return locks.request(FISHING_KEY, run).catch(() => run());
+    return Promise.resolve(run());
   }
   if (typeof window !== 'undefined') {
     window.addEventListener('storage', (event) => {
@@ -100,12 +110,14 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
       const label = FISH[fish].label;
       const weight = catchWeight(fish, size);
       const was = store.state.log[fish];
-      const saved = record({ type: 'recordCatch', fish, size, day: kstDay(now()) });
+      record({ type: 'recordCatch', fish, size, day: kstDay(now()) }).then((saved) => {
+        if (saved) return;
+        ui.toast(saver.newerStored() ? '더 새로운 판의 낚시 기록이 있어 저장하지 않았습니다. 새로 고쳐 주세요' : '이 브라우저에서는 낚시 기록이 저장되지 않습니다', 'error');
+      });
       const note = !was ? '처음 잡은 물고기입니다' : size > was.best ? '최고 기록입니다' : '';
       // 낚은 순간은 작은 알림 대신 화면 가운데 카드로 크게 보여 준다
       if (catchCard) catchCard.show({ label, size, note });
       else ui.toast(`${label}${objectParticle(label)} 낚았습니다! ${size}cm. ${note}`);
-      if (!saved) ui.toast('이 브라우저에서는 낚시 기록이 저장되지 않습니다', 'error');
       // 낚아챈 바로 그 순간에 신호를 몰아 준다: 멈춤·흰 번쩍·흔들림·물보라(pondView), 묵직한 소리, 진동.
       // 크기는 무게감에 맞춘다. 송사리는 가볍게, 메기는 크게. 가락은 물고기가 손에 떨어질 때 울린다
       pondView.catchFish(fish, size, weight, () => audio.play('catch', { pitch: 1.12 - 0.2 * weight }));
@@ -113,16 +125,35 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
       buzz(weight < 0.35 ? [25] : weight < 0.7 ? [35, 30, 35] : [55, 35, 70]);
       resultTime = CATCH_TIME + 0.3 * weight;
     } else {
+      // 놓쳐도 빨간 오류로 다그치지 않는다. 무엇 때문이었는지만 알린다(여유 쪽 제안, 2026-11-22 사용자 결정)
       ui.toast({
         reeled: '찌를 거두었습니다',
-        early: '너무 일찍 당겼습니다. 찌가 완전히 잠길 때 누르세요',
-        late: '늦었습니다. 찌가 잠기면 바로 누르세요',
-      }[verdict], verdict === 'reeled' ? 'info' : 'error');
+        early: '물고기가 아직 찌를 건드려 보던 중이었습니다. 찌가 쏙 잠길 때 눌러 보세요',
+        late: '물고기가 미끼만 먹고 갔습니다. 찌가 잠기면 조금 더 일찍 눌러 보세요',
+      }[verdict], 'info');
       pondView.escape();
       audio.play(verdict === 'reeled' ? 'step' : 'miss');
       resultTime = RESULT_TIME;
     }
     setPhase('result');
+  }
+
+  // 바탕 소리: 연못에 가까울수록 물소리가 들린다(방 안에서는 없다). 낚시하는 동안은 가득,
+  // 진짜로 물기 직전 잠잠할 때는 작게 줄인다(완전히 끄지는 않는다, docs/GAME_PRINCIPLES.md 1-2).
+  // 기다리는 동안에는 퐁 소리를 내지 않는다. 입질 소리와 헷갈리면 속이는 신호가 되기 때문이다(1-8)
+  function ambience(dt) {
+    if (!audio.ambient) return;
+    let level = 0;
+    if (character.place === 'yard') {
+      const r = Math.hypot((character.pos.x - POND.x) / POND.rx, (character.pos.z - POND.z) / POND.rz); // 물가에서 1
+      level = phase !== 'idle' && phase !== 'walk' ? 1 : Math.max(0, Math.min(1, 1 - (r - 1.2) / 2.2));
+    }
+    const ducked = phase === 'wait' && hushedAt !== null;
+    audio.ambient(level, ducked);
+    if (level > 0.4 && phase === 'idle') {
+      plopWait -= dt;
+      if (plopWait <= 0) { audio.play('plop', { gain: level, pitch: 0.85 + Math.random() * 0.3 }); plopWait = 2.5 + Math.random() * 4; }
+    }
   }
 
   // 결과 보이기를 끝내고 다음 던지기를 기다린다. 낚싯대는 내려놓고 카메라는 그대로 둔다
@@ -150,11 +181,21 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
       if (character.goTo(point.x, point.z)) setPhase('walk');
       else arrive();
     },
-    // 화면을 눌러 줄을 당긴다. 던지는 중에는 누름을 흘려보낸다. 결과를 보이는 중에는 조금 지나 누르면 넘어간다
-    pull() {
-      if (phase === 'wait' || phase === 'bite') finish(judge(plan, t));
-      else if (phase === 'result' && t >= SKIP_AFTER) endResult();
+    // 화면을 누른 때를 기억해 둔다. 판정은 이 때로 한다(press). 두 손가락 확대가 아니면 곧 판정을 매듭짓고(commitPress),
+    // 확대이면 버린다(cancelPress). 던지는 중에는 누름을 흘려보낸다. 결과를 보이는 중에는 조금 지나 누르면 넘어간다
+    press() { pressed = phase === 'wait' || phase === 'bite' || phase === 'result' ? { t, phase } : null; },
+    cancelPress() { pressed = null; },
+    commitPress() {
+      const p = pressed;
+      pressed = null;
+      if (!p) return;
+      if ((phase === 'wait' || phase === 'bite') && p.phase !== 'result') finish(judge(plan, p.t));
+      else if (phase === 'result' && p.phase === 'result' && p.t >= SKIP_AFTER) endResult();
     },
+    get pressPending() { return pressed !== null; },
+    get ambience() { return audio.ambience ?? null; }, // 바탕 물소리 상태 (자동 시험이 읽는다)
+    // 기다리지 않고 바로 당긴다 (마우스, 자동 시험)
+    pull() { this.press(); this.commitPress(); },
     cancel() {
       stand = null;
       if (phase === 'idle') return;
@@ -172,11 +213,15 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
       switch (phase) {
         case 'walk': return '연못가로 걸어가는 중입니다.';
         case 'cast': case 'wait': return '찌가 흔들릴 때는 기다리고, 완전히 잠기면 화면을 누릅니다.';
-        case 'bite': return '지금 누르세요!';
+        case 'bite': return '찌가 잠겼습니다. 화면을 눌러 낚아채세요.';
         default: return nearWater() ? '물을 누르면 찌를 던집니다. 잡은 물고기는 낚시 기록에 남습니다.' : null;
       }
     },
-    update(dt) {
+    // 한 화면만큼 진행한다. 바탕 소리는 이번 화면의 상태(잠잠해졌는지 등)가 정해진 뒤에 맞춘다
+    update(dt) { advance(dt); ambience(dt); },
+  };
+
+  function advance(dt) {
       pondView.update(dt);
       const near = phase === 'idle' && nearWater();
       if (near !== wasNear) { wasNear = near; onChange(); }
@@ -195,8 +240,8 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
         if (t >= plan.bite) { phase = 'bite'; pondView.bite(); audio.play('bite'); buzz([70, 30, 70]); onChange(); }
         return;
       }
-      if (phase === 'bite') { if (t > plan.bite + plan.window) finish('late'); return; }
+      // 누른 것을 판정하기 전(두 손가락인지 보는 잠깐)에는 늦었다고 하지 않는다. 판정은 누른 때로 한다
+      if (phase === 'bite') { if (!pressed && t > plan.bite + plan.window) finish('late'); return; }
       if (phase === 'result' && t >= resultTime) endResult();
-    },
-  };
+  }
 }

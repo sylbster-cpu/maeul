@@ -33,7 +33,13 @@ export default async function fishingTour(page, { out, logs }) {
   const ready = async () => { await page.waitForFunction(() => window.__ready === true, null, { timeout: 20000 }); await page.waitForTimeout(300); };
   // 줄을 당기는 누름. 화면 어디를 눌러도 되지만, 넓은 화면에서는 조작법 창이 열려 있으므로 연못 위를 누른다
   // 기다리지 않고 바로 누른다. 낚시 중에는 화면 어디를 눌러도 당기므로 카메라가 움직여도 상관없다
-  const pull = async () => { const p = await screenOf(27.5, 18.8); await tap(p.x, p.y); };
+  // 손가락이면 두 번째 손가락이 오는지 0.07초 본 뒤 판정이 매듭지어진다. 그것을 기다린다(판정은 누른 때로 한다)
+  const pull = async () => {
+    const p = await screenOf(27.5, 18.8);
+    await tap(p.x, p.y);
+    await page.waitForFunction(() => !window.__game.fishing.pressPending, null, { timeout: 3000, polling: 'raf' }).catch(() => {});
+  };
+  const ambience = () => g(() => window.__game.fishing.ambience);
   // r 하나로 물고기·입질·크기가 정해진다. 0.05 송사리(빨리 문다), 0.5 붕어, 0.75 잉어, 0.99 메기
   const setRandom = (r) => g((v) => window.__game.fishing.setRandom(() => v), r);
 
@@ -42,6 +48,7 @@ export default async function fishingTour(page, { out, logs }) {
 
   // 0) 처음 화면에서 빛과 움직임으로 연못을 알린다 (반짝임, 잠자리, 멀리 있을 때 가끔 뛰는 물고기)
   const guided = await page.waitForFunction(() => window.__game.fishing.fx.glints.length > 0 && window.__game.fishing.fx.jumps > 0, null, { timeout: 20000, polling: 200 }).then(() => true).catch(() => false);
+  const farAmbience = await ambience();
   const guide = await g(() => {
     const fx = window.__game.fishing.fx;
     const on = (p) => { const q = window.__game.view.screenPoint(p.x, p.z); return q.x >= 0 && q.x <= innerWidth && q.y >= 0 && q.y <= innerHeight; };
@@ -62,8 +69,10 @@ export default async function fishingTour(page, { out, logs }) {
 
   // 2) 찌가 완전히 잠길 때 누르면 낚는다
   const bit = await waitPhase('bite');
-  await pull(); // 누를 시간은 1초뿐이다. 화면 찍기는 누른 뒤에 한다
+  await pull(); // 누를 시간은 1.3초뿐이다. 화면 찍기는 누른 뒤에 한다
   const closeAtBite = await g(() => window.__game.view.closeAmount);
+  // 기록은 탭끼리 차례를 지켜(웹 잠금) 조금 뒤에 쓰인다
+  await page.waitForFunction(() => window.__game.fishing.store.state.log.medaka?.count === 1, null, { timeout: 3000 }).catch(() => {});
   s = await fishState();
   say('찌가 잠길 때 누르면 낚는다', bit && s.last?.verdict === 'caught' && s.log.medaka?.count === 1, JSON.stringify(s.last));
   const card = await g(() => ({ shown: !document.getElementById('catch-card').hidden, name: document.getElementById('catch-name').textContent, size: document.getElementById('catch-size').textContent, note: document.getElementById('catch-note').textContent }));
@@ -89,7 +98,8 @@ export default async function fishingTour(page, { out, logs }) {
   await page.waitForFunction(() => window.__game.fishing.nibbled >= 1, null, { timeout: 25000, polling: 'raf' }).catch(() => {});
   await pull();
   s = await fishState();
-  say('찌가 흔들릴 때 누르면 너무 이르다고 알린다', s.last?.verdict === 'early' && (await toast()).includes('너무 일찍'), JSON.stringify(s.last));
+  const earlyToast = await g(() => ({ text: document.getElementById('toast').textContent, kind: document.getElementById('toast').dataset.kind || '' }));
+  say('찌가 흔들릴 때 누르면 이르다는 것을 빨간 오류 없이 알린다', s.last?.verdict === 'early' && earlyToast.text.includes('건드려 보던') && earlyToast.kind !== 'error', JSON.stringify({ last: s.last, earlyToast }));
   say('놓친 것은 기록하지 않는다', !s.log.crucian);
   await waitPhase('idle', 10000);
 
@@ -97,9 +107,12 @@ export default async function fishingTour(page, { out, logs }) {
   await groundTap(26.6, 18.2);
   // 누르지 않는 판에서 던진 모습과 잠긴 모습을 찍는다. 찍는 데 걸리는 시간이 누를 시간을 잡아먹지 않게 한다
   if (await waitPhase('wait')) await page.screenshot({ path: `${out}-1-cast.png` });
+  const waitAmbience = await ambience();
+  const hushAmbience = await page.waitForFunction(() => (window.__game.fishing.phase === 'wait' && window.__game.fishing.hushedAt !== null ? window.__game.fishing.ambience : null), null, { timeout: 25000, polling: 'raf' }).then((h) => h.jsonValue()).catch(() => null);
+  say('연못가에서는 물소리가 들리고, 물기 직전 잠잠할 때는 작아진다(꺼지지는 않는다)', farAmbience?.level === 0 && waitAmbience?.level === 1 && !waitAmbience.ducked && hushAmbience?.ducked === true && hushAmbience.level === 1, JSON.stringify({ farAmbience, waitAmbience, hushAmbience }));
   if (await waitPhase('bite')) await page.screenshot({ path: `${out}-2-bite.png` });
   const late = await page.waitForFunction(() => window.__game.fishing.last?.verdict === 'late' && window.__game.fishing.phase !== 'bite', null, { timeout: 30000 }).then(() => true).catch(() => false);
-  say('잠긴 뒤 한참 누르지 않으면 늦었다고 알린다', late && (await toast()).includes('늦었습니다'), await toast());
+  say('잠긴 뒤 한참 누르지 않으면 늦었다는 것을 부드럽게 알린다', late && (await toast()).includes('미끼만'), await toast());
   await waitPhase('idle', 10000);
 
   // 5) 물고기가 오기 전에 누르면 찌를 거둔다. 던지는 동안 누른 것은 흘려보낸다
@@ -112,6 +125,23 @@ export default async function fishingTour(page, { out, logs }) {
   s = await fishState();
   say('물고기가 오기 전에 누르면 찌를 거둔다', s.last?.verdict === 'reeled' && (await toast()).includes('거두었습니다'), JSON.stringify(s.last));
   await waitPhase('idle', 10000);
+  // 두 손가락으로 확대하려고 첫 손가락을 대도 줄을 당기지 않는다 (손가락 흉내에서만)
+  if (cdp) {
+    await setRandom(0.05);
+    await groundTap(26.6, 18.2);
+    await waitPhase('bite');
+    const p1 = await screenOf(27.0, 18.6), p2 = await screenOf(28.2, 19.6);
+    const before = await g(() => window.__game.fishing.last?.verdict);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Math.round(p1.x), y: Math.round(p1.y), id: 1 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Math.round(p1.x), y: Math.round(p1.y), id: 1 }, { x: Math.round(p2.x), y: Math.round(p2.y), id: 2 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: Math.round(p1.x) - 20, y: Math.round(p1.y) - 20, id: 1 }, { x: Math.round(p2.x) + 20, y: Math.round(p2.y) + 20, id: 2 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(200);
+    const after = await g(() => ({ verdict: window.__game.fishing.last?.verdict, phase: window.__game.fishing.phase, medaka: window.__game.fishing.store.state.log.medaka?.count }));
+    say('두 손가락으로 확대하려 해도 줄을 당기지 않는다', after.verdict === before && after.phase === 'bite' && after.medaka === 1, JSON.stringify({ before, after }));
+    await page.waitForFunction(() => window.__game.fishing.last?.verdict === 'late', null, { timeout: 15000 }).catch(() => {});
+    await waitPhase('idle', 10000);
+  }
   // 가까이서 뛰는 물고기는 던질 곳을 고르는 단서처럼 보일 수 있으므로 연못가에서는 뛰지 않는다
   say('연못가에서 낚시하는 동안에는 물고기가 뛰지 않는다', (await g(() => window.__game.fishing.fx.jumps)) === jumpsNear);
 
@@ -122,9 +152,20 @@ export default async function fishingTour(page, { out, logs }) {
     localStorage.setItem('house-lab-web:fishing', JSON.stringify(data));
   });
   await setRandom(0.75); // 잉어
+  // 기록을 쓸 때 웹 잠금을 거치는지 센다 (탭끼리 차례를 지켜 읽고 쓰게 하는 장치)
+  const lockable = await g(() => {
+    if (!navigator.locks?.request) return false;
+    const orig = navigator.locks.request.bind(navigator.locks);
+    window.__locks = [];
+    navigator.locks.request = (name, ...rest) => { window.__locks.push(name); return orig(name, ...rest); };
+    return true;
+  });
   await groundTap(26.6, 18.2);
   await waitPhase('bite');
   await pull();
+  await page.waitForFunction(() => window.__game.fishing.store.state.log.carp?.count === 1, null, { timeout: 3000 }).catch(() => {});
+  const locks = await g(() => window.__locks || []);
+  say('낚시 기록은 탭끼리 차례를 지켜(웹 잠금) 읽고 쓴다', lockable && locks.includes('house-lab-web:fishing'), JSON.stringify({ lockable, locks }));
   s = await fishState();
   const kst = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
   say('다른 탭에서 남긴 기록과 함께 저장한다', s.log.carp?.count === 1 && s.log.catfish?.count === 3 && s.log.medaka?.count === 1, JSON.stringify(s.log));

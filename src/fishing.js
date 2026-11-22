@@ -14,8 +14,9 @@ export const FISH = {
 };
 export const FISH_ORDER = Object.keys(FISH);
 
-// 찌가 완전히 잠긴 뒤 누를 수 있는 시간(초). 느린 휴대폰과 사람에게도 넉넉하게 둔다
-export const BITE_WINDOW = 1.0;
+// 찌가 완전히 잠긴 뒤 누를 수 있는 시간(초). 느린 휴대폰과 사람에게도 넉넉하게 둔다.
+// 2026-11-22 사용자 결정(여유 쪽 제안)으로 1.0 에서 1.3 으로 늘렸다
+export const BITE_WINDOW = 1.3;
 // 진짜로 물기 직전의 잠잠한 시간(초). 이때 물고기 그림자가 흔들림을 멈추고 살짝 물러난다.
 // 진짜로 물기 전에만 오므로 속이는 신호가 아니다. 마지막으로 건드린 뒤 찌가 다 떠오른 다음에 시작하게
 // 마지막 건드림과 무는 때 사이를 HUSH_GAP 만큼은 띄운다
@@ -164,7 +165,7 @@ export function parseFishing(text) {
     return { ok: false, reason: '낚시 기록의 형식이 다릅니다' };
   }
   let version = Number(data.version) || 0;
-  if (version > FISHING_VERSION) return { ok: false, reason: '더 새로운 판에서 저장한 낚시 기록이라 읽을 수 없습니다' };
+  if (version > FISHING_VERSION) return { ok: false, newer: true, reason: '더 새로운 판에서 저장한 낚시 기록이라 읽을 수 없습니다' };
   while (version < FISHING_VERSION) {
     const step = MIGRATIONS[version];
     if (!step) return { ok: false, reason: `${version}판 낚시 기록을 바꾸는 방법이 없습니다` };
@@ -179,8 +180,14 @@ export function parseFishing(text) {
   return { ok: true, state: store.state, dropped };
 }
 
+// 더 새로운 판(이 화면보다 나중에 나온 게임)에서 저장한 기록인지. 그런 기록은 읽지도 덮어쓰지도 않는다
+function isNewerRecord(text) {
+  try { const data = JSON.parse(text); return data?.format === 'fishing-log' && Number(data.version) > FISHING_VERSION; } catch { return false; }
+}
+
 // 저장소 하나에 읽고 쓴다. 저장소가 없거나 막혀 있으면 조용히 실패한다.
-// 읽지 못한 기록은 지우지 않고 옆(:broken)에 남겨 둔다. 이미 남겨 둔 것이 있으면 덮어쓰지 않는다
+// 읽지 못한 기록은 지우지 않고 옆(:broken)에 남겨 둔다. 이미 남겨 둔 것이 있으면 덮어쓰지 않는다.
+// 더 새로운 판의 기록은 망가진 것이 아니므로 옆에 옮기지 않고, 그 위에 쓰지도 않는다(그대로 남는다)
 export function createFishingSaver(storage, key = FISHING_KEY) {
   return {
     available: !!storage,
@@ -190,14 +197,24 @@ export function createFishingSaver(storage, key = FISHING_KEY) {
       try { text = storage.getItem(key); } catch { return null; }
       if (text === null) return { ok: true, state: createFishingState(), dropped: 0 };
       const result = parseFishing(text);
-      if (!result.ok) {
+      if (!result.ok && !result.newer) {
         try { if (storage.getItem(`${key}:broken`) === null) storage.setItem(`${key}:broken`, text); } catch { /* 남기지 못해도 계속한다 */ }
       }
       return result;
     },
     save(state) {
       if (!storage) return false;
-      try { storage.setItem(key, serializeFishing(state)); return true; } catch { return false; }
+      try {
+        const now = storage.getItem(key);
+        if (now !== null && isNewerRecord(now)) return false; // 더 새 판의 기록을 1판으로 덮어쓰지 않는다
+        storage.setItem(key, serializeFishing(state));
+        return true;
+      } catch { return false; }
+    },
+    // 지금 저장소에 더 새 판의 기록이 있는지 (저장하지 못한 까닭을 알리는 데 쓴다)
+    newerStored() {
+      if (!storage) return false;
+      try { const now = storage.getItem(key); return now !== null && isNewerRecord(now); } catch { return false; }
     },
   };
 }
