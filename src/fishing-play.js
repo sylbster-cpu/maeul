@@ -11,6 +11,10 @@ const CAST_TIME = 0.5;
 const RESULT_TIME = 0.8; // 놓쳤을 때 결과를 보이는 시간
 const CATCH_TIME = 2.0; // 낚은 물고기를 들어 보이는 시간. 무거운 물고기는 조금 더 길게 본다
 const SKIP_AFTER = 0.5; // 결과를 보이는 중 이만큼 지나 누르면 바로 넘어간다
+// 누르고 버티기(2026-11-22 사용자 결정, GPT 제안): 낚아챈 뒤 화면을 누르고 있으면 REEL_TIME 만에 끌어올리고,
+// 손을 떼면 REEL_SLOW 배로 느려진다. 놓쳐도 실패하지 않는다. 큰 물고기일수록 오래 걸린다(무게는 시간)
+const reelTime = (weight) => 0.6 + 0.9 * weight; // 송사리 약 0.65초 ~ 메기 약 1.5초
+const REEL_SLOW = 0.35;
 const REACH = 3.2; // 찌를 던지는 가장 먼 거리
 const SHORE = 1.4; // 물가에서 이만큼 안에 서 있어야 던질 수 있다
 
@@ -37,6 +41,8 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
   let hushedAt = null; // 물기 직전 잠잠해진 때 (자동 시험이 읽는다)
   let pressed = null; // 눌렀지만 아직 판정하지 않은 누름 { t, phase }. 두 손가락 확대인지 잠깐 본다(input.js)
   let plopWait = 3; // 연못가의 물소리 사이사이 작은 퐁 소리까지 남은 시간
+  let reel = null; // 끌어올리는 중 { p, time, fish, size, weight, label, note, tug }
+  let reelHolding = false; // 화면을 누르고 있는지 (input.js 가 알려 준다)
   let wasNear = false;
   let stand = null; // 던진 자리. 걸어서 떠나기 전까지 카메라가 물가와 찌 사이를 가까이 본다
   let resultTime = RESULT_TIME;
@@ -115,15 +121,14 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
         ui.toast(saver.newerStored() ? '더 새로운 판의 낚시 기록이 있어 저장하지 않았습니다. 새로 고쳐 주세요' : '이 브라우저에서는 낚시 기록이 저장되지 않습니다', 'error');
       });
       const note = !was ? '처음 잡은 물고기입니다' : size > was.best ? '최고 기록입니다' : '';
-      // 낚은 순간은 작은 알림 대신 화면 가운데 카드로 크게 보여 준다
-      if (catchCard) catchCard.show({ label, size, note });
-      else ui.toast(`${label}${objectParticle(label)} 낚았습니다! ${size}cm. ${note}`);
-      // 낚아챈 바로 그 순간에 신호를 몰아 준다: 멈춤·흰 번쩍·흔들림·물보라(pondView), 묵직한 소리, 진동.
-      // 크기는 무게감에 맞춘다. 송사리는 가볍게, 메기는 크게. 가락은 물고기가 손에 떨어질 때 울린다
-      pondView.catchFish(fish, size, weight, () => audio.play('catch', { pitch: 1.12 - 0.2 * weight }));
+      // 낚아챈 바로 그 순간에 신호를 몰아 준다: 멈춤·흔들림·물보라·낚싯대(pondView), 묵직한 소리, 진동.
+      // 크기는 무게감에 맞춘다. 송사리는 가볍게, 메기는 크게. 기록은 지금 남기고(이미 낚았다), 카드는 다 끌어올린 뒤에 띄운다
+      pondView.hook(fish, size, weight);
       audio.play('hook', { pitch: 1.4 - 0.65 * weight, gain: 0.65 + 0.55 * weight });
       buzz(weight < 0.35 ? [25] : weight < 0.7 ? [35, 30, 35] : [55, 35, 70]);
-      resultTime = CATCH_TIME + 0.3 * weight;
+      reel = { p: 0, time: reelTime(weight), fish, size, weight, label, note, tug: 0.25 };
+      setPhase('reel');
+      return;
     } else {
       // 놓쳐도 빨간 오류로 다그치지 않는다. 무엇 때문이었는지만 알린다(여유 쪽 제안, 2026-11-22 사용자 결정)
       ui.toast({
@@ -156,6 +161,17 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
     }
   }
 
+  // 다 끌어올렸다: 물고기가 솟아 머리 위에 오고, 화면 가운데 카드로 크게 알린다. 가락은 물고기가 손에 떨어질 때 울린다
+  function landFish() {
+    const r = reel;
+    reel = null;
+    if (catchCard) catchCard.show({ label: r.label, size: r.size, note: r.note });
+    else ui.toast(`${r.label}${objectParticle(r.label)} 낚았습니다! ${r.size}cm. ${r.note}`);
+    pondView.leapOut(r.fish, r.size, r.weight, () => audio.play('catch', { pitch: 1.12 - 0.2 * r.weight }));
+    resultTime = CATCH_TIME + 0.3 * r.weight;
+    setPhase('result');
+  }
+
   // 결과 보이기를 끝내고 다음 던지기를 기다린다. 낚싯대는 내려놓고 카메라는 그대로 둔다
   function endResult() { pondView.reset(); catchCard?.hide(); setPhase('idle'); }
 
@@ -172,7 +188,10 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
     // 자동 시험이 물고기와 입질을 정해 둘 때 쓴다
     setRandom(fn) { random = fn; },
     // 낚시를 하고 있으면 화면 누름은 줄을 당기는 데 쓴다 (걷지 않는다)
-    get holding() { return phase === 'cast' || phase === 'wait' || phase === 'bite' || phase === 'result'; },
+    get holding() { return phase === 'cast' || phase === 'wait' || phase === 'bite' || phase === 'reel' || phase === 'result'; },
+    // 화면을 누르고 있는지. 끌어올리는 동안 누르고 있으면 빨리, 떼면 느리게 끌어올린다
+    setHolding(value) { const v = !!value; if (v !== reelHolding) { reelHolding = v; if (phase === 'reel') onChange(); } },
+    get reeling() { return phase === 'reel' && reel ? { p: reel.p, holding: reelHolding, time: reel.time } : null; },
     isWater: (point) => character.place === 'yard' && inWater(point.x, point.z, 0.15),
     // 물을 눌렀을 때. 물가로 걸어간 뒤 던진다
     start(point) {
@@ -198,6 +217,7 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
     pull() { this.press(); this.commitPress(); },
     cancel() {
       stand = null;
+      reel = null;
       if (phase === 'idle') return;
       pondView.reset();
       catchCard?.hide();
@@ -214,6 +234,7 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
         case 'walk': return '연못가로 걸어가는 중입니다.';
         case 'cast': case 'wait': return '찌가 흔들릴 때는 기다리고, 완전히 잠기면 화면을 누릅니다.';
         case 'bite': return '찌가 잠겼습니다. 화면을 눌러 낚아채세요.';
+        case 'reel': return reelHolding ? '그대로 누르고 있으면 끌어올립니다.' : '화면을 누르고 있으면 더 빨리 끌어올립니다.';
         default: return nearWater() ? '물을 누르면 찌를 던집니다. 잡은 물고기는 낚시 기록에 남습니다.' : null;
       }
     },
@@ -242,6 +263,20 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
       }
       // 누른 것을 판정하기 전(두 손가락인지 보는 잠깐)에는 늦었다고 하지 않는다. 판정은 누른 때로 한다
       if (phase === 'bite') { if (!pressed && t > plan.bite + plan.window) finish('late'); return; }
+      if (phase === 'reel') {
+        // 누르고 있으면 제 속도로, 떼면 느리게. 물고기는 가끔 홱 당긴다(누르고 있을 때 더 잦고, 진동도 함께)
+        reel.p = Math.min(1, reel.p + (dt * (reelHolding ? 1 : REEL_SLOW)) / reel.time);
+        pondView.reel(reel.p, reelHolding);
+        reel.tug -= dt;
+        if (reel.tug <= 0) {
+          reel.tug = (reelHolding ? 0.22 : 0.45) + Math.random() * 0.15;
+          pondView.tug();
+          audio.play('reel', { pitch: reelHolding ? 1.1 : 0.85, gain: reelHolding ? 1 : 0.6 });
+          if (reelHolding) buzz(14);
+        }
+        if (reel.p >= 1) landFish();
+        return;
+      }
       if (phase === 'result' && t >= resultTime) endResult();
   }
 }

@@ -211,6 +211,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
     // 낚시 중에는 누르는 순간을 판정에 쓴다. 뗄 때까지 기다리면 그만큼 늦어진다. 이 누름으로는 걷지 않는다.
     // 손가락이면 두 번째 손가락이 오는지 잠깐 보고, 마우스는 바로 당긴다
     if (s.mode === 'walk' && fishing?.holding) {
+      fishing.setHolding(true); // 끌어올리는 동안은 누르고 있는 것을 쓴다
       fishing.press();
       if (e.pointerType === 'touch') {
         clearTimeout(pendingPull);
@@ -264,6 +265,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
 
   function onUp(e) {
     touches.delete(e.pointerId);
+    if (touches.size === 0) fishing?.setHolding(false);
     if (locked) {
       if (touches.size < 2) pinch = null;
       if (touches.size === 0) locked = false;
@@ -300,6 +302,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
 
   function onCancel(e) {
     touches.delete(e.pointerId);
+    if (touches.size === 0) fishing?.setHolding(false);
     if (touches.size < 2) pinch = null;
     if (touches.size === 0) locked = false;
     s.drag = null; s.press = null; history.end();
