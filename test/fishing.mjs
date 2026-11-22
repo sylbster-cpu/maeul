@@ -94,6 +94,7 @@ export default async function fishingTour(page, { out, logs }) {
   await setRandom(0.05);
   await groundTap(26.4, 17.5);
   say('물을 누르면 물가로 걸어간다', (await phase()) === 'walk');
+  say('연못으로 걸어가는 동안 연못가로 간다고 안내한다', (await g(() => document.getElementById('hint').textContent)) === '연못가로 걸어가는 중입니다.');
   const cast = await page.waitForFunction(() => ['cast', 'wait'].includes(window.__game.fishing.phase), null, { timeout: 20000 }).then(() => true).catch(() => false);
   let s = await fishState();
   say('물가에 닿으면 찌를 던진다', cast, JSON.stringify(s.pos));

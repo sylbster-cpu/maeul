@@ -67,6 +67,9 @@ export default async function beachTour(page, { out, logs }) {
   // 3) 바다를 누르면 물가로 가서 바다에 던진다. 바다 물고기가 온다
   await g(() => { window.__game.character.teleport(9, 27.5); window.__game.view.snapFocus(9, 27.5); window.__game.fishing.setRandom(() => 0.05); });
   await groundTap(10, 33.2);
+  const walking = await page.waitForFunction(() => window.__game.fishing.phase === 'walk', null, { timeout: 3000, polling: 'raf' }).then(() => true).catch(() => false);
+  const walkHint = await hint();
+  say('바다로 걸어가는 동안 바닷가로 간다고 안내한다', walking && walkHint === '바닷가로 걸어가는 중입니다.', walkHint);
   const cast = await page.waitForFunction(() => ['cast', 'wait'].includes(window.__game.fishing.phase), null, { timeout: 20000 }).then(() => true).catch(() => false);
   const castInfo = await g(() => ({ water: window.__game.fishing.water, fish: window.__game.fishing.plan?.fish, pos: { ...window.__game.character.pos } }));
   say('바다를 누르면 물가로 걸어가 바다에 던진다', cast && castInfo.water === 'sea', JSON.stringify(castInfo));

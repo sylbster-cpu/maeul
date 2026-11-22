@@ -1,4 +1,4 @@
-// 낚시 놀이의 흐름. 물을 누르면 연못가로 걸어가 찌를 던지고, 찌가 완전히 잠길 때 누르면 낚는다.
+// 낚시 놀이의 흐름. 물(연못이나 바다)을 누르면 물가로 걸어가 찌를 던지고, 찌가 완전히 잠길 때 누르면 낚는다.
 // 흐름: idle → walk(물가로) → cast(던짐) → wait(다가오고 건드림) → bite(잠김) → result → idle
 // 기록은 fishing.js 의 명령으로만 바꾸고, 집 저장과 다른 열쇠에 둔다.
 import {
@@ -265,7 +265,7 @@ export function createFishing({ character, pondView, ui, audio, haptics = null, 
     },
     hint() {
       switch (phase) {
-        case 'walk': return '연못가로 걸어가는 중입니다.';
+        case 'walk': return `${water === 'sea' ? '바닷가' : '연못가'}로 걸어가는 중입니다.`;
         case 'cast': case 'wait': return '찌가 흔들릴 때는 기다리고, 완전히 잠기면 화면을 누릅니다.';
         case 'bite': return '찌가 잠겼습니다. 화면을 눌러 낚아채세요.';
         case 'reel': return reelHolding ? '그대로 누르고 있으면 끌어올립니다.' : '화면을 누르고 있으면 더 빨리 끌어올립니다.';
