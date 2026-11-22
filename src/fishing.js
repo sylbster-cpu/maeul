@@ -2,17 +2,27 @@
 // 집의 상태(state.js)와 따로 둔다. 낚시 기록은 집 저장, 공유 링크, Firebase 에 섞지 않는다.
 // 기록을 바꾸는 것은 모두 명령을 거친다: validate → apply, 그리고 되돌리는 명령(inverseOf).
 // three.js 와 브라우저를 불러오지 않는다. 우연(rng)과 저장소(storage)는 밖에서 넘겨받는다.
-import { POND } from './parts.js';
+import { POND, shoreZ } from './parts.js';
 
-// 물고기. weight 는 나오는 비율, min·max 는 크기(cm), pattern 은 입질 모양, shadow 는 물속 그림자 크기.
-// 드문 물고기는 나오는 비율과 그림자로만 구분하고, 누르는 시간 창은 모두 같다
+// 낚시할 수 있는 물. 연못(마당 동쪽)과 바다(마당 남쪽 바닷가, 2026-11-22 사용자 결정)
+export const WATERS = { pond: { label: '연못' }, sea: { label: '바다' } };
+export const WATER_ORDER = Object.keys(WATERS);
+
+// 물고기. water 는 사는 물, weight 는 그 물 안에서 나오는 비율, min·max 는 크기(cm), pattern 은 입질 모양,
+// shadow 는 물속 그림자 크기. 드문 물고기는 나오는 비율과 그림자로만 구분하고, 누르는 시간 창은 모두 같다.
+// 바다 물고기 셋은 2026-11-22 사용자 결정: 망둥어(작고 흔함), 고등어(중간, 잦게 건드림), 감성돔(크고 드묾)
 export const FISH = {
-  medaka: { label: '송사리', min: 3, max: 6, weight: 30, pattern: 'steady', shadow: 0.32, color: 0xa7bcae },
-  crucian: { label: '붕어', min: 12, max: 32, weight: 40, pattern: 'steady', shadow: 0.55, color: 0x9a8a52 },
-  carp: { label: '잉어', min: 35, max: 75, weight: 22, pattern: 'tricky', shadow: 0.9, color: 0xd98a3a },
-  catfish: { label: '메기', min: 40, max: 90, weight: 8, pattern: 'tricky', shadow: 1.1, color: 0x4f4a42 },
+  medaka: { water: 'pond', label: '송사리', min: 3, max: 6, weight: 30, pattern: 'steady', shadow: 0.32, color: 0xa7bcae },
+  crucian: { water: 'pond', label: '붕어', min: 12, max: 32, weight: 40, pattern: 'steady', shadow: 0.55, color: 0x9a8a52 },
+  carp: { water: 'pond', label: '잉어', min: 35, max: 75, weight: 22, pattern: 'tricky', shadow: 0.9, color: 0xd98a3a },
+  catfish: { water: 'pond', label: '메기', min: 40, max: 90, weight: 8, pattern: 'tricky', shadow: 1.1, color: 0x4f4a42 },
+  goby: { water: 'sea', label: '망둥어', min: 8, max: 20, weight: 50, pattern: 'steady', shadow: 0.42, color: 0x9c8f6e },
+  mackerel: { water: 'sea', label: '고등어', min: 25, max: 45, weight: 38, pattern: 'tricky', shadow: 0.7, color: 0x4f7f95 },
+  porgy: { water: 'sea', label: '감성돔', min: 30, max: 60, weight: 12, pattern: 'tricky', shadow: 0.95, color: 0x5d6670 },
 };
 export const FISH_ORDER = Object.keys(FISH);
+// 한 물에 사는 물고기들 (표의 순서대로)
+export const fishIn = (water) => FISH_ORDER.filter((id) => FISH[id].water === water);
 
 // 찌가 완전히 잠긴 뒤 누를 수 있는 시간(초). 느린 휴대폰과 사람에게도 넉넉하게 둔다.
 // 2026-11-22 사용자 결정(여유 쪽 제안)으로 1.0 에서 1.3 으로 늘렸다
@@ -23,23 +33,29 @@ export const BITE_WINDOW = 1.3;
 export const HUSH = 0.4;
 export const HUSH_GAP = 0.75;
 
-// 물 위인지. pad 만큼 넓히거나(+) 좁힌(-) 타원으로 본다
-export function inWater(x, z, pad = 0) {
+// 어느 물 위인지('pond', 'sea', 물이 아니면 null). pad 만큼 물을 넓히거나(+) 좁혀(-) 본다.
+// 연못은 타원, 바다는 굽이치는 물가선(parts.js shoreZ) 너머다
+export function waterAt(x, z, pad = 0) {
   const dx = (x - POND.x) / (POND.rx + pad), dz = (z - POND.z) / (POND.rz + pad);
-  return dx * dx + dz * dz < 1;
+  if (dx * dx + dz * dz < 1) return 'pond';
+  if (z > shoreZ(x) - pad) return 'sea';
+  return null;
 }
+// 물 위인지 (연못이든 바다든)
+export const inWater = (x, z, pad = 0) => waterAt(x, z, pad) !== null;
 
 // 오늘 잘 잡히는 물고기는 나오는 비율을 이만큼 곱한다(2026-11-22 사용자 결정: 확률만 조금).
 // 붕어 40%→50%, 메기 8%→11.5% 쯤이 된다. 누르는 시간 창과 크기는 그대로다
 export const FAVOR = 1.5;
 
-// 어떤 물고기가 올지. rng 는 0 이상 1 미만의 수를 돌려주는 함수. favored 는 오늘 잘 잡히는 물고기
-export function rollFish(rng, favored = null) {
+// 어떤 물고기가 올지. rng 는 0 이상 1 미만의 수를 돌려주는 함수. favored 는 오늘 잘 잡히는 물고기, water 는 던진 물
+export function rollFish(rng, favored = null, water = 'pond') {
+  const ids = fishIn(water);
   const weightOf = (id) => FISH[id].weight * (id === favored ? FAVOR : 1);
-  const total = FISH_ORDER.reduce((sum, id) => sum + weightOf(id), 0);
+  const total = ids.reduce((sum, id) => sum + weightOf(id), 0);
   let r = rng() * total;
-  for (const id of FISH_ORDER) { r -= weightOf(id); if (r < 0) return id; }
-  return FISH_ORDER[FISH_ORDER.length - 1];
+  for (const id of ids) { r -= weightOf(id); if (r < 0) return id; }
+  return ids[ids.length - 1];
 }
 // 크기(cm, 소수 한 자리). 작은 쪽이 흔하고 큰 것은 드물다
 export function rollSize(fish, rng) {
@@ -62,9 +78,9 @@ export function planBite(fish, rng) {
 }
 
 // 낚은 물고기의 무게감(0~1). 연출의 크기를 여기에 맞춘다: 크고 드문 물고기일수록 크게.
-// 크기는 송사리 3cm 에서 메기 90cm 까지 로그로 재고, 드문 정도를 조금 더한다. 판정과 기록에는 쓰지 않는다
+// 크기는 송사리 3cm 에서 메기 90cm 까지 로그로 재고, 같은 물 안에서의 드문 정도를 조금 더한다. 판정과 기록에는 쓰지 않는다
 export function catchWeight(fish, size) {
-  const most = Math.max(...FISH_ORDER.map((id) => FISH[id].weight));
+  const most = Math.max(...fishIn(FISH[fish].water).map((id) => FISH[id].weight));
   const bySize = Math.log(Math.max(size, 3) / 3) / Math.log(30);
   const rarity = 1 - FISH[fish].weight / most;
   return Math.min(1, Math.max(0, bySize * 0.8 + rarity * 0.2));
@@ -84,7 +100,7 @@ export function kstDay(now = Date.now()) {
 }
 
 // 정해진 씨앗으로 물고기 순서를 섞는다. 같은 씨앗이면 어느 기기에서나 같은 순서다
-function shuffledFish(seed) {
+function shuffledFish(seed, list) {
   let a = (seed * 2654435761 + 0x9e3779b9) >>> 0;
   const next = () => { // mulberry32
     a = (a + 0x6d2b79f5) >>> 0;
@@ -92,26 +108,30 @@ function shuffledFish(seed) {
     x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
     return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
   };
-  const order = [...FISH_ORDER];
+  const order = [...list];
   for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(next() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
   return order;
 }
-// 오늘 잘 잡히는 물고기(day 는 kstDay 의 한국 날짜). 날짜만으로 정하므로 모두에게 같고 저장하지 않는다.
+// 오늘 잘 잡히는 물고기(day 는 kstDay 의 한국 날짜). 물마다 하나씩 있다. 날짜만으로 정하므로 모두에게 같고 저장하지 않는다.
 // 물고기 수만큼의 날을 한 묶음으로, 묶음마다 모든 물고기를 한 번씩 섞어 늘어놓는다(드문 메기의 날도 꼭 온다).
 // 같은 물고기가 이틀 잇달아 오지 않게, 묶음의 첫날이 앞 묶음의 끝날과 같으면 둘째 날과 바꾼다.
 // 바꾸는 것은 첫째·둘째 날뿐이라 앞 묶음의 끝날은 그 앞 묶음에 따라 달라지지 않는다
-export function todaysFish(day) {
+// 연못의 씨앗은 바다를 더하기 전과 같아서, 연못의 날짜별 물고기는 바뀌지 않는다
+const SEED_SALT = { pond: 0, sea: 0x5eaf00d };
+export function todaysFish(day, water = 'pond') {
   const n = Math.round(Date.parse(`${day}T00:00:00Z`) / 86400000);
-  const len = FISH_ORDER.length;
+  const list = fishIn(water);
+  const len = list.length;
   const block = Math.floor(n / len);
-  const order = shuffledFish(block);
-  if (order[0] === shuffledFish(block - 1)[len - 1]) [order[0], order[1]] = [order[1], order[0]];
+  const order = shuffledFish(block + SEED_SALT[water], list);
+  if (order[0] === shuffledFish(block - 1 + SEED_SALT[water], list)[len - 1]) [order[0], order[1]] = [order[1], order[0]];
   return order[n - block * len];
 }
 
 // ---- 낚시 기록 ----
 // state = { version, log: { 물고기: { best: 가장 큰 크기, first: 처음 잡은 날, count: 잡은 수 } } }
-export const FISHING_VERSION = 1;
+// 2판(2026-11-22): 바다 물고기가 생겼다. 1판 화면이 모르는 물고기를 빼고 덮어쓰지 않도록 판을 올렸다
+export const FISHING_VERSION = 2;
 export function createFishingState() { return { version: FISHING_VERSION, log: {} }; }
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -182,7 +202,9 @@ export function createFishingStore(initial = createFishingState()) {
 // ---- 저장 ----
 export const FISHING_KEY = 'house-lab-web:fishing';
 // 형식을 바꾸면 FISHING_VERSION 을 올리고 여기에 변환을 더한다. MIGRATIONS[1] 은 1판을 2판으로 바꾼다
-const MIGRATIONS = {};
+const MIGRATIONS = {
+  1: (data) => ({ ...data, version: 2 }), // 기록의 모양은 같다. 바다 물고기를 받아들이게 될 뿐이다
+};
 
 export function serializeFishing(state) {
   return JSON.stringify({ format: 'fishing-log', version: FISHING_VERSION, log: state.log });

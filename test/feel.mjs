@@ -81,7 +81,8 @@ export default async function feel(page, { out, logs }) {
   say('멈추면 쏠렸다가 곧 바로 선다', settle.min < -0.005 && Math.abs(leanAfter) < 0.01, JSON.stringify({ settle, leanAfter }));
 
   // 3) 나무 곁을 지나가면 흔들리고 잎이 떨어진다 (나무는 걸을 수 있는 둘레 바깥에 있다)
-  await g(() => { window.__game.character.teleport(26.8, 27); }); // 나무 (31, 27)에서 4.2
+  // 바닷가(2026-11-22)를 만들며 나무 (31, 27)을 옮겼다. 서쪽 나무 (-6.5, 23.5)에서 4.0 떨어진, 걸을 수 있는 자리
+  await g(() => { window.__game.character.teleport(-2.6, 24.5); });
   const rustle = await until(() => { const f = window.__game.view.feel; return f.rustling > 0 ? f : null; }, null, 8000);
   say('나무 곁을 지나가면 나무가 흔들리고 잎이 떨어진다', !!rustle && rustle.particles > 0, JSON.stringify(rustle && { rustling: rustle.rustling, particles: rustle.particles }));
 

@@ -1,5 +1,5 @@
 // 낚시 기록 창과 낚은 순간의 카드. 기록 창은 잡아 본 물고기만 보여 주고, 아직 못 본 물고기는 수만 알린다.
-import { FISH, FISH_ORDER } from './fishing.js';
+import { FISH, FISH_ORDER, WATERS, WATER_ORDER, fishIn } from './fishing.js';
 
 const dayText = (day) => { const [, m, d] = day.split('-').map(Number); return `${m}월 ${d}일`; };
 
@@ -21,15 +21,17 @@ export function createFishingUI({ fishing }) {
       const best = document.createElement('span');
       best.textContent = `가장 큰 것 ${entry.best}cm`;
       const more = document.createElement('small');
-      more.textContent = `${entry.count}마리 · 처음 잡은 날 ${dayText(entry.first)}`;
+      more.textContent = `${WATERS[FISH[id].water].label} · ${entry.count}마리 · 처음 잡은 날 ${dayText(entry.first)}`;
       row.append(name, best, more);
       list.append(row);
     }
-    const left = FISH_ORDER.length - caught.length;
+    // 아직 잡아 보지 못한 물고기는 물마다 수만 알린다
+    const left = WATER_ORDER.map((w) => [w, fishIn(w).filter((id) => !log[id]).length]).filter(([, n]) => n > 0);
     $('fish-summary').textContent = !caught.length
-      ? '아직 잡은 물고기가 없습니다. 마당 옆 연못의 물을 눌러 보세요.'
-      : left ? `이 연못에는 아직 잡아 보지 못한 물고기가 ${left}종 더 있습니다.` : '이 연못의 물고기를 모두 잡아 보았습니다.';
-    $('fish-today').textContent = `${fishing.todayText()} 한국 날짜로 날마다 바뀝니다.`;
+      ? '아직 잡은 물고기가 없습니다. 마당 옆 연못이나 남쪽 바닷가의 물을 눌러 보세요.'
+      : left.length ? `아직 잡아 보지 못한 물고기가 ${left.map(([w, n]) => `${WATERS[w].label}에 ${n}종`).join(', ')} 더 있습니다.`
+        : '연못과 바다의 물고기를 모두 잡아 보았습니다.';
+    $('fish-today').textContent = `오늘 잘 잡히는 물고기는 ${WATER_ORDER.map((w) => `${WATERS[w].label}에서 ${fishing.todayLabel(w)}`).join(', ')}입니다. 한국 날짜로 날마다 바뀝니다.`;
   }
   function open() { render(); layer.hidden = false; $('fish-close').focus(); }
   function close() { layer.hidden = true; button.focus(); }

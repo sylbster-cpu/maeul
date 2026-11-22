@@ -5,7 +5,7 @@
 // 무게감에 따른 연출 차이, 빛과 움직임으로 연못 안내.
 import * as THREE from './three.js';
 import { POND } from './parts.js';
-import { FISH, inWater } from './fishing.js';
+import { FISH, inWater, waterAt } from './fishing.js';
 import { wobble } from './fx.js';
 
 const WATER_Y = -0.035; // 물 표면의 높이. 땅(-0.05, -0.07)보다 조금 위다
@@ -475,7 +475,8 @@ export function createPondView({ view, figure }) {
         const x = to.x + Math.cos(a) * 1.7, z = to.z + Math.sin(a) * 1.7;
         if (inWater(x, z, -0.35)) from = { x, z };
       }
-      from ||= { x: (to.x + POND.x) / 2, z: (to.z + POND.z) / 2 };
+      // 그래도 못 찾으면 깊은 쪽에서: 바다는 남쪽, 연못은 가운데 쪽
+      from ||= waterAt(to.x, to.z) === 'sea' ? { x: to.x, z: to.z + 1.7 } : { x: (to.x + POND.x) / 2, z: (to.z + POND.z) / 2 };
       const near = { x: to.x + (from.x - to.x) * 0.22, z: to.z + (from.z - to.z) * 0.22 };
       fish = { from, to: near, t: 0, time: Math.max(0.3, approach), size: FISH[fishId].shadow * 1.3, dir: Math.atan2(to.x - from.x, to.z - from.z), jolt: 0 };
     },
