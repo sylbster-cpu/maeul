@@ -144,20 +144,28 @@ function commitHouseChange(storage, after, failureMessage) {
   try { storage.removeItem(TRANSFER_JOURNAL_KEY); } catch { /* 다음 시작에 검사 */ }
 }
 
-export function importSharedHouse(storage, incomingState) {
+// 공유 링크의 집을 이 브라우저의 집으로 가져온다. 보관 칸은 하나다.
+// - 보관된 집이 없으면(처음이거나, 원래 집 없이 한 번 가져온 브라우저) 지금 집을 보관하고 가져온다.
+// - 보관된 집이 있으면 그 집은 그대로 두고 지금 집을 바꾼다. 지금 집이 사라지므로 replaceCurrent 로
+//   사용자가 확인했을 때만 한다. 지금 집을 남기고 싶으면 먼저 맞바꿔 보관된 집으로 만들면 된다.
+// (2026-11-22 고침: 전에는 보관 칸이 한 번 차면 영원히 다시 가져올 수 없었다. PR #15 Claude 검토)
+export function importSharedHouse(storage, incomingState, { replaceCurrent = false } = {}) {
   storageAvailable(storage);
   let checked;
   try { checked = parse(serialize(incomingState)); }
   catch { throw new Error('가져올 집 데이터가 올바르지 않습니다'); }
   if (!checked?.ok || checked.dropped) throw new Error('가져올 집 데이터가 현재 게임 규칙에 맞지 않습니다');
-  if (readBackup(storage) !== null) {
-    throw new Error('보관된 집이 이미 있습니다. 먼저 두 집을 맞바꿔 백업을 확인해 주세요');
+  const backup = readBackup(storage); // 손상됐으면 여기서 멈춘다
+  const kept = backup !== null && backup.previous !== null;
+  if (kept && !replaceCurrent) {
+    throw new Error('보관된 다른 집이 이미 있습니다. 가져오면 지금 집이 바뀝니다. 다시 확인해 주세요');
   }
   const original = storage.getItem(SAVE_KEY);
   const next = serialize(checked.state, { place: 'yard' });
   commitHouseChange(storage, {
     save: next,
-    backup: JSON.stringify({ version: 1, previous: original }),
+    // 보관된 집이 있으면 건드리지 않는다. 없으면 지금 집을 보관한다(지금 집도 없으면 null)
+    backup: kept ? storage.getItem(PRE_IMPORT_KEY) : JSON.stringify({ version: 1, previous: original }),
   }, '집을 저장하지 못했습니다. 원래 집을 복구할 수 있도록 보관했습니다');
   return checked.state;
 }

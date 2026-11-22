@@ -6,7 +6,8 @@ export default async function transferTour(page, { out, logs }) {
   const save = () => page.evaluate(() => localStorage.getItem('house-lab-web:save'));
   const backup = () => page.evaluate(() => localStorage.getItem('house-lab-web:before-import'));
   const roof = () => page.evaluate(() => window.__game.store.state.house.roof);
-  page.on('dialog', async (dialog) => { await dialog.accept(); });
+  let lastDialog = '';
+  page.on('dialog', async (dialog) => { lastDialog = dialog.message(); await dialog.accept(); });
 
   await ready();
   await page.evaluate(() => {
@@ -77,4 +78,23 @@ export default async function transferTour(page, { out, logs }) {
   say('작은 휴대폰 화면에서 가로 넘침이 없다',
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.screenshot({ path: `${out}-swapped-back.png` });
+
+  // 보관 칸이 차 있어도 새 링크를 가져올 수 있다(2026-11-22 고침, PR #15 Claude 검토 1번).
+  // 보관된 집은 그대로 두고 지금 집이 바뀐다는 것을 확인 창에서 알린다
+  const keptBackup = await backup();
+  const link3 = await page.evaluate(async () => {
+    const { makeShareLink, PUBLIC_SHARE_URL } = await import('./src/share.js');
+    const sample = structuredClone(window.__game.store.state);
+    sample.house.roof = 'terracotta';
+    return makeShareLink(sample, PUBLIC_SHARE_URL);
+  });
+  await Promise.all([page.waitForEvent('load'), page.evaluate((hash) => { location.hash = hash; }, new URL(link3).hash)]);
+  await ready();
+  await Promise.all([page.waitForEvent('load'), page.locator('#share-house').click()]);
+  await ready();
+  say('보관된 집이 있어도 새 링크의 집을 가져올 수 있다',
+    (await roof()) === 'terracotta' && JSON.parse(await save()).state.house.roof === 'terracotta', lastDialog.slice(0, 60));
+  say('가져오기 전에 지금 집이 바뀌고 보관된 집은 남는다고 알린다',
+    lastDialog.includes('보관해 둔 다른 집은 그대로') && lastDialog.includes('되살릴 수 없습니다'));
+  say('새로 가져와도 보관된 집의 원본은 그대로다', (await backup()) === keptBackup);
 }

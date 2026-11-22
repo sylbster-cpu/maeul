@@ -156,10 +156,15 @@ async function start(saved = {}) {
       // 서버 없는 집 공유 링크를 열었을 때만, 확인을 받은 뒤 현재 브라우저의 집을 복사한다.
       importHouse: () => {
         if (switchingHouse || !canImport || !sharedState) return;
-        if (!window.confirm('지금 구경하는 집을 이 브라우저의 내 집으로 가져올까요? 기존에 저장된 집은 맞바꿀 수 있도록 보관합니다. Firebase 온라인 집과 방명록의 소유권은 옮겨지지 않습니다.')) return;
+        // 보관 칸은 하나다. 이미 보관된 집이 있으면 그 집은 두고 지금 집이 바뀐다는 것을 미리 알린다
+        const replaceCurrent = hasPreviousHouse(storage);
+        const question = replaceCurrent
+          ? '지금 구경하는 집을 이 브라우저의 내 집으로 가져올까요? 보관해 둔 다른 집은 그대로 남고, 지금 내 집이 이 집으로 바뀝니다. 지금 내 집은 되살릴 수 없습니다. 남기고 싶으면 취소한 뒤, 내 집의 집 공유 창에서 "보관된 다른 집과 맞바꾸기"를 먼저 하세요. Firebase 온라인 집과 방명록의 소유권은 옮겨지지 않습니다.'
+          : '지금 구경하는 집을 이 브라우저의 내 집으로 가져올까요? 기존에 저장된 집은 맞바꿀 수 있도록 보관합니다. Firebase 온라인 집과 방명록의 소유권은 옮겨지지 않습니다.';
+        if (!window.confirm(question)) return;
         switchingHouse = true;
         ui.setHouseTransition(true);
-        try { importSharedHouse(storage, sharedState); }
+        try { importSharedHouse(storage, sharedState, { replaceCurrent }); }
         catch (error) {
           // 기록이 일부 남았다면 절대 자동 저장을 다시 켜지 않는다.
           switchingHouse = !saveGuard.isCurrent();

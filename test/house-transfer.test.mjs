@@ -66,14 +66,59 @@ test('복사 전 저장된 집이 없었다면 null로 되돌리는 버튼이 �
   assert.equal(storage.getItem(SAVE_KEY), current);
 });
 
-test('이미 두 집을 보관한 상태에서 세 번째 집으로 덮어쓰기 전에 중단한다', () => {
+test('이미 두 집을 보관한 상태에서는 확인 없이 세 번째 집으로 덮어쓰지 않는다', () => {
   const original = serialize(house('slate'));
   const storage = fakeStorage({ [SAVE_KEY]: original });
   importSharedHouse(storage, house('moss'));
   const current = storage.getItem(SAVE_KEY);
-  assert.throws(() => importSharedHouse(storage, house('terracotta')), /보관된 집이 이미/);
+  assert.throws(() => importSharedHouse(storage, house('terracotta')), /보관된 다른 집이 이미/);
   assert.equal(storage.getItem(SAVE_KEY), current);
   assert.equal(JSON.parse(storage.getItem(PRE_IMPORT_KEY)).previous, original);
+});
+
+// 2026-11-22 고침(PR #15 Claude 검토 1번): 한 브라우저가 한 번만 가져올 수 있던 막다른 길
+test('원래 집이 없던 브라우저도 두 번째 링크를 가져올 수 있고, 그사이 꾸민 집은 보관된다', () => {
+  const storage = fakeStorage();
+  importSharedHouse(storage, house('slate'));
+  const first = storage.getItem(SAVE_KEY);
+  assert.equal(hasPreviousHouse(storage), false, '보관된 집은 아직 없다');
+  const state = importSharedHouse(storage, house('moss'));
+  assert.equal(state.house.roof, 'moss');
+  assert.equal(parse(storage.getItem(SAVE_KEY)).state.house.roof, 'moss');
+  assert.equal(JSON.parse(storage.getItem(PRE_IMPORT_KEY)).previous, first, '첫 번째로 가져온 집을 보관한다');
+  assert.equal(hasPreviousHouse(storage), true);
+  assert.equal(restorePreviousHouse(storage), true, '보관된 집과 맞바꿀 수 있다');
+  assert.equal(storage.getItem(SAVE_KEY), first);
+  assert.equal(storage.getItem(TRANSFER_JOURNAL_KEY), null);
+});
+
+test('보관된 집이 있을 때 확인하고 가져오면 보관된 집은 그대로 두고 지금 집만 바꾼다', () => {
+  const original = serialize(house('slate'));
+  const storage = fakeStorage({ [SAVE_KEY]: original });
+  importSharedHouse(storage, house('moss'));
+  restorePreviousHouse(storage); // 지금: 원래 집, 보관: moss
+  const keptRaw = storage.getItem(PRE_IMPORT_KEY);
+  const kept = JSON.parse(keptRaw).previous;
+  assert.equal(parse(kept).state.house.roof, 'moss');
+  const state = importSharedHouse(storage, house('terracotta'), { replaceCurrent: true });
+  assert.equal(state.house.roof, 'terracotta');
+  assert.equal(parse(storage.getItem(SAVE_KEY)).state.house.roof, 'terracotta');
+  assert.equal(storage.getItem(PRE_IMPORT_KEY), keptRaw, '보관된 집의 원문을 건드리지 않는다');
+  // 다시 맞바꾸고 또 가져오기: 보관 칸이 차 있어도 막히지 않는다
+  assert.equal(restorePreviousHouse(storage), true);
+  assert.equal(parse(storage.getItem(SAVE_KEY)).state.house.roof, 'moss');
+  importSharedHouse(storage, house('slate'), { replaceCurrent: true });
+  assert.equal(parse(storage.getItem(SAVE_KEY)).state.house.roof, 'slate');
+  assert.equal(parse(JSON.parse(storage.getItem(PRE_IMPORT_KEY)).previous).state.house.roof, 'terracotta');
+  assert.equal(storage.getItem(TRANSFER_JOURNAL_KEY), null);
+});
+
+test('손상된 백업이 있으면 확인하고 가져와도 아무것도 바꾸지 않는다', () => {
+  const original = serialize(house('slate'));
+  const storage = fakeStorage({ [SAVE_KEY]: original, [PRE_IMPORT_KEY]: '{broken' });
+  assert.throws(() => importSharedHouse(storage, house('moss'), { replaceCurrent: true }), /손상/);
+  assert.equal(storage.getItem(SAVE_KEY), original);
+  assert.equal(storage.getItem(PRE_IMPORT_KEY), '{broken');
 });
 
 test('손상되거나 현재 게임 규칙을 통과하지 못하는 집을 가져오지 않는다', () => {
