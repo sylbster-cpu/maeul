@@ -7,6 +7,9 @@ import { PARTS, WALL_HEIGHT, YARD, TREES, HOUSE_CENTER_X, MAT_X, WINDOW_X, LEVEL
 import { footprint, layerOf, houseRect, cellKey } from './state.js';
 
 const ELEVATION = THREE.MathUtils.degToRad(36);
+// 낚시로 가까이 볼 때는 더 낮게 내려 물 위와 건너편 물가가 보이게 한다. 원근은 넣지 않는다(직교 그대로).
+// 2026-11-23 사용자 지시로 만든 비교판이다. 지금 판(36도 그대로)과 휴대폰으로 견주어 본 뒤 남길지 정한다
+const FISHING_ELEVATION = THREE.MathUtils.degToRad(24);
 const CAMERA_DISTANCE = 90;
 const WALL_T = 0.22; // 방 벽 두께
 
@@ -428,6 +431,7 @@ export function createView({ canvas, assets, store }) {
   // 사용자가 고른 확대(cam.sizes)는 바꾸지 않고, 그보다 멀 때만 가까이 당긴다
   const CLOSE_SIZE = 4.6;
   let close = 0, closeGoal = 0;
+  let elevation = ELEVATION; // 지금 카메라가 내려다보는 각도
   const closeAt = new THREE.Vector3();
   let shake = 0; // 찌가 잠길 때 화면이 살짝 흔들리는 정도
   function resize() {
@@ -457,7 +461,10 @@ export function createView({ canvas, assets, store }) {
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
     cam.azimuth += diff * (calm ? 1 : Math.min(1, dt * 10));
     cam.target.lerp(cam.focus, Math.min(1, dt * 6));
-    const dir = new THREE.Vector3(Math.sin(cam.azimuth) * Math.cos(ELEVATION), Math.sin(ELEVATION), Math.cos(cam.azimuth) * Math.cos(ELEVATION));
+    // 가까이 당기는 정도(close)를 따라 각도도 서서히 내려간다
+    const k = place === 'yard' ? close * close * (3 - 2 * close) : 0;
+    elevation = ELEVATION + (FISHING_ELEVATION - ELEVATION) * k;
+    const dir = new THREE.Vector3(Math.sin(cam.azimuth) * Math.cos(elevation), Math.sin(elevation), Math.cos(cam.azimuth) * Math.cos(elevation));
     camera.position.copy(cam.target).addScaledVector(dir, CAMERA_DISTANCE);
     camera.lookAt(cam.target);
     if (shake > 0) {
@@ -832,10 +839,18 @@ export function createView({ canvas, assets, store }) {
         for (const tr of trees) {
           // 가까이(4.4) 지나가면 흔들린다. 2026-11-22부터 나무 곁까지 걸어갈 수 있다
           const near = Math.hypot(who.x - tr.x, who.z - tr.z) < 4.4;
-          // 캐릭터가 나무 뒤(카메라 반대쪽)에 서서 잎에 가리면 그 나무의 잎을 비쳐 보이게 한다
-          const dx = tr.x - who.x, dz = tr.z - who.z;
-          const along = dx * camX + dz * camZ, side = Math.abs(dx * camZ - dz * camX);
-          const hidden = along > -0.8 && along < 4.6 * tr.size && side < 1.8 * tr.size;
+          // 캐릭터가 나무 뒤(카메라 반대쪽)에 서서 잎에 가리면 그 나무의 잎을 비쳐 보이게 한다.
+          // 낚시로 가까이 볼 때는 낚시하는 곳(물가와 찌 사이)이 가려도 비친다. 카메라를 낮추면 앞의 나무가 찌를 가리기 쉽다
+          const behind = (px, pz) => {
+            const dx = tr.x - px, dz = tr.z - pz;
+            const along = dx * camX + dz * camZ, side = Math.abs(dx * camZ - dz * camX);
+            // 카메라가 낮을수록 같은 나무가 더 먼 땅까지 가린다 (36도에서 4.6칸)
+            const reach = 4.6 * Math.tan(ELEVATION) / Math.tan(elevation);
+            return along > -0.8 && along < reach * tr.size && side < 1.8 * tr.size;
+          };
+          // 낚시하는 곳은 캐릭터와 찌의 가운데이므로, 찌는 그만큼 더 간 자리에 있다
+          const hidden = behind(who.x, who.z) || (closeGoal > 0 &&
+            (behind(closeAt.x, closeAt.z) || behind(2 * closeAt.x - who.x, 2 * closeAt.z - who.z)));
           tr.see += ((hidden ? 0.35 : 1) - tr.see) * (calm ? 1 : Math.min(1, dt * 8));
           tr.crown.material.opacity = tr.top.material.opacity = tr.see;
           tr.crown.material.depthWrite = tr.top.material.depthWrite = tr.see > 0.99;
