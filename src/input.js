@@ -137,6 +137,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
   function fail(result) {
     ui.toast(result.reason, 'error');
     audio.play('error');
+    if (s.mode === 'build') view.nope(); // 미리보기가 고개를 젓듯 흔들린다
   }
 
   // ---- 포인터 ----
@@ -311,7 +312,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
       // 미리보기가 없는 터치에서는 방금 놓은 가구를 제자리에서 돌린다
       const rot = (last.rot + 1) & 3;
       const r = history.run([{ type: 'moveObject', space: here(), id: last.id, x: last.x, y: last.y, rot }]);
-      if (r.ok) { s.rot = rot; view.pop({ id: last.id }); } else fail(r);
+      if (r.ok) { s.rot = rot; view.pop({ id: last.id }, { kind: 'rotate' }); } else fail(r);
     } else s.rot = (s.rot + 1) & 3;
     refresh();
   }
@@ -354,11 +355,24 @@ export function createInput({ canvas, view, store, history, character, ui, audio
   window.addEventListener('keyup', (e) => { if (MOVE_KEYS[e.code]) keys.delete(MOVE_KEYS[e.code]); });
   window.addEventListener('blur', () => keys.clear());
 
+  // 가구의 크기(칸 수). 큰 가구일수록 놓고 치우는 소리를 낮게 낸다 (연출의 크기는 무게에 맞춘다)
+  const areaOf = (part) => { const p = PARTS[part]; return p?.size ? p.size[0] * p.size[1] : p?.span || 1; };
+  const pitchFor = (area) => Math.min(1.2, Math.max(0.78, 1.24 - 0.075 * area));
   store.subscribe((cmd, meta) => {
     if (cmd.type === 'replace') { syncUI(); return; }
-    if (!meta.batch || meta.last) audio.play(cmd.type === 'removeObject' ? 'remove' : 'place');
+    // 치운 가구는 지워지기 전 모습으로 오므라들며 사라진다 (다시 그리기는 다음 화면에서 한다)
+    const area = cmd.type === 'removeObject' ? view.vanish(cmd.id)
+      : cmd.type === 'placeObject' ? areaOf(cmd.part)
+        : cmd.type === 'moveObject' ? areaOf(objectsHere()[cmd.id]?.part) : 2;
+    if (!meta.batch || meta.last) {
+      if (cmd.type === 'setLevel') audio.play('upgrade');
+      else audio.play(cmd.type === 'removeObject' ? 'remove' : 'place', { pitch: pitchFor(area) });
+    }
     if (cmd.type === 'placeObject') view.pop({ id: cmd.id });
-    if (cmd.type === 'setLevel' || cmd.type === 'setFinish' || cmd.type === 'setExterior') ui.setPlace(here(), store.state);
+    if (cmd.type === 'setLevel' || cmd.type === 'setFinish' || cmd.type === 'setExterior') {
+      ui.setPlace(here(), store.state);
+      view.celebrate(cmd.type === 'setLevel' ? 'level' : 'look');
+    }
   });
 
   syncUI();

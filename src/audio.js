@@ -19,6 +19,9 @@ const SOUNDS = {
   catch: [tone(300, 170, 0.07, 'triangle', 0.16), tone(523, 523, 0.1, 'triangle', 0.15, 0.06),
     tone(659, 659, 0.1, 'triangle', 0.15, 0.16), tone(784, 1046, 0.26, 'triangle', 0.17, 0.26)],
   miss: [tone(330, 200, 0.22, 'sine', 0.12)],
+  // 집을 키웠을 때: 쿵 내려앉는 소리 뒤에 올라가는 가락과 반짝이는 소리. 드문 큰일이라 다른 소리보다 길다
+  upgrade: [tone(160, 80, 0.2, 'sine', 0.3), { noise: 500, len: 0.3, gain: 0.12 }, tone(392, 392, 0.12, 'triangle', 0.14, 0.12),
+    tone(523, 523, 0.12, 'triangle', 0.14, 0.24), tone(659, 659, 0.12, 'triangle', 0.15, 0.36), tone(784, 1568, 0.4, 'sine', 0.12, 0.48)],
 };
 
 export function createAudio() {

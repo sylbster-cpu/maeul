@@ -7,7 +7,7 @@ import {
 } from './fishing.js';
 import { POND } from './parts.js';
 
-const CAST_TIME = 0.5;
+const CAST_TIME = 0.7; // 뒤로 젖히는 예비동작(0.26초)과 날아가는 시간. fishing-view.js 와 같다
 const RESULT_TIME = 0.8; // 놓쳤을 때 결과를 보이는 시간
 const CATCH_TIME = 2.0; // 낚은 물고기를 들어 보이는 시간. 무거운 물고기는 조금 더 길게 본다
 const SKIP_AFTER = 0.5; // 결과를 보이는 중 이만큼 지나 누르면 바로 넘어간다

@@ -3,6 +3,7 @@ import * as THREE from './three.js';
 import { PARTS, YARD, YARD_MARGIN, HOUSE_CENTER_X, MAT_X, LEVELS } from './parts.js';
 import { footprint, cellKey, layerOf, houseRect, seatSpots, chooseSeatApproach } from './state.js';
 import { inWater } from './fishing.js';
+import { wobble, squash } from './fx.js';
 
 const RADIUS = 0.34;
 const SPEED = 5.2;
@@ -30,7 +31,8 @@ function buildFigure() {
   const footL = new THREE.Mesh(footGeo, dark); footL.position.set(-0.16, 0.08, 0.05); footL.scale.set(1, 0.6, 1.35);
   const footR = new THREE.Mesh(footGeo, dark); footR.position.set(0.16, 0.08, 0.05); footR.scale.set(1, 0.6, 1.35);
   for (const m of [body, head, cap, eyeL, eyeR, footL, footR]) { m.castShadow = true; group.add(m); }
-  group.userData = { footL, footR };
+  group.userData = { footL, footR, body, upper: [head, cap, eyeL, eyeR] };
+  group.rotation.order = 'YXZ'; // 바라보는 쪽으로 돌린 뒤 앞뒤로 기울인다
   return group;
 }
 
@@ -52,6 +54,11 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
   let seat = null; // 앉은 자리 (올라앉는 중에도)
   let anchor = null; // 그리는 데 쓰는 자리. 일어나는 동안에도 남는다
   let sitK = 0; // 0 이면 서 있고 1 이면 다 앉았다
+  // 몸짓 (그리는 모습만 바꾼다. 자리와 길 찾기는 그대로다)
+  // 걸을 때는 가는 쪽으로 조금 기울고, 멈추면 몸이 앞으로 쏠렸다 돌아온다(따라오기). 서 있을 때는 숨을 쉰다(생동감).
+  // 앉는 순간 몸과 방석이 납작해졌다 돌아온다(찌그러짐). 출발하고 멈출 때 마당에서는 흙먼지가 조금 인다
+  const LEAN = 0.09;
+  let lean = 0, stopT = 9, stopLean = 0, wasMoving = false, breathT = 0, seatT = 9, sitBefore = 0;
 
   const roomSize = () => LEVELS[store.state.house.level].room;
 
@@ -207,6 +214,31 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
     return true;
   }
 
+  function gesture(dt, moved) {
+    const { body, upper } = figure.userData;
+    if (calm) { figure.rotation.x = 0; return; }
+    // 걷기: 출발은 바로 기울고(입력의 결과는 즉시), 멈추면 쏠렸다가 반 번 되돌아 멎는다
+    if (moved && !wasMoving && place === 'yard') view.fx?.puff(pos.x - Math.sin(facing) * 0.25, 0, pos.z - Math.cos(facing) * 0.25, { count: 2, spread: 0.25, size: 0.22, life: 0.35 });
+    if (!moved && wasMoving) {
+      stopT = 0; stopLean = lean + 0.04;
+      if (place === 'yard') view.fx?.puff(pos.x + Math.sin(facing) * 0.2, 0, pos.z + Math.cos(facing) * 0.2, { count: 3, spread: 0.3, size: 0.24, life: 0.4 });
+    }
+    wasMoving = moved;
+    if (moved) { lean += (LEAN - lean) * Math.min(1, dt * 30); stopT = 9; }
+    else { stopT += dt; lean = stopT < 0.6 ? wobble(stopLean, stopT, 0.14, 0.11) : 0; }
+    figure.rotation.x = lean;
+    // 숨: 2.8초에 한 번, 몸이 조금 부풀고 머리가 살짝 오르내린다. 걷는 동안은 쉰다
+    breathT = moved ? 0 : breathT + dt;
+    const breath = Math.sin((breathT / 2.8) * Math.PI * 2) * Math.min(1, breathT / 0.8);
+    body.scale.set(1 - 0.012 * breath, 1 + 0.035 * breath, 1 - 0.012 * breath);
+    for (const m of upper) m.userData.baseY ??= m.position.y;
+    for (const m of upper) m.position.y = m.userData.baseY + 0.022 * breath;
+    // 앉기: 다 앉는 순간 몸이 납작해졌다 돌아오고, 방석도 눌린다
+    if (sitK === 1 && sitBefore < 1 && seat) { seatT = 0; view.bump?.(seat.id, 0.07); }
+    sitBefore = sitK;
+    if (seatT < 0.5) { seatT += dt; squash(figure, 1 + wobble(-0.12, seatT, 0.09, 0.1)); if (seatT >= 0.5) figure.scale.set(1, 1, 1); }
+  }
+
   function update(dt, inputDir) {
     let dir = null;
     if (inputDir) { path = []; goal = null; seat = null; dir = inputDir; }
@@ -260,6 +292,7 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
     footL.position.set(-0.16, 0.08 + (SIT_SINK + 0.02) * k, 0.05 + swing * 0.16 + 0.37 * k);
     footR.position.set(0.16, 0.08 + (SIT_SINK + 0.02) * k, 0.05 - swing * 0.16 + 0.37 * k);
     figure.rotation.z = moved ? swing * 0.04 : 0;
+    gesture(dt, moved);
     return moved;
   }
 
