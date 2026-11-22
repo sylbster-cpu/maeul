@@ -132,7 +132,7 @@ export default async function fishingTour(page, { out, logs }) {
     await waitPhase('bite');
     const p1 = await screenOf(27.0, 18.6), p2 = await screenOf(28.2, 19.6);
     const before = await g(() => window.__game.fishing.last?.verdict);
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Math.round(p1.x), y: Math.round(p1.y), id: 1 }] });
+    // 두 손가락이 거의 함께 닿는다(한 번에 보낸다). 차례로 보내면 느린 CI 에서는 두 번째가 0.07초 뒤에 닿아 시험이 흔들린다
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Math.round(p1.x), y: Math.round(p1.y), id: 1 }, { x: Math.round(p2.x), y: Math.round(p2.y), id: 2 }] });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: Math.round(p1.x) - 20, y: Math.round(p1.y) - 20, id: 1 }, { x: Math.round(p2.x) + 20, y: Math.round(p2.y) + 20, id: 2 }] });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
