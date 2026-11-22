@@ -16,6 +16,13 @@ export const YARD_MARGIN = 3;
 // 마당 동쪽 밖의 연못 (낚시터). 물은 가운데 (x, z), 반지름 rx, rz 인 타원이고 걸을 수 없다.
 // 마당 칸과 겹치지 않으므로 저장된 가구와 부딪치지 않는다. 먼 쪽 물가는 걸을 수 있는 둘레 밖이다
 export const POND = { x: 27.5, z: 18, rx: 2.6, rz: 3.1 };
+// 마당 남쪽의 바닷가 (2026-11-22 사용자 결정: 따로 된 장면이 아니라 바깥을 넓혀 걸어서 간다).
+// 풀밭은 sand 에서 끝나고 모래사장이 이어진다. 물가선(shoreZ) 너머는 바다라 걸을 수 없다.
+// 물가선은 조금 굽이친다. 마당 칸과 겹치지 않으므로 저장된 가구와 부딪치지 않는다
+export const BEACH = { sand: 26.5, shore: 31.5, wave: 0.6 };
+export const shoreZ = (x) => BEACH.shore + BEACH.wave * Math.sin(x * 0.27);
+// 마당 밖까지 걸을 수 있는 범위. 남쪽은 바닷가까지 넓혔다 (물에 들어가는 것은 따로 막는다)
+export const OUTDOOR = { x0: -YARD_MARGIN, z0: -YARD_MARGIN, x1: YARD.w + YARD_MARGIN, z1: BEACH.shore + BEACH.wave };
 
 // 집의 단계. room 은 방의 칸 수 [가로, 세로], house 는 밖에서 보이는 집의 크기
 export const LEVELS = {
