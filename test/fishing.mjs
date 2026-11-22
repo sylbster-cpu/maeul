@@ -81,12 +81,13 @@ export default async function fishingTour(page, { out, logs }) {
     const { FISH, todaysFish, kstDay } = await import('./src/fishing.js');
     const id = todaysFish(kstDay());
     const known = !!window.__game.fishing.store.state.log[id];
-    return { id, text: known ? `오늘은 ${FISH[id].label}` : '오늘은 아직 잡아 보지 못한 물고기가 잘 잡힙니다.' };
+    const label = known ? FISH[id].label : '아직 잡아 보지 못한 물고기';
+    return { id, label, text: `오늘 연못에서는 ${label}` };
   });
   await g(() => { window.__game.character.teleport(24.5, 18.5); window.__game.view.snapFocus(24.5, 18.5); });
   await frames(2);
   const firstHint = await g(() => document.getElementById('hint').textContent);
-  say('처음 온 사람에게는 물가에서 기록이 남는다고 안내한다', firstHint.includes('낚시 기록에 남습니다') && !firstHint.includes('오늘은'), firstHint);
+  say('처음 온 사람에게는 물가에서 기록이 남는다고 안내한다', firstHint.includes('낚시 기록에 남습니다') && !firstHint.includes('오늘 '), firstHint);
 
   // 1) 멀리서 물을 누르면 물가로 걸어가 던진다
   await g(() => { window.__game.character.teleport(20.5, 12.5); window.__game.view.snapFocus(20.5, 12.5); });
@@ -225,7 +226,7 @@ export default async function fishingTour(page, { out, logs }) {
   say('못 잡은 물고기는 수만 알린다', panel.summary.includes('1종'), panel.summary);
   const today = await todayExpect();
   const todayLine = await g(() => document.getElementById('fish-today').textContent);
-  say('기록 창에 오늘 잘 잡히는 물고기가 나온다', todayLine.startsWith(today.text) && todayLine.includes('한국 날짜로 날마다 바뀝니다'), JSON.stringify({ todayLine, today }));
+  say('기록 창에 오늘 잘 잡히는 물고기가 나온다', todayLine.startsWith(`오늘 잘 잡히는 물고기는 연못에서 ${today.label}, 바다에서 `) && todayLine.includes('한국 날짜로 날마다 바뀝니다'), JSON.stringify({ todayLine, today }));
   await page.screenshot({ path: `${out}-4-log.png` });
   await page.click('#fish-close');
   say('기록 창을 닫는다', await g(() => document.getElementById('fish-layer').hidden));

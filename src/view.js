@@ -2,6 +2,7 @@
 // 장면은 두 곳이다: 마당('yard', 집의 겉모습이 서 있다)과 방('main', 문으로 들어간다).
 import * as THREE from './three.js';
 import { createFx, wobble, squash } from './fx.js';
+import { createBeachView } from './beach-view.js';
 import { PARTS, WALL_HEIGHT, YARD, HOUSE_CENTER_X, MAT_X, WINDOW_X, LEVELS, FLOORS, WALLPAPERS, ROOFS, SIDINGS, DOORS } from './parts.js';
 import { footprint, layerOf, houseRect, cellKey } from './state.js';
 
@@ -137,7 +138,8 @@ export function createView({ canvas, assets, store }) {
   const leafMats = [0x4f9d5d, 0x62ad62, 0x3f8f58].map((color) => flat(color, { roughness: 1, flatShading: true }));
   const trunkGeo = new THREE.CylinderGeometry(0.28, 0.36, 1.6, 6);
   const leafGeo = new THREE.IcosahedronGeometry(1.5, 0);
-  const treeSpots = [[-7, -6], [-9, 5], [-8, 15], [-6.5, 25], [4, -8], [15, -9], [27, -7], [31, 2], [33, 14], [31, 27], [7, 32], [19, 33], [-5, 33], [-11, -11], [35, -10]];
+  // 남쪽 바닷가(2026-11-22)를 만들며 바다와 모래사장에 있던 나무 넷을 뭍으로 옮겼다
+  const treeSpots = [[-7, -6], [-9, 5], [-8, 15], [-6.5, 23.5], [4, -8], [15, -9], [27, -7], [31, 2], [33, 14], [31.5, 23.5], [-11.5, 20], [36, 21], [12, -12.5], [-11, -11], [35, -10]];
   // 나무는 저마다 다른 박자로 아주 조금 흔들리고(생동감), 캐릭터가 스쳐 지나가면 크게 흔들렸다 잦아들며
   // 잎을 몇 장 떨군다(따라오기: 줄기보다 위쪽 잎이 늦게, 더 크게)
   const trees = [];
@@ -158,6 +160,9 @@ export function createView({ canvas, assets, store }) {
     outside.add(tree);
     trees.push({ crown, top, crownRot: crown.rotation.clone(), topRot: top.rotation.clone(), x, z, phase: i * 1.7, near: false, rustle: 9, color: leafMats[i % 3].color.getHex() });
   });
+
+  // 마당 남쪽의 바닷가: 모래사장, 바다, 파도 (src/beach-view.js)
+  const beach = createBeachView({ parent: outside, calm });
 
   const houseGroup = new THREE.Group();
   const yardObjects = new THREE.Group();
@@ -731,6 +736,7 @@ export function createView({ canvas, assets, store }) {
     // 앉을 때 방석이 눌린다
     bump(id, amount = 0.06) { pop({ id }, { kind: 'bump', amount }); },
     // 연출 상태 (자동 시험이 읽는다)
+    get beach() { return beach.waves; }, // 바닷가 파도 (자동 시험이 읽는다)
     get feel() {
       return { ...counts, pops: [...pops.entries()].map(([id, p]) => ({ id, kind: p.kind, landed: !!p.landed })), vanishing: vanishing.length, nope: nopeT < 0.4, houseBump: !!houseBump, particles: fx.count, rustling: trees.filter((t) => t.rustle < 0.5).length, door: doorAngle };
     },
@@ -849,6 +855,7 @@ export function createView({ canvas, assets, store }) {
         if (houseBump.t > 0.9) { houseBump = null; houseGroup.scale.set(1, 1, 1); }
       }
       fx.update(dt);
+      beach.update(dt);
       if (markerLife > 0) {
         markerLife = Math.max(0, markerLife - dt * 1.6);
         marker.material.opacity = markerLife * 0.9;

@@ -1,6 +1,7 @@
 // 시작점. 자료를 불러오고, 규칙(store)과 화면(view)과 조작(input)을 잇는다.
 import { loadAssets } from './assets.js';
-import { PARTS, HOUSE_CENTER_X, MAT_X, LEVELS, YARD, YARD_MARGIN } from './parts.js';
+import { PARTS, HOUSE_CENTER_X, MAT_X, LEVELS, OUTDOOR } from './parts.js';
+import { inWater } from './fishing.js';
 import { createState, createStore, houseRect } from './state.js';
 import { createView } from './view.js';
 import { createCharacter } from './character.js';
@@ -89,9 +90,8 @@ async function start(saved = {}) {
   const haptics = createHaptics(); // 진동. 소리 버튼으로 소리와 함께 끄고 켠다
   const startPlace = guest ? 'main' : (handed?.place || (loaded?.ok && loaded.place) || 'yard');
   const keptPos = guest ? null : (handed?.pos || (loaded?.ok && loaded.pos));
-  // 걸을 수 있는 둘레(연못가 포함) 안이면 서 있던 자리에서 시작한다
-  const edge = YARD_MARGIN + 0.5;
-  const inYard = (p) => p && p.x > -edge && p.z > -edge && p.x < YARD.w + edge && p.z < YARD.h + edge;
+  // 걸을 수 있는 범위(연못가와 바닷가 포함) 안이고 물 위가 아니면 서 있던 자리에서 시작한다
+  const inYard = (p) => p && p.x > OUTDOOR.x0 - 0.5 && p.z > OUTDOOR.z0 - 0.5 && p.x < OUTDOOR.x1 + 0.5 && p.z < OUTDOOR.z1 + 0.5 && !inWater(p.x, p.z);
   const startAt = startPlace === 'yard' ? (inYard(keptPos) ? keptPos : { x: HOUSE_CENTER_X, z: doorFront().z + 2.4 }) : matSpot();
   const character = createCharacter({ view, store, assets, start: startAt, place: startPlace });
   view.setPlace(startPlace);

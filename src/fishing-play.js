@@ -2,10 +2,10 @@
 // 흐름: idle → walk(물가로) → cast(던짐) → wait(다가오고 건드림) → bite(잠김) → result → idle
 // 기록은 fishing.js 의 명령으로만 바꾸고, 집 저장과 다른 열쇠에 둔다.
 import {
-  FISH, HUSH, inWater, rollFish, rollSize, planBite, judge, kstDay, todaysFish, catchWeight,
+  FISH, WATERS, HUSH, inWater, waterAt, rollFish, rollSize, planBite, judge, kstDay, todaysFish, catchWeight,
   createFishingStore, createFishingSaver, FISHING_KEY,
 } from './fishing.js';
-import { POND } from './parts.js';
+import { POND, shoreZ } from './parts.js';
 
 const CAST_TIME = 0.7; // 뒤로 젖히는 예비동작(0.26초)과 날아가는 시간. fishing-view.js 와 같다
 const RESULT_TIME = 0.8; // 놓쳤을 때 결과를 보이는 시간
@@ -56,14 +56,19 @@ export function createFishing({ character, pondView, ui, audio, haptics = null, 
   let last = null; // 마지막 결과 (자동 시험이 읽는다)
 
   function setPhase(next) { phase = next; t = 0; onChange(); }
-  // 오늘 잘 잡히는 물고기를 알리는 문구. 아직 잡아 보지 못한 물고기는 이름을 밝히지 않는다(기록 창과 같다)
-  function todayText() {
-    const id = todaysFish(kstDay(now()));
-    if (!store.state.log[id]) return '오늘은 아직 잡아 보지 못한 물고기가 잘 잡힙니다.';
-    const label = FISH[id].label;
-    return `오늘은 ${label}${subjectParticle(label)} 잘 잡힙니다.`;
+  // 오늘 잘 잡히는 물고기를 알리는 문구(물마다 하나). 아직 잡아 보지 못한 물고기는 이름을 밝히지 않는다(기록 창과 같다)
+  // 오늘 잘 잡히는 물고기의 이름. 아직 잡아 보지 못했으면 이름 대신 '아직 잡아 보지 못한 물고기'
+  function todayLabel(w = 'pond') {
+    const id = todaysFish(kstDay(now()), w);
+    return store.state.log[id] ? FISH[id].label : '아직 잡아 보지 못한 물고기';
   }
-  const nearWater = () => character.place === 'yard' && inWater(character.pos.x, character.pos.z, SHORE);
+  function todayText(w = 'pond') {
+    const label = todayLabel(w);
+    return `오늘 ${WATERS[w].label}에서는 ${label}${subjectParticle(label)} 잘 잡힙니다.`;
+  }
+  // 가까이 있는 물('pond', 'sea'). 물가에서 SHORE 안에 서 있지 않으면 null
+  const nearWater = () => (character.place === 'yard' ? waterAt(character.pos.x, character.pos.z, SHORE) : null);
+  let water = 'pond'; // 지금 낚시하는 물
 
   // 다른 탭에서 낚은 기록을 먼저 읽고 더한다. 덮어써서 지우지 않게 한다.
   // 웹 잠금(Web Locks)이 있는 브라우저에서는 탭끼리 차례를 지켜 읽고 쓴다. 거의 동시에 낚아도 하나가 빠지지 않는다.
@@ -95,14 +100,18 @@ export function createFishing({ character, pondView, ui, audio, haptics = null, 
     dx /= len; dz /= len;
     const d = Math.min(Math.max(len, 1.2), REACH);
     const b = { x: p.x + dx * d, z: p.z + dz * d };
-    for (let k = 0; k < 12 && !inWater(b.x, b.z, -0.45); k++) { b.x += (POND.x - b.x) * 0.2; b.z += (POND.z - b.z) * 0.2; }
+    // 물가에서 너무 가까우면 물 안쪽으로 옮긴다. 연못은 가운데 쪽, 바다는 남쪽(먼바다 쪽)
+    for (let k = 0; k < 12 && waterAt(b.x, b.z, -0.45) !== water; k++) {
+      if (water === 'sea') { b.z = Math.max(b.z, shoreZ(b.x)) + 0.3; continue; }
+      b.x += (POND.x - b.x) * 0.2; b.z += (POND.z - b.z) * 0.2;
+    }
     return b;
   }
   function cast() {
     const spot = bobberSpot();
     character.face(spot.x, spot.z);
     aim = spot;
-    const fish = rollFish(random, todaysFish(kstDay(now())));
+    const fish = rollFish(random, todaysFish(kstDay(now()), water), water);
     plan = planBite(fish, random);
     size = rollSize(fish, random);
     nibbles = 0;
@@ -113,12 +122,14 @@ export function createFishing({ character, pondView, ui, audio, haptics = null, 
     setPhase('cast');
   }
   function arrive() {
-    if (!nearWater()) {
-      ui.toast('연못가로 갈 수 없습니다. 가구가 길을 막고 있는지 보세요', 'error');
+    const here = nearWater();
+    if (!here) {
+      ui.toast(`${water === 'sea' ? '바닷가' : '연못가'}로 갈 수 없습니다. 가구가 길을 막고 있는지 보세요`, 'error');
       audio.play('error');
       setPhase('idle');
       return;
     }
+    water = here;
     cast();
   }
 
@@ -161,13 +172,18 @@ export function createFishing({ character, pondView, ui, audio, haptics = null, 
   // 기다리는 동안에는 퐁 소리를 내지 않는다. 입질 소리와 헷갈리면 속이는 신호가 되기 때문이다(1-8)
   function ambience(dt) {
     if (!audio.ambient) return;
-    let level = 0;
+    let level = 0, surf = 0;
     if (character.place === 'yard') {
+      const fishing = phase !== 'idle' && phase !== 'walk';
       const r = Math.hypot((character.pos.x - POND.x) / POND.rx, (character.pos.z - POND.z) / POND.rz); // 물가에서 1
-      level = phase !== 'idle' && phase !== 'walk' ? 1 : Math.max(0, Math.min(1, 1 - (r - 1.2) / 2.2));
+      level = fishing && water === 'pond' ? 1 : Math.max(0, Math.min(1, 1 - (r - 1.2) / 2.2));
+      // 파도 소리는 물가선에 가까울수록 크다. 마당 한가운데까지 아주 작게 들린다
+      const d = shoreZ(character.pos.x) - character.pos.z;
+      surf = fishing && water === 'sea' ? 1 : Math.max(0, Math.min(1, 1 - (d - 0.8) / 9));
     }
     const ducked = phase === 'wait' && hushedAt !== null;
-    audio.ambient(level, ducked);
+    audio.ambient(level, ducked && water === 'pond');
+    audio.surf?.(surf, ducked && water === 'sea');
     if (level > 0.4 && phase === 'idle') {
       plopWait -= dt;
       if (plopWait <= 0) { audio.play('plop', { gain: level, pitch: 0.85 + Math.random() * 0.3 }); plopWait = 2.5 + Math.random() * 4; }
@@ -191,8 +207,10 @@ export function createFishing({ character, pondView, ui, audio, haptics = null, 
   return {
     store,
     todayText,
+    todayLabel,
     loadProblem,
     get phase() { return phase; },
+    get water() { return water; }, // 지금(또는 마지막으로) 낚시한 물 (자동 시험이 읽는다)
     get last() { return last; },
     get plan() { return plan; },
     get nibbled() { return nibbles; },
@@ -211,6 +229,7 @@ export function createFishing({ character, pondView, ui, audio, haptics = null, 
     start(point) {
       if (phase !== 'idle' && phase !== 'walk') return;
       aim = { x: point.x, z: point.z };
+      water = waterAt(point.x, point.z, 0.15) || water;
       if (character.goTo(point.x, point.z)) setPhase('walk');
       else arrive();
     },
@@ -227,6 +246,7 @@ export function createFishing({ character, pondView, ui, audio, haptics = null, 
     },
     get pressPending() { return pressed !== null; },
     get ambience() { return audio.ambience ?? null; }, // 바탕 물소리 상태 (자동 시험이 읽는다)
+    get surf() { return audio.surfing ?? null; }, // 바닷가 파도 소리 상태 (자동 시험이 읽는다)
     // 기다리지 않고 바로 당긴다 (마우스, 자동 시험)
     pull() { this.press(); this.commitPress(); },
     cancel() {
@@ -251,7 +271,7 @@ export function createFishing({ character, pondView, ui, audio, haptics = null, 
         case 'reel': return reelHolding ? '그대로 누르고 있으면 끌어올립니다.' : '화면을 누르고 있으면 더 빨리 끌어올립니다.';
         // 처음 온 사람에게는 기록이 남는다는 것을, 한 마리라도 잡은 뒤에는 오늘 잘 잡히는 물고기를 알린다
         default: return !nearWater() ? null
-          : Object.keys(store.state.log).length ? `물을 누르면 찌를 던집니다. ${todayText()}`
+          : Object.keys(store.state.log).length ? `물을 누르면 찌를 던집니다. ${todayText(nearWater())}`
           : '물을 누르면 찌를 던집니다. 잡은 물고기는 낚시 기록에 남습니다.';
       }
     },

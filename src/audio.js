@@ -34,37 +34,58 @@ export function createAudio() {
   let ctx = null;
   let noise = null;
   let muted = false;
-  // 바탕 물소리: 낮게 거른 잡음을 이어 틀고, 천천히 크기를 출렁이게 한다. 크기는 ambient() 로 정한다
-  let bed = null;
-  let bedTarget = -1, bedDucked = false, bedLevel = 0;
-  function ensureBed() {
-    if (bed || !ctx) return bed;
-    const len = Math.floor(ctx.sampleRate * 3);
-    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    let v = 0;
-    for (let i = 0; i < len; i++) { v = v * 0.985 + (Math.random() * 2 - 1) * 0.015; d[i] = v * 7; }
-    const fade = Math.floor(ctx.sampleRate * 0.05); // 이어 틀 때 끊기는 소리가 나지 않게 양 끝을 줄인다
-    for (let i = 0; i < fade; i++) { const k = i / fade; d[i] *= k; d[len - 1 - i] *= k; }
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.loop = true;
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 650;
-    const gain = ctx.createGain();
-    gain.gain.value = 0;
-    const lfo = ctx.createOscillator();
-    lfo.frequency.value = 0.17; // 물결이 밀려왔다 빠지는 박자
-    const depth = ctx.createGain();
-    depth.gain.value = 0;
-    lfo.connect(depth).connect(gain.gain);
-    src.connect(filter).connect(gain).connect(ctx.destination);
-    src.start();
-    lfo.start();
-    bed = { gain, depth };
+  // 바탕 물소리: 낮게 거른 잡음을 이어 틀고, 천천히 크기를 출렁이게 한다.
+  // 연못의 물소리(ambient)와 바닷가의 파도 소리(surf, 2026-11-22)가 따로 있다. 파도는 더 낮고, 더 크게 천천히 밀려온다
+  function makeBed({ cutoff, rate, swell }) {
+    const bed = { node: null, target: -1, ducked: false, level: 0, swell };
+    bed.ensure = () => {
+      if (bed.node || !ctx) return bed.node;
+      const len = Math.floor(ctx.sampleRate * 3);
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      let v = 0;
+      for (let i = 0; i < len; i++) { v = v * 0.985 + (Math.random() * 2 - 1) * 0.015; d[i] = v * 7; }
+      const fade = Math.floor(ctx.sampleRate * 0.05); // 이어 틀 때 끊기는 소리가 나지 않게 양 끝을 줄인다
+      for (let i = 0; i < fade; i++) { const k = i / fade; d[i] *= k; d[len - 1 - i] *= k; }
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = cutoff;
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = rate; // 물결이 밀려왔다 빠지는 박자
+      const depth = ctx.createGain();
+      depth.gain.value = 0;
+      lfo.connect(depth).connect(gain.gain);
+      src.connect(filter).connect(gain).connect(ctx.destination);
+      src.start();
+      lfo.start();
+      bed.node = { gain, depth };
+      return bed.node;
+    };
+    // 크기(0~1). ducked 면 작게 줄인다(진짜로 물기 직전의 잠잠함). 첫 조작 전에는 소리가 나지 않는다
+    bed.set = (level, ducked, loud) => {
+      const quick = ducked !== bed.ducked; // 잠잠해지고 풀리는 것은 빨리, 걸어서 멀어지고 가까워지는 것은 천천히
+      bed.level = level; bed.ducked = ducked;
+      if (!ctx) return;
+      const target = muted ? 0 : level * loud * (ducked ? 0.3 : 1);
+      if (Math.abs(target - bed.target) < 0.0005) return;
+      bed.target = target;
+      if (target > 0 && ctx.state === 'suspended') ctx.resume().catch(() => {});
+      if (!bed.ensure()) return;
+      const now = ctx.currentTime;
+      bed.node.gain.gain.setTargetAtTime(target, now, quick ? 0.06 : 0.35);
+      bed.node.depth.gain.setTargetAtTime(target * bed.swell, now, 0.35);
+    };
+    bed.state = () => ({ level: bed.level, ducked: bed.ducked, target: Math.max(0, bed.target) });
     return bed;
   }
+  const water = makeBed({ cutoff: 650, rate: 0.17, swell: 0.35 });
+  // 파도: 바닷가 그림의 파도(4.2초)와 같은 박자로 크게 밀려왔다 빠진다
+  const surfBed = makeBed({ cutoff: 420, rate: 1 / 4.2, swell: 0.8 });
   function noiseBuffer() {
     if (noise) return noise;
     noise = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.5), ctx.sampleRate);
@@ -100,23 +121,14 @@ export function createAudio() {
   }
   return {
     get muted() { return muted; },
-    setMuted(value) { muted = value; bedTarget = -1; },
-    // 바탕 물소리의 크기(0~1). ducked 면 작게 줄인다(진짜로 물기 직전의 잠잠함). 첫 조작 전에는 소리가 나지 않는다
-    ambient(level, ducked = false) {
-      const quick = ducked !== bedDucked; // 잠잠해지고 풀리는 것은 빨리, 걸어서 멀어지고 가까워지는 것은 천천히
-      bedLevel = level; bedDucked = ducked;
-      if (!ctx) return;
-      const target = muted ? 0 : level * 0.05 * (ducked ? 0.3 : 1);
-      if (Math.abs(target - bedTarget) < 0.0005) return;
-      bedTarget = target;
-      if (target > 0 && ctx.state === 'suspended') ctx.resume().catch(() => {});
-      if (!ensureBed()) return;
-      const now = ctx.currentTime;
-      bed.gain.gain.setTargetAtTime(target, now, quick ? 0.06 : 0.35);
-      bed.depth.gain.setTargetAtTime(target * 0.35, now, 0.35);
-    },
+    setMuted(value) { muted = value; water.target = -1; surfBed.target = -1; },
+    // 연못 물소리의 크기(0~1). ducked 면 작게 줄인다(진짜로 물기 직전의 잠잠함)
+    ambient(level, ducked = false) { water.set(level, ducked, 0.05); },
+    // 바닷가 파도 소리의 크기(0~1). 연못 물소리보다 조금 크다
+    surf(level, ducked = false) { surfBed.set(level, ducked, 0.07); },
     // 자동 시험이 읽는다
-    get ambience() { return { level: bedLevel, ducked: bedDucked, target: Math.max(0, bedTarget) }; },
+    get ambience() { return water.state(); },
+    get surfing() { return surfBed.state(); },
     unlock() {
       if (ctx) return;
       try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch { ctx = null; }

@@ -77,7 +77,7 @@ npm test
 집 공유 브라우저 시험은 서버를 띄운 채 `node tools/shot.mjs / shots/share 390 844 test/share.mjs` 로 실행합니다. 같은 탭 공유 링크 전환, 조작된 링크, 원래 집 저장 보호를 확인합니다.
 집을 다른 브라우저로 가져오고 두 집을 맞바꾸는 모바일 시험은 `test/house-transfer.mjs`, 오래된 다른 탭의 자동 저장을 차단하는 시험은 `test/house-transfer-tabs.mjs`로 실행합니다.
 온라인 창은 같은 방식으로 `test/online.mjs`(가짜 서비스로 게시, 방명록, 방문 인사)와 `test/online-timeout.mjs`(서버가 응답하지 않을 때 창이 닫히는지, 방문 링크가 내 집으로 넘어가는지)로 확인합니다. 둘 다 `TOUCH=1` 과 `390 844` 로 돌리며 실제 Firebase 에는 접속하지 않습니다.
-연못 낚시는 `TOUCH=1 node tools/shot.mjs / shots/fishing 390 844 test/fishing.mjs` 로 확인합니다(물가로 걷기, 낚기, 이른·늦은 누름, 기록 창, 다시 열기, 손상된 기록). 물고기와 입질은 시험이 정해 둡니다.
+연못 낚시는 `TOUCH=1 node tools/shot.mjs / shots/fishing 390 844 test/fishing.mjs` 로 확인합니다(물가로 걷기, 낚기, 이른·늦은 누름, 기록 창, 다시 열기, 손상된 기록). 물고기와 입질은 시험이 정해 둡니다. 바닷가는 `TOUCH=1 node tools/shot.mjs / shots/beach 390 844 test/beach.mjs` 로 확인합니다(모래사장까지 걷기, 바다에 들어가지 않기, 바다 낚시, 기록 창, 파도, 다시 열기).
 
 ## 에셋
 

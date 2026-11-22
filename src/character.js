@@ -1,13 +1,12 @@
 // 캐릭터. 걷기, 가구와 집에 대한 충돌, 누른 곳까지 길 찾기, 의자에 앉기. 마당과 방을 오간다.
 import * as THREE from './three.js';
-import { PARTS, YARD, YARD_MARGIN, HOUSE_CENTER_X, MAT_X, LEVELS } from './parts.js';
+import { PARTS, OUTDOOR, HOUSE_CENTER_X, MAT_X, LEVELS } from './parts.js';
 import { footprint, cellKey, layerOf, houseRect, seatSpots, chooseSeatApproach } from './state.js';
 import { inWater } from './fishing.js';
 import { wobble, squash } from './fx.js';
 
 const RADIUS = 0.34;
 const SPEED = 5.2;
-const MARGIN = YARD_MARGIN; // 마당 밖으로 걸어 나갈 수 있는 칸 수
 const SIT_TIME = 0.26; // 올라앉고 일어나는 데 걸리는 시간 (초)
 const SIT_SINK = 0.2; // 앉으면 몸의 아랫부분이 앉는 면 아래로 이만큼 내려간다
 
@@ -109,8 +108,9 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
 
   function blocked(x, z, r = RADIUS) {
     if (place === 'yard') {
-      if (x < -MARGIN || z < -MARGIN || x > YARD.w + MARGIN || z > YARD.h + MARGIN) return true;
-      if (inWater(x, z, r)) return true; // 연못에는 들어가지 않는다
+      // 마당과 그 둘레, 남쪽 바닷가까지 걸을 수 있다(parts.js OUTDOOR)
+      if (x < OUTDOOR.x0 || z < OUTDOOR.z0 || x > OUTDOOR.x1 || z > OUTDOOR.z1) return true;
+      if (inWater(x, z, r)) return true; // 연못과 바다에는 들어가지 않는다
     } else {
       const [w, h] = roomSize();
       // 현관 깔개 쪽으로는 벽 밖까지 한 걸음 나갈 수 있다 (나가는 자리)
@@ -142,17 +142,21 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
     const house = houseRect(store.state.house.level);
     return cx >= house.x0 && cx < house.x0 + house.w && cy >= house.z0 && cy < house.z0 + house.d;
   }
-  // 걸을 수 있는 범위(방, 또는 마당과 그 둘레) 안에서 가구나 집이 차지하지 않은 칸인지
+  // 칸으로 센 걸을 수 있는 범위 [x0, z0, x1, z1) (방, 또는 마당과 그 둘레와 바닷가)
+  function cellBounds() {
+    if (place === 'yard') return [OUTDOOR.x0, OUTDOOR.z0, OUTDOOR.x1, Math.ceil(OUTDOOR.z1)];
+    const [w, h] = roomSize();
+    return [0, 0, w, h];
+  }
+  // 걸을 수 있는 범위 안에서 가구나 집, 물이 차지하지 않은 칸인지
   function openCell(cx, cy) {
-    const [w, h] = place === 'yard' ? [YARD.w, YARD.h] : roomSize();
-    const pad = place === 'yard' ? MARGIN : 0;
-    return cx >= -pad && cy >= -pad && cx < w + pad && cy < h + pad && !solidCell(cx, cy);
+    const [x0, z0, x1, z1] = cellBounds();
+    return cx >= x0 && cy >= z0 && cx < x1 && cy < z1 && !solidCell(cx, cy);
   }
   // 지금 선 칸에서 걸어서 닿는 칸들을 가까운 순서로 훑는다. 칸마다 바로 앞 칸을 적어 돌려준다
   function flood(visit) {
-    const h = place === 'yard' ? YARD.h : roomSize()[1];
-    const pad = place === 'yard' ? MARGIN : 0;
-    const sx = Math.floor(pos.x), sy = Math.min(Math.floor(pos.z), h + pad - 1);
+    const z1 = cellBounds()[3];
+    const sx = Math.floor(pos.x), sy = Math.min(Math.floor(pos.z), z1 - 1);
     const prev = new Map([[cellKey(sx, sy), null]]);
     const queue = [[sx, sy]];
     for (let head = 0; head < queue.length; head++) {
