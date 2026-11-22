@@ -32,6 +32,7 @@ GitHub Pages 에는 이 폴더를 그대로 올리면 됩니다. three.js 는 �
 
   - Claude 임시 게시 화면에서 눌러도 링크의 주소는 항상 **GitHub Pages 정식 배포 주소**를 사용합니다. 공유 기능 PR을 병합하고 Pages에 반영한 뒤에 링크를 시험해야 합니다.
 - 휴대폰 터치 조작. 가구는 누른 채 자리를 고르고 떼면 놓입니다. 끌어서 옮기고, 두 손가락으로 확대합니다. 키가 하던 일은 모두 버튼으로도 됩니다
+- 연못 낚시(2단계 시제품). 마당 옆 연못의 물을 누르면 물가로 걸어가 찌를 던집니다. 찌가 흔들릴 때는 기다리고, 완전히 잠길 때 화면을 누르면 낚습니다. 물고기는 4종이고, 종류별로 가장 큰 크기와 처음 잡은 날(한국 날짜)을 **낚시 기록** 버튼에서 봅니다. 기록은 이 브라우저에만, 집과 따로 저장됩니다
 
 ## 구조
 
@@ -47,6 +48,8 @@ GitHub Pages 에는 이 폴더를 그대로 올리면 됩니다. three.js 는 �
 | `src/view.js` | 화면. 마당의 집과 방을 그리고 카메라를 다룹니다 |
 | `src/input.js` | 조작. 포인터와 키 입력을 명령으로 바꿉니다 |
 | `src/character.js` | 걷기, 충돌, 길 찾기 |
+| `src/fishing.js` | 낚시 규칙. 물고기 표, 입질 계획과 판정, 낚시 기록의 명령과 저장(집과 다른 열쇠). three.js 를 쓰지 않습니다 |
+| `src/fishing-play.js`, `src/fishing-view.js`, `src/fishing-ui.js` | 낚시의 흐름(물가로 걷기, 던지기, 잠길 때 누르기), 연못과 찌 그리기, 낚시 기록 창 |
 | `src/ui.js`, `src/main.js`, `page.html` | 도구 목록과 버튼, 시작, 마당과 방 오가기 |
 | `tools/pack-models.mjs` | glTF 모델을 `assets/models.json` 하나로 묶습니다 |
 
@@ -74,6 +77,7 @@ npm test
 집 공유 브라우저 시험은 서버를 띄운 채 `node tools/shot.mjs / shots/share 390 844 test/share.mjs` 로 실행합니다. 같은 탭 공유 링크 전환, 조작된 링크, 원래 집 저장 보호를 확인합니다.
 집을 다른 브라우저로 가져오고 두 집을 맞바꾸는 모바일 시험은 `test/house-transfer.mjs`, 오래된 다른 탭의 자동 저장을 차단하는 시험은 `test/house-transfer-tabs.mjs`로 실행합니다.
 온라인 창은 같은 방식으로 `test/online.mjs`(가짜 서비스로 게시, 방명록, 방문 인사)와 `test/online-timeout.mjs`(서버가 응답하지 않을 때 창이 닫히는지, 방문 링크가 내 집으로 넘어가는지)로 확인합니다. 둘 다 `TOUCH=1` 과 `390 844` 로 돌리며 실제 Firebase 에는 접속하지 않습니다.
+연못 낚시는 `TOUCH=1 node tools/shot.mjs / shots/fishing 390 844 test/fishing.mjs` 로 확인합니다(물가로 걷기, 낚기, 이른·늦은 누름, 기록 창, 다시 열기, 손상된 기록). 물고기와 입질은 시험이 정해 둡니다.
 
 ## 에셋
 

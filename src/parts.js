@@ -11,6 +11,12 @@ export const HOUSE_BACK_Z = 5;
 export const MAT_X = 2; // 방 안 현관 깔개가 놓이는 칸 (서쪽 벽에서부터). 두 칸 너비
 export const WINDOW_X = 3; // 북쪽 벽의 창문이 차지하는 칸 (서쪽 벽에서부터). 두 칸 너비
 
+// 마당 밖으로 걸어 나갈 수 있는 칸 수. 연못가도 이 둘레 안에 있다
+export const YARD_MARGIN = 3;
+// 마당 동쪽 밖의 연못 (낚시터). 물은 가운데 (x, z), 반지름 rx, rz 인 타원이고 걸을 수 없다.
+// 마당 칸과 겹치지 않으므로 저장된 가구와 부딪치지 않는다. 먼 쪽 물가는 걸을 수 있는 둘레 밖이다
+export const POND = { x: 27.5, z: 18, rx: 2.6, rz: 3.1 };
+
 // 집의 단계. room 은 방의 칸 수 [가로, 세로], house 는 밖에서 보이는 집의 크기
 export const LEVELS = {
   1: { label: '작은 집', room: [6, 6], house: { w: 6, d: 4, h: 2.7 } },

@@ -28,7 +28,7 @@ const TOUCH_HINTS = {
   carry: '옮길 자리를 누릅니다. 돌리기와 그만두기 버튼을 쓸 수 있습니다.',
 };
 
-export function createInput({ canvas, view, store, history, character, ui, audio, travel, readOnly = false }) {
+export function createInput({ canvas, view, store, history, character, ui, audio, haptics = null, travel, fishing = null, readOnly = false }) {
   const s = { mode: 'walk', tool: 'select', rot: 0, drag: null, carry: null, pointer: null, press: null, lastPlaced: null };
   const keys = new Set();
   const coarse = window.matchMedia('(pointer: coarse)').matches;
@@ -41,7 +41,11 @@ export function createInput({ canvas, view, store, history, character, ui, audio
   const toolKind = () => (PARTS[s.tool] ? kindOfPart(s.tool) : s.tool);
   const placing = () => ['object', 'top', 'wallitem'].includes(toolKind());
   function hintFor() {
-    if (s.mode === 'walk') return character.seated ? hints.seated : here() === 'yard' ? hints.walkYard : hints.walkRoom;
+    if (s.mode === 'walk') {
+      const fish = fishing?.hint();
+      if (fish != null) return fish;
+      return character.seated ? hints.seated : here() === 'yard' ? hints.walkYard : hints.walkRoom;
+    }
     if (s.carry) return hints.carry;
     return hints[toolKind()] || '';
   }
@@ -63,6 +67,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
     if (readOnly && mode === 'build') return; // 공유된 집은 걷기와 구경만 가능
     if (mode === s.mode) return;
     cancel();
+    fishing?.cancel();
     s.mode = mode;
     view.setGrid(mode === 'build');
     character.stop();
@@ -132,6 +137,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
   function fail(result) {
     ui.toast(result.reason, 'error');
     audio.play('error');
+    if (s.mode === 'build') { view.nope(); haptics?.pulse([10, 50, 10], { ticks: 2 }); } // 미리보기가 고개를 젓듯 흔들린다
   }
 
   // ---- 포인터 ----
@@ -183,6 +189,10 @@ export function createInput({ canvas, view, store, history, character, ui, audio
   let pinch = null;
   let locked = false; // 두 손가락 동작이 끝나고 남은 손가락은 아무 일도 하지 않는다
   const pinchDistance = () => { const [a, b] = [...touches.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+  // 낚시 중의 손가락 누름은 아주 잠깐(0.07초) 두 번째 손가락이 오는지 본 뒤에 줄을 당긴다. 두 손가락 확대를 시작하는
+  // 첫 손가락이 줄을 당기지 않게 하려는 것이다. 판정은 처음 닿은 때로 하므로 기다린 만큼 불리하지 않다
+  const PINCH_WAIT = 70;
+  let pendingPull = 0;
 
   function onDown(e) {
     audio.unlock();
@@ -190,6 +200,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
     if (e.button !== 0) return;
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (touches.size >= 2) {
+      if (pendingPull) { clearTimeout(pendingPull); pendingPull = 0; fishing?.cancelPress(); } // 확대이면 줄을 당기지 않는다
       if (s.drag?.type === 'pick') { s.carry = null; view.setHidden(null); syncUI(); }
       s.drag = null; s.press = null; history.end();
       pinch = { dist: pinchDistance() };
@@ -198,6 +209,18 @@ export function createInput({ canvas, view, store, history, character, ui, audio
       return;
     }
     canvas.setPointerCapture?.(e.pointerId);
+    // 낚시 중에는 누르는 순간을 판정에 쓴다. 뗄 때까지 기다리면 그만큼 늦어진다. 이 누름으로는 걷지 않는다.
+    // 손가락이면 두 번째 손가락이 오는지 잠깐 보고, 마우스는 바로 당긴다
+    if (s.mode === 'walk' && fishing?.holding) {
+      fishing.setHolding(true); // 끌어올리는 동안은 누르고 있는 것을 쓴다
+      fishing.press();
+      if (e.pointerType === 'touch') {
+        clearTimeout(pendingPull);
+        pendingPull = setTimeout(() => { pendingPull = 0; fishing.commitPress(); }, PINCH_WAIT);
+      } else fishing.commitPress();
+      s.press = null; s.pointer = null;
+      return;
+    }
     const at = locate(e);
     s.pointer = at;
     s.press = { x: e.clientX, y: e.clientY };
@@ -243,6 +266,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
 
   function onUp(e) {
     touches.delete(e.pointerId);
+    if (touches.size === 0) fishing?.setHolding(false);
     if (locked) {
       if (touches.size < 2) pinch = null;
       if (touches.size === 0) locked = false;
@@ -255,9 +279,13 @@ export function createInput({ canvas, view, store, history, character, ui, audio
       if (!at || !press || Math.hypot(e.clientX - press.x, e.clientY - press.y) >= 8) return;
       // 집이나 현관 깔개를 누르면 그리로 걸어가 드나든다
       const hit = view.pickFront(e.clientX, e.clientY);
+      // 연못의 물을 누르면 물가로 가서 찌를 던진다. 다른 곳을 누르면 물가로 가던 것을 그만둔다
+      const water = !hit?.special && fishing?.isWater(at.pt);
+      if (!water) fishing?.cancel();
       if (hit?.special) { travel.walkToDoor(); return; }
       travel.cancel(); // 드나들려고 걷던 중이었으면 그만둔다
       if (trySit(hit, at)) return;
+      if (water) { fishing.start(at.pt); return; }
       const walking = character.goTo(at.pt.x, at.pt.z);
       if (character.routeBlocked) {
         // 구경하는 사람은 꾸미기를 쓸 수 없으므로 고치는 방법은 집주인에게만 알린다
@@ -275,6 +303,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
 
   function onCancel(e) {
     touches.delete(e.pointerId);
+    if (touches.size === 0) fishing?.setHolding(false);
     if (touches.size < 2) pinch = null;
     if (touches.size === 0) locked = false;
     s.drag = null; s.press = null; history.end();
@@ -300,7 +329,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
       // 미리보기가 없는 터치에서는 방금 놓은 가구를 제자리에서 돌린다
       const rot = (last.rot + 1) & 3;
       const r = history.run([{ type: 'moveObject', space: here(), id: last.id, x: last.x, y: last.y, rot }]);
-      if (r.ok) { s.rot = rot; view.pop({ id: last.id }); } else fail(r);
+      if (r.ok) { s.rot = rot; view.pop({ id: last.id }, { kind: 'rotate' }); } else fail(r);
     } else s.rot = (s.rot + 1) & 3;
     refresh();
   }
@@ -320,7 +349,8 @@ export function createInput({ canvas, view, store, history, character, ui, audio
   }
   window.addEventListener('keydown', (e) => {
     if (!document.getElementById('share-layer').hidden ||
-        !document.getElementById('online-layer').hidden) return; // 대화창 뒤에서는 게임 키 조작을 막는다
+        !document.getElementById('online-layer').hidden ||
+        !document.getElementById('fish-layer').hidden) return; // 대화창 뒤에서는 게임 키 조작을 막는다
     // Ctrl+Z 되돌리기, Ctrl+Shift+Z 또는 Ctrl+Y 다시 하기 (맥은 Cmd)
     if (!readOnly && (e.ctrlKey || e.metaKey) && !e.altKey && (e.code === 'KeyZ' || e.code === 'KeyY')) {
       e.preventDefault();
@@ -342,11 +372,28 @@ export function createInput({ canvas, view, store, history, character, ui, audio
   window.addEventListener('keyup', (e) => { if (MOVE_KEYS[e.code]) keys.delete(MOVE_KEYS[e.code]); });
   window.addEventListener('blur', () => keys.clear());
 
+  // 가구의 크기(칸 수). 큰 가구일수록 놓고 치우는 소리를 낮게 낸다 (연출의 크기는 무게에 맞춘다)
+  const areaOf = (part) => { const p = PARTS[part]; return p?.size ? p.size[0] * p.size[1] : p?.span || 1; };
+  const pitchFor = (area) => Math.min(1.2, Math.max(0.78, 1.24 - 0.075 * area));
   store.subscribe((cmd, meta) => {
     if (cmd.type === 'replace') { syncUI(); return; }
-    if (!meta.batch || meta.last) audio.play(cmd.type === 'removeObject' ? 'remove' : 'place');
+    // 치운 가구는 지워지기 전 모습으로 오므라들며 사라진다 (다시 그리기는 다음 화면에서 한다)
+    const area = cmd.type === 'removeObject' ? view.vanish(cmd.id)
+      : cmd.type === 'placeObject' ? areaOf(cmd.part)
+        : cmd.type === 'moveObject' ? areaOf(objectsHere()[cmd.id]?.part) : 2;
+    if (!meta.batch || meta.last) {
+      if (cmd.type === 'setLevel') audio.play('upgrade');
+      else audio.play(cmd.type === 'removeObject' ? 'remove' : 'place', { pitch: pitchFor(area) });
+      // 진동: 큰 가구일수록 조금 길게, 집 키우기는 드문 큰일이라 여러 번. 걷기처럼 잦은 일에는 넣지 않는다
+      if (cmd.type === 'setLevel') haptics?.pulse([30, 50, 30, 50, 70], { ticks: 3 });
+      else if (cmd.type === 'removeObject') haptics?.pulse(8);
+      else haptics?.pulse(Math.min(20, Math.max(8, 6 + 2 * area)));
+    }
     if (cmd.type === 'placeObject') view.pop({ id: cmd.id });
-    if (cmd.type === 'setLevel' || cmd.type === 'setFinish' || cmd.type === 'setExterior') ui.setPlace(here(), store.state);
+    if (cmd.type === 'setLevel' || cmd.type === 'setFinish' || cmd.type === 'setExterior') {
+      ui.setPlace(here(), store.state);
+      view.celebrate(cmd.type === 'setLevel' ? 'level' : 'look');
+    }
   });
 
   syncUI();
@@ -355,7 +402,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
     state: s, setMode, setTool, rotate, refresh, undo, redo, syncUI,
     cancelCarry() { cancel(); syncUI(); refresh(); },
     // 곳이 바뀔 때 하던 동작을 정리한다
-    leavePlace() { cancel(); s.pointer = null; s.lastPlaced = null; if (toolKind() === 'wallitem') s.tool = 'select'; },
+    leavePlace() { cancel(); fishing?.cancel(); s.pointer = null; s.lastPlaced = null; if (toolKind() === 'wallitem') s.tool = 'select'; },
     // 보기에서 고르는 것들: 바닥재, 벽지, 겉모습
     choose(cmd) {
       const r = history.run([cmd]);

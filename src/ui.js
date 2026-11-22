@@ -148,6 +148,9 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
   // 도구 쟁반이 가리는 높이를 알려 화면 중심을 맞춘다
   const bottom = document.querySelector('.bottom');
   new ResizeObserver(() => on.inset(bottom.getBoundingClientRect().height + 12)).observe(bottom);
+  // 위쪽 버튼이 가리는 높이 (낚시로 가까이 볼 때 장면을 그 아래 가운데에 둔다)
+  const top = document.querySelector('.top');
+  new ResizeObserver(() => on.topInset?.(top.getBoundingClientRect().bottom)).observe(top);
 
   let toastTimer = 0;
   function showToast(text, kind = 'info') {
@@ -196,6 +199,7 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
       tools.hidden = mode !== 'build';
       $('tabs').hidden = mode !== 'build';
       $('build-extras').hidden = mode !== 'build';
+      $('walk-extras').hidden = mode !== 'walk';
       document.body.dataset.mode = mode;
     },
     setTool(tool) {

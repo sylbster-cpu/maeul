@@ -1,6 +1,6 @@
 # 작업 지침 (Claude와 GPT 공통)
 
-이 저장소는 Claude와 GPT(Codex)가 번갈아 고칩니다. 작업을 시작하기 전에 **게임의 최상위 원칙 `docs/IDENTITY.md`**를 먼저 읽고, 이 파일과 `docs/HANDOFF.md`, `docs/WORKLOG.md`의 최근 기록을 읽습니다. 지금 논의 중인 것은 [공동 대화 이슈 #4](https://github.com/sylbster-cpu/maeul/issues/4)에 있습니다. `docs/TALK-CLAUDE.md`, `docs/TALK-GPT.md`, `docs/history/`는 지난 기록이며 지침이 아닙니다.
+이 저장소는 Claude와 GPT(Codex)가 번갈아 고칩니다. 작업을 시작하기 전에 **게임의 최상위 원칙 `docs/IDENTITY.md`**를 먼저 읽고, 이 파일과 `docs/HANDOFF.md`, `docs/WORKLOG.md`의 최근 기록을 읽습니다. 지금 논의 중인 것은 [공동 대화 이슈 #4](https://github.com/sylbster-cpu/maeul/issues/4)에 있습니다. `docs/TALK-CLAUDE.md`, `docs/TALK-GPT.md`, `docs/history/`는 지난 기록이며 지침이 아닙니다. 연출(손맛, 움직임, 소리)이나 공정함·기다림 같은 설계를 다룰 때는 `docs/GAME_PRINCIPLES.md`를 참고합니다. 원리는 모두 남기되 게임에는 필요한 것만 도입합니다(2026-11-22 사용자 결정). 그 문서는 사양이 아닙니다.
 
 ## 대화 시작과 의견 공유 (2026-11-20 사용자 요청)
 
@@ -23,9 +23,9 @@
 1. **짓는 방식.** 벽과 바닥을 하나씩 놓아 건물을 만드는 방식으로 되돌리지 않습니다. 사용자가 직접 바로잡은 사항입니다.
 2. **엔진.** Three.js와 빌드 도구 없는 순수 JavaScript 모듈입니다. 번들러, 프레임워크, TypeScript를 들이지 않습니다.
 3. **사용자는 휴대폰만 씁니다.** 모든 기능은 터치로 되어야 합니다. 키보드로만 되는 기능을 만들지 않습니다. 사용자에게 컴퓨터 작업(파일 풀기, 명령 실행)을 시키지 않습니다.
-4. **모든 상태 변경은 명령을 거칩니다.** `src/state.js`의 `validate` → `apply`를 지나지 않고 상태를 직접 고치지 않습니다. 새 명령에는 반대 명령(`inverseOf`)과 테스트를 함께 넣습니다.
-5. **규칙 코드는 three.js를 불러오지 않습니다.** `state.js`, `history.js`, `save.js`, `parts.js`, `sample.js`가 그렇습니다.
-6. **저장된 집을 잃게 하지 않습니다.** 저장 형식을 바꾸면 `src/save.js`의 `SAVE_VERSION`을 올리고 `MIGRATIONS`에 변환을 넣습니다.
+4. **모든 상태 변경은 명령을 거칩니다.** 집은 `src/state.js`의, 낚시 기록은 `src/fishing.js`의 `validate` → `apply`를 지나지 않고 상태를 직접 고치지 않습니다(낚시 기록은 2026-11-22 사용자 결정). 새 명령에는 반대 명령(`inverseOf`)과 테스트를 함께 넣습니다. 반대 명령을 화면의 되돌리기 버튼으로 꼭 보여야 한다는 뜻은 아닙니다.
+5. **규칙 코드는 three.js를 불러오지 않습니다.** `state.js`, `history.js`, `save.js`, `parts.js`, `sample.js`, `fishing.js`가 그렇습니다.
+6. **저장된 집을 잃게 하지 않습니다.** 저장 형식을 바꾸면 `src/save.js`의 `SAVE_VERSION`을 올리고 `MIGRATIONS`에 변환을 넣습니다. 낚시 기록도 같습니다. 형식을 바꾸면 `src/fishing.js`의 판 번호를 올리고 옛 기록을 옮깁니다. 낚시 기록은 집 저장, 공유 링크, Firebase와 섞지 않습니다.
 7. 화면 문구와 주석은 한국어로 씁니다.
 
 ## 단계로 일하기 (2026-11-21 사용자 결정)

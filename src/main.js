@@ -1,6 +1,6 @@
 // 시작점. 자료를 불러오고, 규칙(store)과 화면(view)과 조작(input)을 잇는다.
 import { loadAssets } from './assets.js';
-import { PARTS, HOUSE_CENTER_X, MAT_X, LEVELS, YARD } from './parts.js';
+import { PARTS, HOUSE_CENTER_X, MAT_X, LEVELS, YARD, YARD_MARGIN } from './parts.js';
 import { createState, createStore, houseRect } from './state.js';
 import { createView } from './view.js';
 import { createCharacter } from './character.js';
@@ -8,6 +8,7 @@ import { createInput } from './input.js';
 import { createHistory } from './history.js';
 import { createUI } from './ui.js';
 import { createAudio } from './audio.js';
+import { createHaptics } from './haptics.js';
 import { createSaver, parse, serialize } from './save.js';
 import { importSharedHouse, restorePreviousHouse, hasPreviousHouse,
   recoverInterruptedHouseTransfer, createHouseSaveGuard, HOUSE_STORAGE_KEYS } from './house-transfer.js';
@@ -18,6 +19,9 @@ import { sampleCommands } from './sample.js';
 import { onlineVisitUid, onlineErrorText, withOnlineTimeout } from './online-data.js';
 import { getOnlineService, ONLINE_TIMEOUT_MS } from './online.js';
 import { createOnlineUI } from './online-ui.js';
+import { createPondView } from './fishing-view.js';
+import { createFishing } from './fishing-play.js';
+import { createFishingUI, createCatchCard } from './fishing-ui.js';
 
 watchShareHash(window);
 
@@ -82,9 +86,12 @@ async function start(saved = {}) {
   const canvas = document.getElementById('scene');
   const view = createView({ canvas, assets, store });
   const audio = createAudio();
+  const haptics = createHaptics(); // 진동. 소리 버튼으로 소리와 함께 끄고 켠다
   const startPlace = guest ? 'main' : (handed?.place || (loaded?.ok && loaded.place) || 'yard');
   const keptPos = guest ? null : (handed?.pos || (loaded?.ok && loaded.pos));
-  const inYard = (p) => p && p.x > -2 && p.z > -2 && p.x < YARD.w + 2 && p.z < YARD.h + 2;
+  // 걸을 수 있는 둘레(연못가 포함) 안이면 서 있던 자리에서 시작한다
+  const edge = YARD_MARGIN + 0.5;
+  const inYard = (p) => p && p.x > -edge && p.z > -edge && p.x < YARD.w + edge && p.z < YARD.h + edge;
   const startAt = startPlace === 'yard' ? (inYard(keptPos) ? keptPos : { x: HOUSE_CENTER_X, z: doorFront().z + 2.4 }) : matSpot();
   const character = createCharacter({ view, store, assets, start: startAt, place: startPlace });
   view.setPlace(startPlace);
@@ -193,8 +200,9 @@ async function start(saved = {}) {
       camera: (step) => { view.rotateCamera(step); input.refresh(); },
       zoom: (factor) => view.zoomBy(factor),
       rotate: () => input.rotate(),
-      mute: () => { audio.setMuted(!audio.muted); return audio.muted; },
+      mute: () => { audio.setMuted(!audio.muted); haptics.setEnabled(!audio.muted); return audio.muted; },
       inset: (px) => view.setBottomInset(px),
+      topInset: (px) => view.setTopInset(px),
       clear: () => input.clearAll(),
       undo: () => input.undo(),
       redo: () => input.redo(),
@@ -212,7 +220,14 @@ async function start(saved = {}) {
     toast: (message, kind) => ui.toast(message, kind),
   });
   const history = createHistory(store); // 처음 놓인 가구는 기록에 넣지 않는다
-  input = createInput({ canvas, view, store, history, character, ui, audio, travel, readOnly: guest });
+  // 낚시. 기록은 이 브라우저에 집과 따로 저장한다. 친구 집을 구경하는 중에도 내 낚시 기록에 남는다
+  const fishing = createFishing({
+    character, ui, audio, haptics, storage: openStorage(), catchCard: createCatchCard(),
+    pondView: createPondView({ view, figure: character.figure }),
+    onChange: () => input?.syncUI(),
+  });
+  createFishingUI({ fishing });
+  input = createInput({ canvas, view, store, history, character, ui, audio, haptics, travel, fishing, readOnly: guest });
   history.subscribe((status) => ui.setHistory(status));
   ui.setHistory(history.status());
   if (!guest && handed?.mode === 'build') input.setMode('build');
@@ -261,6 +276,7 @@ async function start(saved = {}) {
   if (shareError) ui.toast(`공유 링크 오류: ${shareError}. 내 집으로 열었습니다`, 'error');
   if (loaded && !loaded.ok) ui.toast(`${loaded.reason}. 처음 배치로 시작합니다`, 'error');
   else if (loaded?.dropped) ui.toast(`저장된 것 가운데 ${loaded.dropped}개는 지금 규칙에 맞지 않아 빼고 불러왔습니다`, 'error');
+  else if (fishing.loadProblem) ui.toast(fishing.loadProblem, 'error');
 
   let last = performance.now();
   let wasSeated = null;
@@ -268,13 +284,15 @@ async function start(saved = {}) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     const dir = input.state.mode === 'walk' || character.place === 'yard' ? input.moveDirection() : input.moveDirection();
-    if (dir) pending = null;
+    if (dir) { pending = null; fishing.cancel(); } // 방향 키로 걸으면 낚시를 그만둔다
     character.update(dt, dir);
+    fishing.update(dt);
     // 앉거나 일어나면 안내를 바꾼다
     const seated = character.seated?.id ?? null;
     if (seated !== wasSeated) { wasSeated = seated; input.syncUI(); if (seated) audio.play('sit'); }
     if (!busy) {
       if (character.place === 'yard') {
+        view.setCloseUp(fishing.focus()); // 낚시하는 동안은 물가와 찌 사이를 가까이 본다
         view.setFocus(character.pos.x, character.pos.z);
         // 문 앞에서 집 쪽으로 걷거나, 집을 눌러 문 앞에 닿으면 들어간다
         if (character.atHouseDoor() && ((dir && dir.z < -0.3) || pending)) go('main');
@@ -288,7 +306,7 @@ async function start(saved = {}) {
 
   // 열어 둔 화면에 새 판이 도착해도 꾸민 집을 잃지 않게 한다
   window.claude?.hot?.snapshot?.(() => guest || switchingHouse ? {} : ({ state: store.state, place: character.place, pos: { ...character.pos }, mode: input.state.mode }));
-  window.__game = { store, view, character, input, history, saveNow, travel };
+  window.__game = { store, view, character, input, history, saveNow, travel, fishing, haptics };
   window.__ready = true;
 }
 
