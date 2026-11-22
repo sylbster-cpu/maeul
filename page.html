@@ -254,7 +254,17 @@
   #catch-size { display: inline-block; transform-origin: left bottom; }
   .catch-card.pop #catch-size { animation: size-pop 0.16s 0.12s ease-out both; }
   @keyframes size-pop { from { transform: scale(1.45); } to { transform: scale(1); } }
-  @media (prefers-reduced-motion: reduce) { .catch-card.pop, .catch-card.pop #catch-size { animation: none; } }
+  /* 가장 드문 물고기를 처음 낚았을 때(2026-11-23 사용자 결정): 화면 가장자리를 약하게 어둡게 하고, 이름을 금빛으로 키운다.
+     흔들림은 넣지 않는다. 누르는 것은 막지 않는다 */
+  #rare-dim {
+    position: fixed; inset: 0; z-index: 3; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse at 50% 45%, rgba(20, 16, 10, 0) 35%, rgba(20, 16, 10, 0.5) 100%);
+    transition: opacity 0.4s ease-out;
+  }
+  #rare-dim.on { opacity: 1; transition: opacity 0.15s ease-in; }
+  .catch-card.rare { border-color: #c9932b; box-shadow: 0 5px 0 #c9932b; }
+  .catch-card.rare #catch-name { color: #b5761a; font-size: 36px; }
+  @media (prefers-reduced-motion: reduce) { .catch-card.pop, .catch-card.pop #catch-size { animation: none; } #rare-dim, #rare-dim.on { transition: none; } }
 
 
   .loading {
@@ -319,6 +329,7 @@
     </aside>
 
     <div class="bottom">
+      <div id="rare-dim" aria-hidden="true"></div>
       <div class="catch-card" id="catch-card" role="status" aria-live="polite" hidden>
         <div class="catch-head"><strong id="catch-name"></strong><span id="catch-size"></span></div>
         <span id="catch-note"></span>

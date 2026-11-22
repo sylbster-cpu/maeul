@@ -77,6 +77,19 @@ export function planBite(fish, rng) {
   return { fish, approach, nibbles, bite: t, window: BITE_WINDOW };
 }
 
+// 크기의 무게감(0~1). 송사리 3cm 에서 메기 90cm 까지 로그로 잰다. 드문 정도는 섞지 않는다.
+// 손에 떨어질 때의 낮고 묵직한 소리를 여기에 맞춘다(2026-11-23 사용자 결정: 크기는 낮은 소리, 드묾은 높은 종소리)
+export function sizeFeel(size) {
+  return Math.min(1, Math.max(0, Math.log(Math.max(size, 3) / 3) / Math.log(30)));
+}
+// 드문 정도의 등급. 같은 물 안에서 나오는 몫으로 정한다. 0 흔함(30% 이상), 1 드묾(15% 이상), 2 아주 드묾.
+// 연못: 송사리·붕어 0, 잉어 1, 메기 2. 바다: 망둥어·고등어 0, 감성돔 2. 높은 종소리의 높이를 여기에 맞춘다
+export function fishTier(fish) {
+  const ids = fishIn(FISH[fish].water);
+  const share = FISH[fish].weight / ids.reduce((sum, id) => sum + FISH[id].weight, 0);
+  return share >= 0.3 ? 0 : share >= 0.15 ? 1 : 2;
+}
+
 // 낚은 물고기의 무게감(0~1). 연출의 크기를 여기에 맞춘다: 크고 드문 물고기일수록 크게.
 // 크기는 송사리 3cm 에서 메기 90cm 까지 로그로 재고, 같은 물 안에서의 드문 정도를 조금 더한다. 판정과 기록에는 쓰지 않는다
 export function catchWeight(fish, size) {

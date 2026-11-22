@@ -2,7 +2,7 @@
 // 흐름: idle → walk(물가로) → cast(던짐) → wait(다가오고 건드림) → bite(잠김) → result → idle
 // 기록은 fishing.js 의 명령으로만 바꾸고, 집 저장과 다른 열쇠에 둔다.
 import {
-  FISH, WATERS, HUSH, inWater, waterAt, rollFish, rollSize, planBite, judge, kstDay, todaysFish, catchWeight,
+  FISH, WATERS, HUSH, inWater, waterAt, rollFish, rollSize, planBite, judge, kstDay, todaysFish, catchWeight, sizeFeel, fishTier,
   createFishingStore, createFishingSaver, FISHING_KEY,
 } from './fishing.js';
 import { POND, shoreZ } from './parts.js';
@@ -15,6 +15,8 @@ const SKIP_AFTER = 0.5; // 결과를 보이는 중 이만큼 지나 누르면 �
 // 손을 떼면 REEL_SLOW 배로 느려진다. 놓쳐도 실패하지 않는다. 큰 물고기일수록 오래 걸린다(무게는 시간)
 const reelTime = (weight) => 0.6 + 0.9 * weight; // 송사리 약 0.65초 ~ 메기 약 1.5초
 const REEL_SLOW = 0.35;
+// 드문 정도(fishing.js fishTier)에 따른 종소리 높이. 흔함 1.0, 드묾 1.26(장3도), 아주 드묾 1.5(완전5도)
+const CHIME_PITCH = [1, 1.26, 1.5];
 const REACH = 3.2; // 찌를 던지는 가장 먼 거리
 const SHORE = 1.4; // 물가에서 이만큼 안에 서 있어야 던질 수 있다
 
@@ -150,7 +152,9 @@ export function createFishing({ character, pondView, ui, audio, haptics = null, 
       pondView.hook(fish, size, weight);
       audio.play('hook', { pitch: 1.4 - 0.65 * weight, gain: 0.65 + 0.55 * weight });
       buzz(weight < 0.35 ? [25] : weight < 0.7 ? [35, 30, 35] : [55, 35, 70], weight < 0.35 ? 1 : weight < 0.7 ? 2 : 3);
-      reel = { p: 0, time: reelTime(weight), fish, size, weight, label, note, tug: 0.25 };
+      // 가장 드문 물고기(메기·감성돔)를 처음 낚았을 때만 카드를 띄울 때 주변을 약하게 어둡게 하고 이름을 강조한다(2026-11-23 사용자 결정)
+      const tier = fishTier(fish);
+      reel = { p: 0, time: reelTime(weight), fish, size, weight, label, note, tug: 0.25, tier, rareFirst: tier === 2 && !was };
       setPhase('reel');
       return;
     } else {
@@ -194,9 +198,13 @@ export function createFishing({ character, pondView, ui, audio, haptics = null, 
   function landFish() {
     const r = reel;
     reel = null;
-    if (catchCard) catchCard.show({ label: r.label, size: r.size, note: r.note });
+    if (catchCard) catchCard.show({ label: r.label, size: r.size, note: r.note, rare: r.rareFirst });
     else ui.toast(`${r.label}${objectParticle(r.label)} 낚았습니다! ${r.size}cm. ${r.note}`);
-    pondView.leapOut(r.fish, r.size, r.weight, () => audio.play('catch', { pitch: 1.12 - 0.2 * r.weight }));
+    // 손에 떨어질 때 두 소리: 크기는 낮고 묵직한 철썩(클수록 낮고 크게), 드문 정도는 높은 종소리(드물수록 높게)
+    const feel = sizeFeel(r.size);
+    const landing = { tier: r.tier, rareFirst: r.rareFirst, land: { pitch: 1.15 - 0.5 * feel, gain: 0.6 + 0.7 * feel }, chime: { pitch: CHIME_PITCH[r.tier] } };
+    last = { ...last, landing };
+    pondView.leapOut(r.fish, r.size, r.weight, () => { audio.play('land', landing.land); audio.play('chime', landing.chime); });
     resultTime = CATCH_TIME + 0.3 * r.weight;
     setPhase('result');
   }
