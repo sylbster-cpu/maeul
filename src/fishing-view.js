@@ -6,9 +6,13 @@
 import * as THREE from './three.js';
 import { POND } from './parts.js';
 import { FISH, inWater } from './fishing.js';
+import { wobble } from './fx.js';
 
 const WATER_Y = -0.035; // 물 표면의 높이. 땅(-0.05, -0.07)보다 조금 위다
-const CAST_TIME = 0.5;
+const CAST_TIME = 0.7; // fishing-play.js 와 같다
+// 던지기: 뒤로 젖히는 예비동작(0.26초) 뒤에 2프레임 만에 휙 내던진다 (준비는 느리게, 실행은 빠르게)
+const WIND = 0.26;
+const FLICK = 0.06;
 const HUSH_BACK = 0.22; // 물기 직전 물고기 그림자가 찌에서 물러나는 거리 (예비동작)
 const flat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.9, ...extra });
 const ease = (k) => k * k * (3 - 2 * k);
@@ -286,7 +290,10 @@ export function createPondView({ view, figure }) {
   let jumps = 0;
 
   // ---- 움직임 상태 ----
-  let flight = null; // 던진 찌가 날아가는 중 { from, to, t }
+  let flight = null; // 던진 찌가 날아가는 중 { from, to, t, time }
+  let throwTo = null; // 젖히는 동안 기다리는 던질 곳
+  let retract = null; // 놓친 뒤 찌를 감아 들이는 중 { from, t }
+  let twitch = null; // 놓친 뒤 낚싯대가 살짝 튀어 오르는 중 { t }
   let swing = null; // 낚싯대를 휘두르는 중 { t }
   let lift = null; // 낚아채며 낚싯대를 드는 중 { t }
   let floatT = 0;
@@ -322,6 +329,7 @@ export function createPondView({ view, figure }) {
   const squash = (obj, sy, base = 1) => { const side = 1 / Math.sqrt(sy); obj.scale.set(base * side, base * sy, base * side); };
   function hideAll() {
     flight = null; swing = null; lift = null; fish = null; flee = null; leap = null; dip = 0; under = false;
+    throwTo = null; retract = null; twitch = null; bobber.scale.set(1, 1, 1);
     hushed = false; hushK = 0; freeze = 0; flashT = 0; body = null; fishSquash = null; flapAmp = 0;
     reeling = null; figure.rotation.x = 0;
     fishMat.emissive.setHex(0x000000);
@@ -448,9 +456,8 @@ export function createPondView({ view, figure }) {
       hideAll();
       rod.visible = true;
       swing = { t: 0 };
-      const from = rodTip();
-      flight = { from, to: new THREE.Vector3(to.x, FLOAT_Y, to.z), t: 0 };
-      bobber.position.copy(from);
+      throwTo = new THREE.Vector3(to.x, FLOAT_Y, to.z);
+      bobber.position.copy(rodTip());
       bobber.visible = true;
       line.visible = true;
     },
@@ -495,6 +502,9 @@ export function createPondView({ view, figure }) {
     // 놓쳤을 때: 물고기가 달아나고 찌가 떠오른다
     escape() {
       under = false; mark.visible = false; hushed = false;
+      // 찌를 감아 들이고 낚싯대가 살짝 튀어 오른다 (놓친 것도 몸짓으로 끝맺는다)
+      retract = { from: bobber.position.clone(), t: 0 };
+      twitch = { t: 0 };
       if (fish) {
         flee = { x: shadow.position.x, z: shadow.position.z, dir: fish.dir + Math.PI, t: 0, size: fish.size };
         fish = null;
@@ -577,10 +587,20 @@ export function createPondView({ view, figure }) {
         if (body.t > 0.6) { body = null; figure.scale.set(1, 1, 1); }
       }
       if (swing) {
+        // 뒤로 젖히며 몸도 뒤로 기울고 → 2프레임 만에 휙 내던지며 앞으로 → 낚싯대와 몸이 흔들리다 멎는다
         swing.t += dt;
-        const k = swing.t / CAST_TIME;
-        rod.rotation.x = k < 0.3 ? ROD_REST - ease(k / 0.3) * 1.0 : ROD_REST - 1.0 + ease(Math.min(1, (k - 0.3) / 0.4)) * 1.0;
-        if (k >= 1) swing = null;
+        const t = swing.t;
+        let bend;
+        if (t < WIND) { const k = ease(t / WIND); rod.rotation.x = ROD_REST - 1.15 * k; bend = -0.12 * k; }
+        else if (t < WIND + FLICK) { const k = (t - WIND) / FLICK; rod.rotation.x = ROD_REST - 1.15 + 1.45 * k; bend = -0.12 + 0.24 * k; }
+        else { const u = t - WIND - FLICK; rod.rotation.x = ROD_REST + wobble(0.3, u, 0.12, 0.12); bend = wobble(0.12, u, 0.14, 0.12); }
+        if (!calm) figure.rotation.x = bend;
+        if (throwTo && t >= WIND) { flight = { from: rodTip(), to: throwTo, t: 0, time: CAST_TIME - WIND - FLICK / 2 }; throwTo = null; }
+        if (t >= CAST_TIME) swing = null;
+      } else if (twitch) {
+        twitch.t += dt;
+        rod.rotation.x = ROD_REST - 0.45 * Math.exp(-twitch.t / 0.18);
+        if (twitch.t > 0.8) twitch = null;
       } else if (reeling) {
         // 처음 0.15초는 홱 챈 자세, 그 뒤로는 물고기에 끌려 휘고 떨린다. 누르고 있으면 더 크게 휘고 몸이 뒤로 버틴다
         reeling.t += dt;
@@ -601,11 +621,19 @@ export function createPondView({ view, figure }) {
         rod.rotation.x += (ROD_REST + pull - rod.rotation.x) * Math.min(1, dt * 20);
         rod.rotation.z = under && !calm ? Math.sin(floatT * 23) * 0.06 : 0;
       }
-      if (flight) {
-        flight.t = Math.min(1, flight.t + dt / CAST_TIME);
+      if (throwTo && bobber.visible) {
+        bobber.position.copy(rodTip()); // 젖히는 동안은 낚싯대 끝에 매달려 있다
+      } else if (flight) {
+        flight.t = Math.min(1, flight.t + dt / flight.time);
         const k = flight.t;
         bobber.position.lerpVectors(flight.from, flight.to, k);
         bobber.position.y += Math.sin(Math.PI * k) * 1.4;
+      } else if (retract) {
+        retract.t += dt;
+        const k = Math.min(1, retract.t / 0.32);
+        bobber.position.lerpVectors(retract.from, rodTip(), ease(k));
+        bobber.position.y += Math.sin(Math.PI * k) * 0.3;
+        if (k >= 1) { retract = null; bobber.visible = false; line.visible = false; }
       } else if (bobber.visible) {
         dip = Math.max(0, dip - dt / 0.3);
         landT += dt;
@@ -616,6 +644,8 @@ export function createPondView({ view, figure }) {
         const target = under ? -0.45 : FLOAT_Y + Math.sin(floatT * 2.6) * 0.028 * idle + settle - Math.sin(Math.PI * dip) * 0.17;
         bobber.position.y += (target - bobber.position.y) * Math.min(1, dt * (under ? 26 : 22));
         bobber.rotation.z = Math.sin(floatT * 2.1) * 0.1 * idle + (calm ? 0 : Math.sin(Math.PI * dip) * Math.sin(floatT * 40) * 0.25);
+        // 물에 닿는 순간 찌가 납작해졌다 돌아온다
+        if (landT < 0.4 && !calm) squash(bobber, 1 + wobble(-0.35, landT, 0.08, 0.09)); else bobber.scale.set(1, 1, 1);
         if (under) { underRipple -= dt; if (underRipple <= 0) { ripple(bobber.position.x, bobber.position.z, 0.9, 0.9); splash(bobber.position.x, bobber.position.z, 2, 0.5); underRipple = 0.22; } }
       }
       if (fish) {

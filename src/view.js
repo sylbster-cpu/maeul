@@ -1,6 +1,7 @@
 // 화면. 상태(store)를 읽어 three.js 장면을 만든다. 규칙 판정은 하지 않는다.
 // 장면은 두 곳이다: 마당('yard', 집의 겉모습이 서 있다)과 방('main', 문으로 들어간다).
 import * as THREE from './three.js';
+import { createFx, wobble, squash } from './fx.js';
 import { PARTS, WALL_HEIGHT, YARD, HOUSE_CENTER_X, MAT_X, WINDOW_X, LEVELS, FLOORS, WALLPAPERS, ROOFS, SIDINGS, DOORS } from './parts.js';
 import { footprint, layerOf, houseRect, cellKey } from './state.js';
 
@@ -88,6 +89,7 @@ export function createView({ canvas, assets, store }) {
   const inside = new THREE.Group(); // 방
   const ghostGroup = new THREE.Group();
   scene.add(outside, inside, ghostGroup);
+  const fx = createFx({ scene, calm }); // 먼지, 반짝임, 나뭇잎 (src/fx.js)
 
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
   const flat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.9, ...extra });
@@ -136,6 +138,9 @@ export function createView({ canvas, assets, store }) {
   const trunkGeo = new THREE.CylinderGeometry(0.28, 0.36, 1.6, 6);
   const leafGeo = new THREE.IcosahedronGeometry(1.5, 0);
   const treeSpots = [[-7, -6], [-9, 5], [-8, 15], [-6.5, 25], [4, -8], [15, -9], [27, -7], [31, 2], [33, 14], [31, 27], [7, 32], [19, 33], [-5, 33], [-11, -11], [35, -10]];
+  // 나무는 저마다 다른 박자로 아주 조금 흔들리고(생동감), 캐릭터가 스쳐 지나가면 크게 흔들렸다 잦아들며
+  // 잎을 몇 장 떨군다(따라오기: 줄기보다 위쪽 잎이 늦게, 더 크게)
+  const trees = [];
   treeSpots.forEach(([x, z], i) => {
     const tree = new THREE.Group();
     const trunk = new THREE.Mesh(trunkGeo, trunkMat);
@@ -151,6 +156,7 @@ export function createView({ canvas, assets, store }) {
     tree.position.set(x, 0, z);
     tree.scale.setScalar(0.85 + ((i * 37) % 10) / 22);
     outside.add(tree);
+    trees.push({ crown, top, crownRot: crown.rotation.clone(), topRot: top.rotation.clone(), x, z, phase: i * 1.7, near: false, rustle: 9, color: leafMats[i % 3].color.getHex() });
   });
 
   const houseGroup = new THREE.Group();
@@ -190,6 +196,7 @@ export function createView({ canvas, assets, store }) {
 
   // ---- 집의 겉모습 (단계와 고른 색에 따라 코드로 만든다) ----
   let doorHinge = null;
+  let doorAngle = 0, doorSpeed = 0; // 문은 집을 다시 만들어도 열린 정도를 잇는다
   let specials = [];
   function buildHouse() {
     emptyGroup(houseGroup);
@@ -497,9 +504,101 @@ export function createView({ canvas, assets, store }) {
     }
   }
 
-  // 방금 놓인 것을 살짝 튀게 한다
+  // ---- 놓기·치우기·돌리기의 연출 (docs/GAME_PRINCIPLES.md 1-4, 1-5, 1-7) ----
+  // place: 살짝 위에서 떨어져 내려앉으며 납작해졌다 돌아오고 먼지가 인다. 푹신한 가구는 더 납작해진다.
+  // rotate: 돌린 쪽으로 조금 지나쳤다 돌아온다. 벽걸이는 못에 건 것처럼 흔들리다 멎는다. 러그는 펼쳐진다.
+  // bump: 앉을 때 방석이 눌린다. 모두 그리는 모습만 바꾸고 자리(상태)는 그대로다
+  const SOFT = new Set(['bed', 'double_bed', 'couch', 'armchair']);
   const pops = new Map();
-  function pop(ref) { if (!calm) pops.set(ref.id, { t: 0 }); }
+  function pop(ref, { kind = 'place', amount = 0 } = {}) { if (!calm) pops.set(ref.id, { t: 0, kind, amount, base: null }); }
+  // 치운 가구: 지우기 전 모습을 복사해 살짝 부풀었다 오므라들며 사라지게 한다. 대략의 크기(칸 수)를 돌려준다
+  const vanishing = [];
+  const counts = { vanished: 0, nopes: 0 }; // 자동 시험이 읽는다
+  function vanish(id) {
+    const node = nodes.get(id);
+    if (!node) return 1;
+    const box = new THREE.Box3().setFromObject(node);
+    const size = box.getSize(new THREE.Vector3());
+    const area = Math.max(1, Math.round(size.x * size.z));
+    if (calm) return area;
+    const copy = node.clone(true);
+    copy.userData = {};
+    counts.vanished++;
+    (place === 'yard' ? outside : inside).add(copy);
+    vanishing.push({ node: copy, t: 0 });
+    const mid = box.getCenter(new THREE.Vector3());
+    fx.puff(mid.x, box.min.y, mid.z, { count: Math.min(12, 5 + area), spread: 0.3 + Math.sqrt(area) * 0.2, rx: size.x * 0.5, rz: size.z * 0.5, parent: place === 'yard' ? outside : inside });
+    return area;
+  }
+  // 놓을 수 없는 자리: 미리보기가 고개를 젓듯 좌우로 흔들린다 (실패의 이유는 알림이 말한다)
+  let nopeT = 9;
+  // 집을 키우거나 겉모습을 바꿨을 때. 키우기는 드문 큰일이라 크게(늘어났다 내려앉기, 먼지 고리, 반짝임), 색 바꾸기는 작게
+  let houseBump = null;
+  function celebrate(kind) {
+    if (calm) return;
+    if (place === 'yard') {
+      const big = kind === 'level';
+      houseBump = { t: 0, amount: big ? 0.12 : 0.035 };
+      const { w, d, h } = LEVELS[store.state.house.level].house;
+      const hx = houseGroup.position.x, hz = houseGroup.position.z;
+      if (big) {
+        fx.puff(hx, 0, hz, { count: 28, spread: 1.4, size: 0.95, life: 0.8, rx: w * 0.5, rz: d * 0.5, parent: outside });
+        fx.sparkle(hx, h + 1.2, hz, { count: 16, radius: w * 0.6, size: 0.8, parent: outside });
+      } else fx.sparkle(hx, h + 0.8, hz, { count: 5, radius: w * 0.4, size: 0.6, parent: outside });
+    } else {
+      const [w, h] = LEVELS[store.state.house.level].room;
+      fx.sparkle(w / 2, 0.6, h / 2, { count: kind === 'level' ? 14 : 6, radius: Math.min(w, h) * 0.45, parent: inside });
+    }
+  }
+  let clock = 0;
+  // 연출 하나를 한 화면만큼 움직인다. 끝났으면 true
+  function finishPop(node, p, obj) {
+    const t = p.t, b = p.base;
+    if (p.kind === 'rotate') {
+      // 돌린 만큼(90도) 뒤에서 출발해 조금 지나쳤다 돌아온다
+      node.rotation.y = b.rotY + wobble(-Math.PI / 2, t, 0.12, 0.05);
+      squash(node, 1 + wobble(-0.05, t, 0.1, 0.1));
+      return t > 0.4;
+    }
+    if (p.kind === 'bump') {
+      squash(node, 1 + wobble(-p.amount, t, 0.09, 0.1));
+      return t > 0.45;
+    }
+    if (p.layer === 'wall') {
+      // 못에 건 액자처럼 흔들리다 멎는다
+      node.rotation.z = b.rotZ + wobble(0.1, t, 0.22, 0.35);
+      return t > 1.2;
+    }
+    if (p.layer === 'rug') {
+      // 접혀 있던 것이 펼쳐지듯 넓어졌다 자리를 잡는다
+      const k = 1 + wobble(-0.14, t, 0.1, 0.1);
+      node.scale.set(k, 1, k);
+      return t > 0.45;
+    }
+    // 떨어져 내려앉기: 0.09초 동안 가속하며 떨어지고(떨어지는 동안 세로로 늘어남), 닿는 순간 납작해졌다 돌아온다
+    const DROP = 0.09;
+    const height = p.layer === 'top' ? 0.16 : 0.24;
+    if (t < DROP) {
+      const k = t / DROP;
+      node.position.y = b.y + height * (1 - k * k);
+      squash(node, 1 + 0.08 * k);
+      return false;
+    }
+    if (!p.landed) {
+      p.landed = true;
+      if (p.layer === 'furniture') {
+        // 가구 가장자리에서 먼지가 밖으로 퍼진다. 큰 가구일수록 많이, 넓게
+        const box = new THREE.Box3().setFromObject(node);
+        const mid = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+        fx.puff(mid.x, b.y, mid.z, { count: Math.min(14, 6 + p.area * 2), spread: 0.3 + Math.sqrt(p.area) * 0.22, size: 0.4, rx: size.x * 0.5, rz: size.z * 0.5, parent: place === 'yard' ? outside : inside });
+      }
+    }
+    node.position.y = b.y;
+    // 푹신한 가구는 많이, 단단한 가구는 조금, 작은 소품은 그 사이로 납작해진다
+    const amount = p.soft ? 0.16 : p.layer === 'top' ? 0.12 : 0.08;
+    squash(node, 1 + wobble(-amount, t - DROP, 0.09, 0.09));
+    return t - DROP > 0.45;
+  }
 
   // 걷기 모드에서 누른 자리 표시
   const marker = new THREE.Mesh(new THREE.RingGeometry(0.22, 0.32, 24), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }));
@@ -626,7 +725,15 @@ export function createView({ canvas, assets, store }) {
   resize();
 
   return {
-    scene, camera, renderer, rebuild, showGhosts, pop, groundPoint, wallPoint, pick, pickFront, thumbnails,
+    scene, camera, renderer, rebuild, showGhosts, pop, vanish, celebrate, groundPoint, wallPoint, pick, pickFront, thumbnails,
+    fx, // 공통 연출 (src/fx.js). 캐릭터와 낚시도 쓴다
+    nope() { nopeT = 0; counts.nopes++; },
+    // 앉을 때 방석이 눌린다
+    bump(id, amount = 0.06) { pop({ id }, { kind: 'bump', amount }); },
+    // 연출 상태 (자동 시험이 읽는다)
+    get feel() {
+      return { ...counts, pops: [...pops.entries()].map(([id, p]) => ({ id, kind: p.kind, landed: !!p.landed })), vanishing: vanishing.length, nope: nopeT < 0.4, houseBump: !!houseBump, particles: fx.count, rustling: trees.filter((t) => t.rustle < 0.5).length, door: doorAngle };
+    },
     outside, // 마당 장면. 연못(fishing-view.js)이 여기에 붙는다
     clearGhosts: () => emptyGroup(ghostGroup),
     // 세계 좌표가 화면의 어디인지 (자동 확인 스크립트가 쓴다)
@@ -676,19 +783,72 @@ export function createView({ canvas, assets, store }) {
     update(dt, who) {
       if (dirty) rebuild();
       updateCamera(dt);
-      // 마당에서 문 가까이 가면 문이 열린다
+      // 마당에서 문 가까이 가면 문이 열린다. 용수철처럼 조금 지나쳤다 멎는다
       if (place === 'yard' && doorHinge) {
         const rect = houseRect(store.state.house.level);
         const near = Math.hypot(who.x - HOUSE_CENTER_X, who.z - (rect.z0 + rect.d)) < 2.2;
-        doorHinge.rotation.y += ((near ? -1.5 : 0) - doorHinge.rotation.y) * Math.min(1, dt * 9);
+        const goal = near ? -1.5 : 0;
+        if (calm) doorAngle += (goal - doorAngle) * Math.min(1, dt * 9);
+        else {
+          // 느린 기기에서도 같게 움직이도록 1/120초씩 나누어 계산한다
+          for (let left = dt; left > 1e-6; left -= 1 / 120) {
+            const h = Math.min(left, 1 / 120);
+            doorSpeed += ((goal - doorAngle) * 130 - doorSpeed * 15) * h; doorAngle += doorSpeed * h;
+          }
+        }
+        doorHinge.rotation.y = doorAngle;
       }
+      if (place === 'yard') {
+        for (const tr of trees) {
+          // 나무는 걸을 수 있는 둘레 바깥에 있다. 둘레 끝을 따라 걸으면 닿는 거리로 잰다
+          const near = Math.hypot(who.x - tr.x, who.z - tr.z) < 4.4;
+          if (near && !tr.near && !calm) { tr.rustle = 0; fx.leaf(tr.x, 3.2, tr.z, tr.color, { count: 3, parent: outside }); }
+          tr.near = near;
+          tr.rustle += dt;
+          const idle = calm ? 0 : Math.sin(clock * 0.9 + tr.phase) * 0.025;
+          const shake = calm ? 0 : wobble(0.12, tr.rustle, 0.16, 0.35);
+          const lag = calm ? 0 : wobble(0.18, Math.max(0, tr.rustle - 0.06), 0.16, 0.4); // 위쪽 잎은 늦게, 크게
+          tr.crown.rotation.set(tr.crownRot.x + idle + shake, tr.crownRot.y, tr.crownRot.z + shake * 0.6);
+          tr.top.rotation.set(tr.topRot.x + idle * 1.4 + lag, tr.topRot.y, tr.topRot.z + lag * 0.6);
+        }
+      }
+      clock += dt;
       for (const [id, p] of pops) {
-        p.t += dt / 0.2;
+        p.t += dt;
         const node = nodes.get(id);
-        if (!node || p.t >= 1) { if (node) node.scale.setScalar(1); pops.delete(id); continue; }
-        const k = p.t - 1;
-        node.scale.setScalar(0.84 + 0.16 * (1 + 2.6 * k * k * k + 1.6 * k * k));
+        if (!node) { if (p.t > 1) pops.delete(id); continue; } // 다시 그리기 전이면 기다린다
+        const obj = store.state.spaces[place].objects[id];
+        if (!p.base) {
+          p.base = { y: node.position.y, rotY: node.rotation.y, rotZ: node.rotation.z };
+          p.layer = obj ? layerOf(obj.part) : 'furniture';
+          p.soft = obj && SOFT.has(obj.part);
+          p.area = obj && p.layer !== 'wall' ? footprint(obj).cells.length || 1 : 1; // 벽걸이에는 바닥 칸이 없다
+        }
+        if (finishPop(node, p, obj)) { node.position.y = p.base.y; node.rotation.y = p.base.rotY; node.rotation.z = p.base.rotZ; node.scale.setScalar(1); pops.delete(id); }
       }
+      for (let i = vanishing.length - 1; i >= 0; i--) {
+        const v = vanishing[i];
+        v.t += dt;
+        const k = v.t / 0.2;
+        if (k >= 1) { v.node.removeFromParent(); vanishing.splice(i, 1); continue; }
+        // 0.05초 동안 살짝 부풀었다가 빠르게 오므라든다
+        const s = k < 0.25 ? 1 + 0.08 * (k / 0.25) : 1.08 * (1 - ((k - 0.25) / 0.75) ** 2);
+        v.node.scale.setScalar(Math.max(0.001, s));
+      }
+      if (nopeT < 0.4) {
+        nopeT += dt;
+        const a = targetAzimuth(); // 화면 오른쪽 방향으로 흔든다
+        const b = { right: { x: Math.cos(a), z: -Math.sin(a) } };
+        const off = calm ? 0 : wobble(0.08, nopeT, 0.06, 0.1);
+        ghostGroup.position.set(b.right.x * off, 0, b.right.z * off);
+      } else ghostGroup.position.set(0, 0, 0);
+      if (houseBump) {
+        houseBump.t += dt;
+        // 위로 늘어났다가 내려앉으며 잦아든다
+        squash(houseGroup, 1 + wobble(houseBump.amount, houseBump.t, 0.14, 0.2));
+        if (houseBump.t > 0.9) { houseBump = null; houseGroup.scale.set(1, 1, 1); }
+      }
+      fx.update(dt);
       if (markerLife > 0) {
         markerLife = Math.max(0, markerLife - dt * 1.6);
         marker.material.opacity = markerLife * 0.9;

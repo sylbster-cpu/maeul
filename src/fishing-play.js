@@ -7,7 +7,7 @@ import {
 } from './fishing.js';
 import { POND } from './parts.js';
 
-const CAST_TIME = 0.5;
+const CAST_TIME = 0.7; // 뒤로 젖히는 예비동작(0.26초)과 날아가는 시간. fishing-view.js 와 같다
 const RESULT_TIME = 0.8; // 놓쳤을 때 결과를 보이는 시간
 const CATCH_TIME = 2.0; // 낚은 물고기를 들어 보이는 시간. 무거운 물고기는 조금 더 길게 본다
 const SKIP_AFTER = 0.5; // 결과를 보이는 중 이만큼 지나 누르면 바로 넘어간다
@@ -24,7 +24,7 @@ const objectParticle = (word) => {
   return code >= 0 && code <= 11171 && code % 28 !== 0 ? '을' : '를';
 };
 
-export function createFishing({ character, pondView, ui, audio, storage, catchCard = null, random: rng = Math.random, now = Date.now, onChange = () => {} }) {
+export function createFishing({ character, pondView, ui, audio, haptics = null, storage, catchCard = null, random: rng = Math.random, now = Date.now, onChange = () => {} }) {
   let random = rng;
   const saver = createFishingSaver(storage);
   const first = saver.load();
@@ -46,7 +46,11 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
   let wasNear = false;
   let stand = null; // 던진 자리. 걸어서 떠나기 전까지 카메라가 물가와 찌 사이를 가까이 본다
   let resultTime = RESULT_TIME;
-  const buzz = (pattern) => { try { navigator.vibrate?.(pattern); } catch { /* 진동이 없는 기기 */ } };
+  // 진동(src/haptics.js). 아이폰은 횟수(ticks)로만 나눈다. 낚아챈 순간은 손가락이 닿을 때라 아이폰에서는 뗄 때 울린다
+  const buzz = (pattern, ticks = 1) => {
+    if (haptics) { haptics.pulse(pattern, { ticks }); return; }
+    try { navigator.vibrate?.(pattern); } catch { /* 진동이 없는 기기 */ }
+  };
   let last = null; // 마지막 결과 (자동 시험이 읽는다)
 
   function setPhase(next) { phase = next; t = 0; onChange(); }
@@ -125,7 +129,7 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
       // 크기는 무게감에 맞춘다. 송사리는 가볍게, 메기는 크게. 기록은 지금 남기고(이미 낚았다), 카드는 다 끌어올린 뒤에 띄운다
       pondView.hook(fish, size, weight);
       audio.play('hook', { pitch: 1.4 - 0.65 * weight, gain: 0.65 + 0.55 * weight });
-      buzz(weight < 0.35 ? [25] : weight < 0.7 ? [35, 30, 35] : [55, 35, 70]);
+      buzz(weight < 0.35 ? [25] : weight < 0.7 ? [35, 30, 35] : [55, 35, 70], weight < 0.35 ? 1 : weight < 0.7 ? 2 : 3);
       reel = { p: 0, time: reelTime(weight), fish, size, weight, label, note, tug: 0.25 };
       setPhase('reel');
       return;
@@ -258,7 +262,7 @@ export function createFishing({ character, pondView, ui, audio, storage, catchCa
         // 진짜로 물기 직전에는 잠잠해진다. 마지막 건드림과 무는 때 사이는 규칙이 띄워 둔다(fishing.js HUSH_GAP)
         if (hushedAt === null && t >= plan.bite - HUSH) { hushedAt = t; pondView.hush(); }
         // 찌가 물에 닿은 때부터 재므로 시간을 되돌리지 않고 이어 간다
-        if (t >= plan.bite) { phase = 'bite'; pondView.bite(); audio.play('bite'); buzz([70, 30, 70]); onChange(); }
+        if (t >= plan.bite) { phase = 'bite'; pondView.bite(); audio.play('bite'); buzz([70, 30, 70], 2); onChange(); }
         return;
       }
       // 누른 것을 판정하기 전(두 손가락인지 보는 잠깐)에는 늦었다고 하지 않는다. 판정은 누른 때로 한다

@@ -8,6 +8,7 @@ import { createInput } from './input.js';
 import { createHistory } from './history.js';
 import { createUI } from './ui.js';
 import { createAudio } from './audio.js';
+import { createHaptics } from './haptics.js';
 import { createSaver, parse, serialize } from './save.js';
 import { makeShareLink, readShareHash, PUBLIC_SHARE_URL } from './share.js';
 import { watchShareHash } from './share-route.js';
@@ -75,6 +76,7 @@ async function start(saved = {}) {
   const canvas = document.getElementById('scene');
   const view = createView({ canvas, assets, store });
   const audio = createAudio();
+  const haptics = createHaptics(); // 진동. 소리 버튼으로 소리와 함께 끄고 켠다
   const startPlace = guest ? 'main' : (handed?.place || (loaded?.ok && loaded.place) || 'yard');
   const keptPos = guest ? null : (handed?.pos || (loaded?.ok && loaded.pos));
   // 걸을 수 있는 둘레(연못가 포함) 안이면 서 있던 자리에서 시작한다
@@ -140,7 +142,7 @@ async function start(saved = {}) {
       camera: (step) => { view.rotateCamera(step); input.refresh(); },
       zoom: (factor) => view.zoomBy(factor),
       rotate: () => input.rotate(),
-      mute: () => { audio.setMuted(!audio.muted); return audio.muted; },
+      mute: () => { audio.setMuted(!audio.muted); haptics.setEnabled(!audio.muted); return audio.muted; },
       inset: (px) => view.setBottomInset(px),
       topInset: (px) => view.setTopInset(px),
       clear: () => input.clearAll(),
@@ -162,12 +164,12 @@ async function start(saved = {}) {
   const history = createHistory(store); // 처음 놓인 가구는 기록에 넣지 않는다
   // 낚시. 기록은 이 브라우저에 집과 따로 저장한다. 친구 집을 구경하는 중에도 내 낚시 기록에 남는다
   const fishing = createFishing({
-    character, ui, audio, storage: openStorage(), catchCard: createCatchCard(),
+    character, ui, audio, haptics, storage: openStorage(), catchCard: createCatchCard(),
     pondView: createPondView({ view, figure: character.figure }),
     onChange: () => input?.syncUI(),
   });
   createFishingUI({ fishing });
-  input = createInput({ canvas, view, store, history, character, ui, audio, travel, fishing, readOnly: guest });
+  input = createInput({ canvas, view, store, history, character, ui, audio, haptics, travel, fishing, readOnly: guest });
   history.subscribe((status) => ui.setHistory(status));
   ui.setHistory(history.status());
   if (!guest && handed?.mode === 'build') input.setMode('build');
@@ -228,7 +230,7 @@ async function start(saved = {}) {
 
   // 열어 둔 화면에 새 판이 도착해도 꾸민 집을 잃지 않게 한다
   window.claude?.hot?.snapshot?.(() => guest ? {} : ({ state: store.state, place: character.place, pos: { ...character.pos }, mode: input.state.mode }));
-  window.__game = { store, view, character, input, history, saveNow, travel, fishing };
+  window.__game = { store, view, character, input, history, saveNow, travel, fishing, haptics };
   window.__ready = true;
 }
 
