@@ -15,7 +15,11 @@ export default async function onlineTour(page, { out, logs }) {
         async publish() { house = { isPublic: true, at: new Date(2026, 10, 20, 18, 10) }; return 'https://sylbster-cpu.github.io/maeul/#visit=' + OWNER; },
         async visit() { return createState(); },
         async leaveNote() {},
-        async getNotes() { return [{ uid: 'guestBb987654321', body: '<b>안전한 인사</b>', date: new Date() }]; },
+        // 첫 장에는 다음 장이 있다고 알리고, 이어 읽으면 오래된 인사 하나를 준다
+        async getNotes(after) {
+          if (after === 'page1-last') return { notes: [{ uid: 'guestCc111111111', body: '오래된 인사', date: new Date(2026, 10, 1) }], next: null };
+          return { notes: [{ uid: 'guestBb987654321', body: '<b>안전한 인사</b>', date: new Date() }], next: 'page1-last' };
+        },
         async removeNote() {},
         async unpublish() { if (house) house.isPublic = false; },
       });
@@ -43,6 +47,12 @@ export default async function onlineTour(page, { out, logs }) {
   await page.waitForFunction(() => document.getElementById('online-notes-list').textContent.includes('안전한 인사'));
   say('방명록은 방문자 HTML을 실행하지 않고 글자로 표시한다',
     await page.evaluate(() => document.getElementById('online-notes-list').querySelector('b') === null));
+  await page.click('#online-notes-list .online-more');
+  await page.waitForFunction(() => document.getElementById('online-notes-list').textContent.includes('오래된 인사'));
+  say('방명록 맨 아래의 더 보기로 오래된 인사를 이어 본다', await page.evaluate(() => {
+    const l = document.getElementById('online-notes-list');
+    return l.querySelectorAll('.online-note-row').length === 2 && !l.querySelector('.online-more');
+  }));
   await page.click('#online-publish');
   await page.waitForFunction(() => document.getElementById('share-link').value.includes('#visit='));
   say('온라인 게시 버튼이 짧은 방문 링크를 표시한다', await page.locator('#share-layer').isVisible());

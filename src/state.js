@@ -14,6 +14,22 @@ export const WALLS = ['N', 'S', 'W', 'E'];
 const EXTERIOR = { roof: ROOFS, siding: SIDINGS, door: DOORS };
 const FINISH = { floor: FLOORS, wall: WALLPAPERS };
 
+// 그 객체가 직접 가진 항목인지 본다. 물려받은 이름(__proto__, toString 등)을 부품·물건으로 여기지 않는다.
+// Object.hasOwn 은 오래된 브라우저(Chrome 93, Safari 15.4, 삼성 인터넷 17 이전)에 없어 쓰지 않는다
+export const hasOwn = (obj, key) => obj != null && Object.prototype.hasOwnProperty.call(obj, key);
+// 상태(객체·배열·글자·숫자)를 깊이 복사한다. 값이 undefined 인 항목도 그대로 남긴다.
+// structuredClone 은 오래된 브라우저(Chrome 98, Safari 15.4, 삼성 인터넷 18 이전)에 없어 쓰지 않는다
+const cloneData = (v) => (Array.isArray(v) ? v.map(cloneData)
+  : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, cloneData(x)])) : v);
+// 명령의 물건 ID 는 비어 있지 않은 짧은 글자여야 한다 (게임이 만드는 ID 는 '플레이어-번호' 꼴)
+const validId = (id) => typeof id === 'string' && id.length > 0 && id.length <= 200;
+// 그 곳에 실제로 있는 물건. 곳이나 ID 가 잘못되었으면 null
+const objectAt = (state, space, id) => {
+  if (!SPACES.includes(space) || !validId(id)) return null;
+  const objects = state.spaces[space].objects;
+  return hasOwn(objects, id) ? objects[id] : null;
+};
+
 export function createState() {
   return {
     version: 2,
@@ -177,7 +193,7 @@ function supportAt(state, derived, space, x, y) {
 }
 
 function checkObjectFits(state, derived, space, obj, ignoreId) {
-  if (!Object.hasOwn(PARTS, obj.part)) return no('놓을 수 없는 부품입니다');
+  if (!hasOwn(PARTS, obj.part)) return no('놓을 수 없는 부품입니다');
   const layer = layerOf(obj.part);
   if (layer === 'wall') {
     if (!WALLS.includes(obj.wall) || !Number.isInteger(obj.i)) return no('벽의 자리가 잘못되었습니다');
@@ -207,27 +223,28 @@ export function validate(state, derived, cmd) {
   switch (cmd.type) {
     case 'placeObject': {
       if (!SPACES.includes(cmd.space)) return no('놓을 곳이 잘못되었습니다');
-      for (const space of SPACES) if (state.spaces[space].objects[cmd.id]) return no('같은 ID 가 이미 있습니다');
+      if (!validId(cmd.id)) return no('물건 ID 가 잘못되었습니다');
+      for (const space of SPACES) if (hasOwn(state.spaces[space].objects, cmd.id)) return no('같은 ID 가 이미 있습니다');
       return checkObjectFits(state, derived, cmd.space, cmd, null);
     }
     case 'moveObject': {
-      const obj = state.spaces[cmd.space]?.objects[cmd.id];
+      const obj = objectAt(state, cmd.space, cmd.id);
       if (!obj) return no('물건이 없습니다');
       return checkObjectFits(state, derived, cmd.space, { part: obj.part, ...spot(obj.part, cmd) }, cmd.id);
     }
     case 'removeObject':
-      return state.spaces[cmd.space]?.objects[cmd.id] ? ok : no('물건이 없습니다');
+      return objectAt(state, cmd.space, cmd.id) ? ok : no('물건이 없습니다');
     case 'setFinish': {
-      if (cmd.space !== 'main' || !Object.hasOwn(FINISH, cmd.slot)) return no('바꿀 수 없는 곳입니다');
-      if (!Object.hasOwn(FINISH[cmd.slot], cmd.value)) return no('없는 마감입니다');
+      if (cmd.space !== 'main' || !hasOwn(FINISH, cmd.slot)) return no('바꿀 수 없는 곳입니다');
+      if (!hasOwn(FINISH[cmd.slot], cmd.value)) return no('없는 마감입니다');
       return state.spaces.main[cmd.slot] === cmd.value ? no('이미 그 마감입니다') : ok;
     }
     case 'setExterior': {
-      if (!Object.hasOwn(EXTERIOR, cmd.slot) || !Object.hasOwn(EXTERIOR[cmd.slot], cmd.value)) return no('없는 겉모습입니다');
+      if (!hasOwn(EXTERIOR, cmd.slot) || !hasOwn(EXTERIOR[cmd.slot], cmd.value)) return no('없는 겉모습입니다');
       return state.house[cmd.slot] === cmd.value ? no('이미 그 겉모습입니다') : ok;
     }
     case 'setLevel': {
-      if (!Number.isInteger(cmd.level) || !Object.hasOwn(LEVELS, cmd.level)) return no(cmd.level > MAX_LEVEL ? '더 키울 수 없습니다' : '없는 단계입니다');
+      if (!Number.isInteger(cmd.level) || !hasOwn(LEVELS, cmd.level)) return no(cmd.level > MAX_LEVEL ? '더 키울 수 없습니다' : '없는 단계입니다');
       if (Math.abs(cmd.level - state.house.level) !== 1) return no('한 단계씩만 바꿀 수 있습니다');
       // 집이 커지면 마당을 더 차지하고, 작아지면 방이 줄어든다. 걸리는 물건이 있으면 바꾸지 않는다
       for (const space of SPACES) {
@@ -354,7 +371,7 @@ export function createStore(state = createState(), playerId = 'p1') {
     },
     // 여러 명령을 한꺼번에 적용한다. 하나라도 통과하지 못하면 아무것도 바꾸지 않는다
     transact(cmds, meta = {}) {
-      const next = structuredClone(state);
+      const next = cloneData(state);
       let nextDerived = derive(next);
       for (const cmd of cmds) {
         const result = validate(next, nextDerived, cmd);

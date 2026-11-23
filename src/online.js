@@ -2,7 +2,7 @@
 // 게임 엔진은 Three.js 그대로 두고 온라인 방문 집/방명록에만 Firestore를 사용한다.
 import { FIREBASE_CONFIG } from './firebase-config.js';
 import { createOnlineService } from './online-service.js';
-import { withOnlineTimeout } from './online-data.js';
+import { withOnlineTimeout, SDK_BLOCKED } from './online-data.js';
 
 const SDK = 'https://www.gstatic.com/firebasejs/13.4.0';
 // 서버 응답을 기다리는 한도(밀리초). Firestore 의 쓰기는 연결이 끊긴 동안 실패하지 않고 계속 기다리므로,
@@ -25,7 +25,10 @@ export function getOnlineService() {
         import(`${SDK}/firebase-app.js`),
         import(`${SDK}/firebase-auth.js`),
         import(`${SDK}/firebase-firestore.js`),
-      ]);
+      ]).catch(() => {
+        // Claude 미리 보기 주소처럼 바깥 스크립트를 막는 곳이거나 인터넷이 끊긴 경우다
+        throw Object.assign(new Error(SDK_BLOCKED), { code: 'online/sdk-blocked' });
+      });
       const app = appSdk.getApps().length ? appSdk.getApp() : appSdk.initializeApp(FIREBASE_CONFIG);
       const auth = authSdk.getAuth(app);
       await auth.authStateReady();

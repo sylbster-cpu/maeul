@@ -10,10 +10,11 @@ const docPath = (...args) => args.slice(1).join('/');
 
 function mockApi() {
   const docs = new Map();
+  let clock = 0;
   const api = {
     doc: docPath,
     collection: docPath,
-    serverTimestamp: () => ({ serverTimestamp: true }),
+    serverTimestamp: () => ++clock, // 서버 시각 대신 늘어나는 수
     async setDoc(path, data) { docs.set(path, structuredClone(data)); },
     async updateDoc(path, data) { docs.set(path, { ...docs.get(path), ...structuredClone(data) }); },
     async deleteDoc(path) { docs.delete(path); },
@@ -21,13 +22,21 @@ function mockApi() {
       const value = docs.get(path);
       return { exists: () => value !== undefined, data: () => structuredClone(value) };
     },
-    query: (collection, limit) => ({ collection, limit }),
-    limit: (n) => n,
+    // 조건은 { limit } / { after } / { order } 꼴로 모은다
+    query: (collection, ...parts) => Object.assign({ collection }, ...parts),
+    limit: (n) => ({ limit: n }),
+    orderBy: (field, dir) => ({ order: [field, dir] }),
+    startAfter: (doc) => ({ after: doc }),
     async getDocsFromServer(q) {
-      return { docs: [...docs.entries()].filter(([k]) => k.startsWith(q.collection + '/'))
-        .slice(0, q.limit).map(([k, value]) => ({
-          id: k.split('/').pop(), data: () => structuredClone(value),
-        })) };
+      let rows = [...docs.entries()].filter(([k]) => k.startsWith(q.collection + '/'))
+        .map(([k, value]) => ({ id: k.split('/').pop(), path: k, data: () => structuredClone(value) }));
+      if (q.order) {
+        const [field, dir] = q.order;
+        rows = rows.filter((r) => r.data()[field] !== undefined) // 그 필드가 없는 문서는 빠진다 (Firestore 와 같게)
+          .sort((a, b) => (a.data()[field] - b.data()[field]) * (dir === 'desc' ? -1 : 1));
+      }
+      if (q.after) rows = rows.slice(rows.findIndex((r) => r.path === q.after.path) + 1);
+      return { docs: rows.slice(0, q.limit) };
     },
   };
   return { api, docs };
@@ -46,11 +55,12 @@ test('집주인 게시 → 친구 방문 → 방문 인사 → 집주인 열람 
   assert.equal((await guest.ownStatus()).published, false);
   assert.deepEqual(await guest.visit(OWNER), local);
   await guest.leaveNote(OWNER, ' 반갑습니다! ');
-  const notes = await owner.getNotes();
+  const { notes, next } = await owner.getNotes();
   assert.deepEqual(notes.map((item) => item.body), ['반갑습니다!']);
+  assert.equal(next, null);
   assert.equal(docs.get('houses/' + OWNER + '/notes/' + GUEST).authorUid, GUEST);
   await owner.removeNote(GUEST);
-  assert.deepEqual(await owner.getNotes(), []);
+  assert.deepEqual(await owner.getNotes(), { notes: [], next: null });
   await owner.unpublish();
   assert.deepEqual(await owner.ownStatus(), { published: true, isPublic: false, updatedAt: null });
   await assert.rejects(() => guest.visit(OWNER), /공개/);
@@ -71,4 +81,25 @@ test('정상적이지 않은 서버 집은 방문 화면에 쓰지 않는다', a
   docs.set('houses/' + OWNER, { ownerUid: OWNER, isPublic: true,
     snapshot: prepareOnlineSnapshot(createState()).replace('"version":2', '"version":99') });
   await assert.rejects(() => guest.visit(OWNER), /형식|가구/);
+});
+
+test('방명록은 새 인사부터 30개씩 읽고, 이어 읽어 오래된 인사도 보고 지운다', async () => {
+  const { api, docs } = mockApi();
+  const owner = createOnlineService({ uid: OWNER, db: {}, api });
+  await owner.publish(createState());
+  const guests = Array.from({ length: 65 }, (_, i) => `guest${String(i).padStart(11, '0')}`);
+  for (const [i, g] of guests.entries()) await createOnlineService({ uid: g, db: {}, api }).leaveNote(OWNER, `인사 ${i}`);
+  const p1 = await owner.getNotes();
+  assert.equal(p1.notes.length, 30);
+  assert.equal(p1.notes[0].body, '인사 64'); // 가장 새것이 먼저
+  assert.ok(p1.next);
+  const p2 = await owner.getNotes(p1.next);
+  assert.equal(p2.notes.length, 30);
+  assert.equal(p2.notes[0].body, '인사 34');
+  const p3 = await owner.getNotes(p2.next);
+  assert.deepEqual(p3.notes.map((n) => n.body), ['인사 4', '인사 3', '인사 2', '인사 1', '인사 0']);
+  assert.equal(p3.next, null);
+  // 가장 오래된 인사도 지울 수 있다
+  await owner.removeNote(p3.notes[4].uid);
+  assert.equal(docs.has(`houses/${OWNER}/notes/${guests[0]}`), false);
 });

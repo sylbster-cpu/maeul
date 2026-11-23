@@ -103,7 +103,23 @@ export function createView({ canvas, assets, store }) {
     m.receiveShadow = true;
     return m;
   }
-  const emptyGroup = (group) => { while (group.children.length) group.remove(group.children[0]); };
+  // 다시 만들 때마다 새로 생기는 기하·재질·무늬에 표시해 두고, 버릴 때 GPU 메모리에서도 내린다.
+  // 여럿이 함께 쓰는 것(boxGeo, 가구 모델, 미리 만든 재질)은 표시하지 않으므로 건드리지 않는다
+  const temp = (resource) => { resource.userData.temp = true; return resource; };
+  function emptyGroup(group) {
+    for (const child of [...group.children]) {
+      group.remove(child);
+      child.traverse((o) => {
+        if (o.geometry?.userData.temp) o.geometry.dispose();
+        const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+        for (const m of mats) {
+          if (!m.userData.temp) continue;
+          if (m.map?.userData.temp) m.map.dispose();
+          m.dispose();
+        }
+      });
+    }
+  }
 
   // ---- 마당의 고정 요소: 땅, 격자선, 나무 ----
   const grassMat = flat(0x8fc46f, { roughness: 1 });
@@ -224,7 +240,7 @@ export function createView({ canvas, assets, store }) {
     const rise = d * 0.42;
     const shape = new THREE.Shape();
     shape.moveTo(-d / 2, 0); shape.lineTo(d / 2, 0); shape.lineTo(0, rise); shape.closePath();
-    const gableGeo = new THREE.ExtrudeGeometry(shape, { depth: w, bevelEnabled: false });
+    const gableGeo = temp(new THREE.ExtrudeGeometry(shape, { depth: w, bevelEnabled: false }));
     gableGeo.translate(0, 0, -w / 2);
     gableGeo.rotateY(Math.PI / 2);
     const gable = new THREE.Mesh(gableGeo, sidingMat);
@@ -252,7 +268,7 @@ export function createView({ canvas, assets, store }) {
     doorHinge = new THREE.Group();
     doorHinge.position.set(-0.64, base, front + 0.08);
     doorHinge.add(box(doorMat, 1.28, 2.14, 0.12, 0.64, 1.07, 0));
-    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), knobMat);
+    const knob = new THREE.Mesh(temp(new THREE.SphereGeometry(0.09, 10, 8)), knobMat);
     knob.position.set(1.08, 1.02, 0.1);
     doorHinge.add(knob);
     doorGroup.add(doorHinge);
@@ -292,7 +308,7 @@ export function createView({ canvas, assets, store }) {
     if (!floorTextures.has(floorId)) floorTextures.set(floorId, floorTexture(FLOORS[floorId]));
     const floorTex = floorTextures.get(floorId);
     floorTex.repeat.set(w / 2, h / 2);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.9 }));
+    const floor = new THREE.Mesh(temp(new THREE.PlaneGeometry(w, h)), temp(new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.9 })));
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(w / 2, 0, h / 2);
     floor.receiveShadow = true;
@@ -304,10 +320,10 @@ export function createView({ canvas, assets, store }) {
     const wallId = state.spaces.main.wall;
     if (!wallTextures.has(wallId)) wallTextures.set(wallId, wallTexture(WALLPAPERS[wallId]));
     const paper = (len) => {
-      const tex = wallTextures.get(wallId).clone();
+      const tex = temp(wallTextures.get(wallId).clone());
       tex.needsUpdate = true;
       tex.repeat.set(len / 2, 1);
-      return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 });
+      return temp(new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 }));
     };
     const doorX = MAT_X + 1; // 문의 가운데 (방 좌표)
     const sides = [
@@ -348,6 +364,7 @@ export function createView({ canvas, assets, store }) {
     mat.userData.special = 'mat';
     roomShell.add(mat);
     const grid = gridLines(w, h, roomGridMat);
+    temp(grid.geometry);
     grid.visible = gridOn;
     grid.userData.grid = true;
     roomShell.add(grid);
@@ -421,8 +438,10 @@ export function createView({ canvas, assets, store }) {
     const k = place === 'yard' ? close * close * (3 - 2 * close) : 0;
     const base = cam.sizes[place] + (Math.min(cam.sizes[place], CLOSE_SIZE) - cam.sizes[place]) * k;
     const size = aspect < 1 ? base / Math.max(aspect, 0.45) * 0.62 : base;
-    // 가려진 높이의 절반만큼 초점을 옮긴다. 아래쪽 쟁반은 늘, 위쪽 버튼은 낚시로 가까이 볼 때만 셈한다
-    const lift = ((cam.bottomInset - cam.topInset * k) / h) * size;
+    // 가려진 높이의 절반만큼 초점을 옮긴다. 아래쪽 쟁반은 늘 셈한다. 위쪽 버튼은 방 안에서와
+    // 낚시로 가까이 볼 때 셈한다 (방은 화면에 다 들어와야 하는데, 좁은 화면에서는 뒤쪽 벽이 버튼에 가려졌다)
+    const topK = place === 'main' ? 1 : k;
+    const lift = ((cam.bottomInset - cam.topInset * topK) / h) * size;
     camera.left = -size * aspect; camera.right = size * aspect; camera.top = size - lift; camera.bottom = -size - lift;
     camera.updateProjectionMatrix();
   }
@@ -446,6 +465,24 @@ export function createView({ canvas, assets, store }) {
       camera.position.x += (Math.random() - 0.5) * shake;
       camera.position.z += (Math.random() - 0.5) * shake;
     }
+  }
+
+  // ---- 가려지면 안 되는 점 (낚시 중의 찌) ----
+  // 그 점에서 카메라 쪽으로 곧게 선을 그어 나뭇잎에 걸리면, 그 나무의 잎을 비친다.
+  // 2026-11-23 사용자 확인(휴대폰 화면): 찌가 앞쪽 나무에 살짝 가렸다. 전에는 캐릭터가 가릴 때만 비쳤다
+  let watch = [];
+  const watchRay = new THREE.Raycaster();
+  const toCamera = new THREE.Vector3();
+  const watchPoint = new THREE.Vector3();
+  function covers(tr) {
+    if (!watch.length) return false;
+    camera.getWorldDirection(toCamera).negate();
+    for (const p of watch) {
+      if (Math.hypot(p.x - tr.x, p.z - tr.z) > 16) continue; // 멀리 있는 나무는 볼 것도 없다
+      watchRay.set(watchPoint.set(p.x, p.y, p.z), toCamera);
+      if (watchRay.intersectObjects([tr.crown, tr.top], false).length) return true;
+    }
+    return false;
   }
 
   // ---- 상태에서 장면 다시 만들기 ----
@@ -768,6 +805,8 @@ export function createView({ canvas, assets, store }) {
     setFocus(x, z) { if (place === 'yard') { if (closeGoal) cam.focus.copy(closeAt); else cam.focus.set(x, 0, z); } },
     // 낚시하는 곳을 가까이 본다. null 이면 평소대로
     // 땅이 아니라 1.5 높이를 겨눈다. 찌부터 캐릭터 머리 위의 느낌표까지가 화면 가운데에 오게 한다
+    // 가려지면 안 되는 점들 ({x, y, z} 배열). 빈 배열이면 캐릭터만 본다
+    setWatch(points) { watch = points || []; },
     setCloseUp(point) { closeGoal = point ? 1 : 0; if (point) closeAt.set(point.x, 1.5, point.z); },
     get closeAmount() { return close; },
     // 화면을 살짝 흔든다 (움직임 줄이기를 켠 사람에게는 흔들지 않는다)
@@ -816,7 +855,7 @@ export function createView({ canvas, assets, store }) {
           // 캐릭터가 나무 뒤(카메라 반대쪽)에 서서 잎에 가리면 그 나무의 잎을 비쳐 보이게 한다
           const dx = tr.x - who.x, dz = tr.z - who.z;
           const along = dx * camX + dz * camZ, side = Math.abs(dx * camZ - dz * camX);
-          const hidden = along > -0.8 && along < 4.6 * tr.size && side < 1.8 * tr.size;
+          const hidden = (along > -0.8 && along < 4.6 * tr.size && side < 1.8 * tr.size) || covers(tr);
           tr.see += ((hidden ? 0.35 : 1) - tr.see) * (calm ? 1 : Math.min(1, dt * 8));
           tr.crown.material.opacity = tr.top.material.opacity = tr.see;
           tr.crown.material.depthWrite = tr.top.material.depthWrite = tr.see > 0.99;

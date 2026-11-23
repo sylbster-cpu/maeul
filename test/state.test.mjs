@@ -369,3 +369,46 @@ test('앉으러 갈 때는 앉는 자리 바로 옆 칸 가운데 가장 적게 
   const armchair = { part: 'armchair', x: 2, y: 2, rot: 0 };
   assert.deepEqual(chooseSeatApproach(armchair, seatSpots(armchair)[0], stepsFrom({ '1,3': 0, '2,4': 3 })), [2, 4]);
 });
+
+test('물려받은 이름이나 글자가 아닌 ID 는 물건으로 받지 않는다', () => {
+  const { store } = setup();
+  assert.ok(put(store, 'main', 'chair', 2, 4, 0, 'p1-1').ok);
+  for (const id of ['__proto__', 'toString', 'constructor', 'hasOwnProperty']) {
+    // 없는 물건을 치우거나 옮긴다고 하면 거절한다 (물려받은 함수를 물건으로 여기지 않는다)
+    assert.equal(store.dispatch({ type: 'removeObject', space: 'main', id }).ok, false, id);
+    assert.equal(store.dispatch({ type: 'moveObject', space: 'main', id, x: 0, y: 0, rot: 0 }).ok, false, id);
+  }
+  // 'constructor' 같은 이름도 없는 ID 이므로 "이미 있다"로 막지 않는다
+  assert.ok(put(store, 'main', 'chair', 0, 0, 0, 'constructor').ok);
+  assert.ok(store.dispatch({ type: 'removeObject', space: 'main', id: 'constructor' }).ok);
+  for (const id of [7, '', null, { a: 1 }, 'x'.repeat(201)]) {
+    assert.equal(put(store, 'main', 'chair', 0, 0, 0, id).ok, false, String(id));
+  }
+  for (const space of ['__proto__', 'constructor', 'toString']) {
+    assert.equal(store.dispatch({ type: 'removeObject', space, id: 'p1-1' }).ok, false, space);
+    assert.equal(store.dispatch({ type: 'placeObject', space, id: 'p1-9', part: 'chair', x: 0, y: 0, rot: 0 }).ok, false, space);
+  }
+  assert.deepEqual(Object.keys(store.state.spaces.main.objects), ['p1-1']);
+});
+
+test('Object.hasOwn 과 structuredClone 이 없는 오래된 브라우저에서도 규칙과 저장이 돈다', () => {
+  const hasOwn = Object.hasOwn, clone = globalThis.structuredClone;
+  delete Object.hasOwn;
+  delete globalThis.structuredClone;
+  try {
+    const { store, history } = setup();
+    assert.ok(put(store, 'main', 'bed', 0, 0).ok);
+    assert.ok(store.dispatch({ type: 'setFinish', space: 'main', slot: 'floor', value: 'walnut' }).ok);
+    assert.ok(store.dispatch({ type: 'setExterior', slot: 'roof', value: 'slate' }).ok);
+    assert.ok(history.run([{ type: 'setLevel', level: 2 }]).ok);
+    assert.ok(history.undo().ok); // 되돌리기는 transact 를 거친다
+    assert.equal(store.state.house.level, 1);
+    const loaded = parse(serialize(store.state));
+    assert.ok(loaded.ok);
+    assert.equal(loaded.dropped, 0);
+    assert.equal(Object.keys(loaded.state.spaces.main.objects).length, 1);
+  } finally {
+    Object.hasOwn = hasOwn;
+    globalThis.structuredClone = clone;
+  }
+});

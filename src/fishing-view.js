@@ -443,6 +443,13 @@ export function createPondView({ view, figure }) {
   return {
     group,
     get bobberVisible() { return bobber.visible && !under; },
+    // 나무에 가리면 안 되는 점: 떠 있는 찌(꼭지까지), 끌어올리는 동안의 물고기 그림자
+    get watchPoints() {
+      const out = [];
+      if (bobber.visible) out.push({ x: bobber.position.x, y: bobber.position.y, z: bobber.position.z }, { x: bobber.position.x, y: bobber.position.y + 0.3, z: bobber.position.z });
+      if (shadow.visible) out.push({ x: shadow.position.x, y: WATER_Y, z: shadow.position.z });
+      return out;
+    },
     // 연출 상태 (자동 시험이 읽는다)
     get fx() {
       return {

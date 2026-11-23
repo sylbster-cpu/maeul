@@ -1,7 +1,7 @@
 // Firebase 온라인 집과 방명록 UI. 화면 위의 창으로 열어 게임 한 화면의 크기를 바꾸지 않는다.
 // 서버 기능은 온라인 창을 열거나 그 안의 버튼을 누를 때 불러오며, 기존 localStorage/명령 상태를 직접 고치지 않는다.
 import { getOnlineService, isOnlineConfigured, ONLINE_TIMEOUT_MS } from './online.js';
-import { MAX_NOTE_LENGTH, normalizeVisitNote, onlineErrorText, withOnlineTimeout } from './online-data.js';
+import { MAX_NOTE_LENGTH, normalizeVisitNote, onlineErrorText, withOnlineTimeout, SDK_BLOCKED } from './online-data.js';
 
 export function createOnlineUI({ store, visitorUid = null, readOnly = false, openShare, toast }) {
   const $ = (id) => document.getElementById(id);
@@ -40,6 +40,7 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, ope
       public: `이 브라우저로 게시한 집이 지금 공개 중입니다.${at}`,
       private: '이 브라우저로 게시한 집은 공개가 중지되어 있습니다. 다시 게시하면 같은 링크로 열립니다.',
       error: '게시 상태를 확인하지 못했습니다. 연결을 확인한 뒤 창을 다시 열어 주세요.',
+      blocked: `${SDK_BLOCKED}.`,
     }[kind];
   }
   // 버튼을 막지 않고 따로 읽는다. 번호가 넘어가면(창을 닫거나 게시 상태를 바꾸는 중이면) 늦은 결과는 버린다
@@ -50,7 +51,7 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, ope
       const info = await withOnlineTimeout((async () => (await getOnlineService()).ownStatus())(), ONLINE_TIMEOUT_MS);
       if (mine !== stateRun) return;
       showState(!info.published ? 'none' : info.isPublic ? 'public' : 'private', info.updatedAt);
-    } catch { if (mine === stateRun) showState('error'); }
+    } catch (error) { if (mine === stateRun) showState(error?.code === 'online/sdk-blocked' ? 'blocked' : 'error'); }
   }
 
   function report(message) { status.textContent = message; }
@@ -131,10 +132,12 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, ope
       });
     }, refreshState); });
 
-  function renderNotes(notes, service) {
+  // page = { notes, next }. append 이면 앞서 읽은 것 아래에 잇는다
+  function renderNotes({ notes, next }, service, append = false) {
     list.hidden = false;
-    list.replaceChildren();
-    if (!notes.length) {
+    if (!append) list.replaceChildren();
+    list.querySelector('.online-more')?.remove();
+    if (!append && !notes.length) {
       const empty = document.createElement('p');
       empty.textContent = '아직 방문 인사가 없습니다.';
       list.append(empty);
@@ -162,10 +165,24 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, ope
       row.append(body, meta, remove);
       list.append(row);
     }
+    if (next) {
+      // 오래된 인사도 보고 지울 수 있게 이어 읽는다
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'online-more';
+      more.textContent = '이전 인사 더 보기';
+      more.addEventListener('click', () => task(
+        (svc) => svc.getNotes(next).then((page) => ({ page, service: svc })),
+        ({ page, service: svc }) => { renderNotes(page, svc, true); report(`방문 인사 ${page.notes.length}개를 더 불러왔습니다`); }));
+      list.append(more);
+    }
   }
   $('online-list').addEventListener('click', () => task(
-    (service) => service.getNotes().then((notes) => ({ notes, service })),
-    ({ notes, service }) => { renderNotes(notes, service); report(`방문 인사 ${notes.length}개를 불러왔습니다`); }));
+    (service) => service.getNotes().then((page) => ({ page, service })),
+    ({ page, service }) => {
+      renderNotes(page, service);
+      report(page.next ? `최근 방문 인사 ${page.notes.length}개를 불러왔습니다. 맨 아래에서 더 볼 수 있습니다` : `방문 인사 ${page.notes.length}개를 불러왔습니다`);
+    }));
 
   $('online-unpublish').addEventListener('click', () => {
     if (!confirm('온라인에 게시된 집을 비공개로 바꿀까요? 친구의 링크에서 더는 열리지 않습니다.')) return;
