@@ -2,6 +2,7 @@
 import { loadAssets } from './assets.js';
 import { PARTS, HOUSE_CENTER_X, MAT_X, LEVELS, OUTDOOR } from './parts.js';
 import { inWater } from './fishing.js';
+import { todaysDiscovery, todaysDiscoverySite, koreaDay } from './forest.js';
 import { createState, createStore, houseRect } from './state.js';
 import { createView } from './view.js';
 import { createCharacter } from './character.js';
@@ -286,6 +287,11 @@ async function start(saved = {}) {
 
   let last = performance.now();
   let wasSeated = null;
+  let forestVisitDay = '';
+  let forestNearby = false;
+  let forestCheckTime = 0;
+  let forestCurrentDay = koreaDay();
+  let forestSite = todaysDiscoverySite();
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
@@ -293,6 +299,20 @@ async function start(saved = {}) {
     if (dir) { pending = null; fishing.cancel(); } // 방향 키로 걸으면 낚시를 그만둔다
     character.update(dt, dir);
     fishing.update(dt);
+    // 발견물은 가까이 걸어가면 한 번 알려 준다. 획득/저장/출석 보상은 없다.
+    forestCheckTime += dt;
+    if (forestCheckTime >= 5) {
+      forestCheckTime = 0;
+      const nextDay = koreaDay();
+      if (nextDay !== forestCurrentDay) { forestCurrentDay = nextDay; forestSite = todaysDiscoverySite(); }
+    }
+    const forestNear = character.place === 'yard' && Math.hypot(character.pos.x - forestSite.x, character.pos.z - forestSite.z) < 1.3;
+    if (forestNear && (!forestNearby || forestVisitDay !== forestCurrentDay)) {
+      const item = todaysDiscovery();
+      ui.toast('숲에서 발견: ' + item.name + ' — ' + item.description);
+      forestVisitDay = forestCurrentDay;
+    }
+    forestNearby = forestNear;
     // 앉거나 일어나면 안내를 바꾼다
     const seated = character.seated?.id ?? null;
     if (seated !== wasSeated) { wasSeated = seated; input.syncUI(); if (seated) audio.play('sit'); }
