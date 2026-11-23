@@ -20,6 +20,19 @@ export function discoveryForDay(day) {
   if (!Number.isFinite(index)) throw new TypeError('올바른 날짜가 필요합니다');
   return FOREST_DISCOVERIES[((index % FOREST_DISCOVERIES.length) + FOREST_DISCOVERIES.length) % FOREST_DISCOVERIES.length];
 }
+// 매일 다른 위치. 길의 중앙에서 벗어나 캐릭터가 발견물 위에 서지 않도록 한다.
+export const FOREST_SITES = Object.freeze([
+  Object.freeze({ x: -8.6, z: -4.0 }),
+  Object.freeze({ x: -7.2, z: -8.8 }),
+  Object.freeze({ x: -4.8, z: -3.1 }),
+]);
+export function discoverySiteForDay(day) {
+  const item = discoveryForDay(day);
+  return FOREST_SITES[FOREST_DISCOVERIES.findIndex(entry => entry.id === item.id)];
+}
+export function todaysDiscoverySite(now = new Date()) {
+  return discoverySiteForDay(koreaDay(now));
+}
 export function todaysDiscovery(now = new Date()) {
   return discoveryForDay(koreaDay(now));
 }
