@@ -3,6 +3,7 @@
 import * as THREE from './three.js';
 import { createFx, wobble, squash } from './fx.js';
 import { createBeachView } from './beach-view.js';
+import { createForestView } from './forest-view.js';
 import { PARTS, WALL_HEIGHT, YARD, TREES, HOUSE_CENTER_X, MAT_X, WINDOW_X, LEVELS, FLOORS, WALLPAPERS, ROOFS, SIDINGS, DOORS } from './parts.js';
 import { footprint, layerOf, houseRect, cellKey } from './state.js';
 
@@ -184,6 +185,7 @@ export function createView({ canvas, assets, store }) {
 
   // 마당 남쪽의 바닷가: 모래사장, 바다, 파도 (src/beach-view.js)
   const beach = createBeachView({ parent: outside, calm });
+  const forest = createForestView(outside);
 
   const houseGroup = new THREE.Group();
   const yardObjects = new THREE.Group();
@@ -917,6 +919,7 @@ export function createView({ canvas, assets, store }) {
       }
       fx.update(dt);
       beach.update(dt);
+      forest.update();
       if (markerLife > 0) {
         markerLife = Math.max(0, markerLife - dt * 1.6);
         marker.material.opacity = markerLife * 0.9;
