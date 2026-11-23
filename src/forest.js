@@ -22,9 +22,9 @@ export function discoveryForDay(day) {
 }
 // 매일 다른 위치. 길의 중앙에서 벗어나 캐릭터가 발견물 위에 서지 않도록 한다.
 export const FOREST_SITES = Object.freeze([
-  Object.freeze({ x: -8.6, z: -4.0 }),
-  Object.freeze({ x: -7.2, z: -8.8 }),
-  Object.freeze({ x: -4.8, z: -3.1 }),
+  Object.freeze({ x: -9.1, z: -5.0 }),
+  Object.freeze({ x: -8.0, z: -10.0 }),
+  Object.freeze({ x: -5.6, z: -8.1 }),
 ]);
 export function discoverySiteForDay(day) {
   const item = discoveryForDay(day);
