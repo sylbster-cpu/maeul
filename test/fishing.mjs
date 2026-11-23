@@ -11,6 +11,12 @@ export default async function fishingTour(page, { out, logs }) {
     await page.waitForTimeout(60);
   };
   const g = (fn, arg) => page.evaluate(fn, arg);
+  // 카메라가 땅을 내려다보는 각도(도)
+  const elevation = () => g(() => {
+    const { view } = window.__game;
+    const d = view.camera.getWorldDirection(new view.scene.position.constructor());
+    return Math.asin(-d.y) * 180 / Math.PI;
+  });
   const say = (name, ok, details = '') => logs.push(`${ok ? '통과' : '실패'}  ${name} ${details}`);
   // 카메라는 캐릭터를 천천히 따라간다. 움직이는 중에 좌표를 구하면 누르는 순간 다른 곳이 된다. 멈출 때까지 기다린다
   const screenOf = (x, z) => g(([a, b]) => window.__game.view.screenPoint(a, b), [x, z]);
@@ -135,6 +141,8 @@ export default async function fishingTour(page, { out, logs }) {
   await waitPhase('idle', 10000);
   const jumpsNear = await g(() => window.__game.fishing.fx.jumps);
   say('결과를 보인 뒤 카드가 사라지고, 물가에 있는 동안 카메라는 가까이 둔다', (await g(() => document.getElementById('catch-card').hidden)) && (await g(() => window.__game.view.closeAmount)) > 0.9);
+  const lowAngle = await elevation();
+  say('낚시로 가까이 볼 때는 카메라를 24도로 낮춘다 (원근 없이)', Math.abs(lowAngle - 24) < 1 && (await g(() => window.__game.view.camera.isOrthographicCamera)), `${lowAngle.toFixed(1)}도`);
 
   // 3) 건드릴 때 누르면 너무 이르다
   await setRandom(0.5); // 붕어: 두 번 건드린 뒤 문다
@@ -258,6 +266,9 @@ export default async function fishingTour(page, { out, logs }) {
   say('물가에서 땅을 누르면 걸어간다', (await phase()) === 'idle' && (await g(() => window.__game.character.walking)));
   const zoomBack = await page.waitForFunction(() => window.__game.view.closeAmount < 0.05, null, { timeout: 10000 }).then(() => true).catch(() => false);
   say('물가를 떠나면 카메라가 평소대로 돌아온다', zoomBack);
+  await page.waitForTimeout(300);
+  const backAngle = await elevation();
+  say('물가를 떠나면 카메라 각도도 36도로 돌아온다', Math.abs(backAngle - 36) < 1, `${backAngle.toFixed(1)}도`);
 
   // 9) 집 저장과 섞이지 않고, 새로 고쳐도 기록과 물가의 자리가 남는다
   const houseAfter = await g(() => JSON.stringify(window.__game.store.state));
