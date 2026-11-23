@@ -7,8 +7,8 @@ import { PARTS, WALL_HEIGHT, YARD, TREES, HOUSE_CENTER_X, MAT_X, WINDOW_X, LEVEL
 import { footprint, layerOf, houseRect, cellKey } from './state.js';
 
 const ELEVATION = THREE.MathUtils.degToRad(36);
-// 낚시로 가까이 볼 때는 더 낮게 내려 물 위와 건너편 물가가 보이게 한다. 원근은 넣지 않는다(직교 그대로).
-// 2026-11-23 사용자 지시로 만든 비교판이다. 지금 판(36도 그대로)과 휴대폰으로 견주어 본 뒤 남길지 정한다
+// 낚시로 가까이 볼 때는 더 낮게 내려 본다. 원근은 넣지 않는다(직교 그대로).
+// 2026-11-23 비교판으로 만들었고(36도와 견줌), 같은 날 사용자 결정으로 남겼다
 const FISHING_ELEVATION = THREE.MathUtils.degToRad(24);
 const CAMERA_DISTANCE = 90;
 const WALL_T = 0.22; // 방 벽 두께
