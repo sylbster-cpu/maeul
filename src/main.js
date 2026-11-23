@@ -290,7 +290,7 @@ async function start(saved = {}) {
   let forestVisitDay = '';
   let forestNearby = false;
   let forestCheckTime = 0;
-  let forestCurrentDay = '';
+  let forestCurrentDay = koreaDay();
   let forestSite = todaysDiscoverySite();
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
