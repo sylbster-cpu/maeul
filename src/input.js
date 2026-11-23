@@ -3,6 +3,7 @@
 import { PARTS, LEVELS, MAX_LEVEL } from './parts.js';
 import { cellKey, clearCommands, layerOf, seatSpots } from './state.js';
 import { sampleCommands } from './sample.js';
+import { todaysDiscoverySite } from './forest.js';
 
 const KEY_HINTS = {
   walkYard: '땅을 누르거나 WASD로 걷습니다. 집을 누르면 안으로 들어갑니다.',
@@ -286,12 +287,21 @@ export function createInput({ canvas, view, store, history, character, ui, audio
       travel.cancel(); // 드나들려고 걷던 중이었으면 그만둔다
       if (trySit(hit, at)) return;
       if (water) { fishing.start(at.pt); return; }
-      const walking = character.goTo(at.pt.x, at.pt.z);
+      // 발견물을 누르면 그 위에 서지 않고 남쪽의 관찰 지점에서 멈춘다.
+      // 일반 바닥을 누르는 이동 방식은 그대로 유지한다.
+      let target = at.pt;
+      if (here() === 'yard') {
+        const site = todaysDiscoverySite();
+        if (Math.hypot(at.pt.x - site.x, at.pt.z - site.z) < 0.75) {
+          target = { x: site.x + 0.8, z: site.z + 0.8 };
+        }
+      }
+      const walking = character.goTo(target.x, target.z);
       if (character.routeBlocked) {
         // 구경하는 사람은 꾸미기를 쓸 수 없으므로 고치는 방법은 집주인에게만 알린다
         ui.toast(readOnly ? '가구 때문에 그곳으로 갈 수 없습니다' : '가구 때문에 그곳으로 갈 수 없습니다. 꾸미기에서 통로를 만들어 주세요', 'error');
         audio.play('error');
-      } else if (walking) view.showMarker(at.pt.x, at.pt.z);
+      } else if (walking) view.showMarker(target.x, target.z);
       return;
     }
     const drag = s.drag;
