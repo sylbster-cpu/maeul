@@ -36,3 +36,14 @@ export function todaysDiscoverySite(now = new Date()) {
 export function todaysDiscovery(now = new Date()) {
   return discoveryForDay(koreaDay(now));
 }
+
+// 카메라 쪽에 서면 발견물이 몸 뒤로 가린다. 카메라 반대쪽 관찰 지점을 계산한다.
+// view.basis().forward는 카메라에서 멀어지는 세계 방향이다.
+export function forestViewingPoint(site, forward, distance = 1.15) {
+  if (![site?.x, site?.z, forward?.x, forward?.z, distance].every(Number.isFinite) || distance <= 0) {
+    throw new TypeError('올바른 발견 위치와 카메라 방향이 필요합니다');
+  }
+  const length = Math.hypot(forward.x, forward.z);
+  if (length < 1e-6) throw new TypeError('카메라 방향이 필요합니다');
+  return { x: site.x + forward.x / length * distance, z: site.z + forward.z / length * distance };
+}
