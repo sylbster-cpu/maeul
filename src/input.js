@@ -293,7 +293,8 @@ export function createInput({ canvas, view, store, history, character, ui, audio
       if (here() === 'yard') {
         const site = todaysDiscoverySite();
         if (Math.hypot(at.pt.x - site.x, at.pt.z - site.z) < 0.75) {
-          target = { x: site.x + 0.8, z: site.z + 0.8 };
+          // 카메라가 +Z 쪽에 있으므로 발견물의 뒤(-Z)에 서야 몸으로 가리지 않는다.
+          target = { x: site.x - 0.8, z: site.z - 0.8 };
         }
       }
       const walking = character.goTo(target.x, target.z);
