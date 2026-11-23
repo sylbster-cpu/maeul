@@ -15,7 +15,7 @@ export function koreaDay(date = new Date()) {
 
 // 3일 단위 순환. 발견은 수집하거나 소비하지 않고, 바라보고 확인하는 경험이다.
 export function discoveryForDay(day) {
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(day)) throw new TypeError('YYYY-MM-DD 날짜가 필요합니다');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new TypeError('YYYY-MM-DD 날짜가 필요합니다');
   const index = Math.floor(Date.parse(day + 'T00:00:00Z') / 86400000);
   if (!Number.isFinite(index)) throw new TypeError('올바른 날짜가 필요합니다');
   return FOREST_DISCOVERIES[((index % FOREST_DISCOVERIES.length) + FOREST_DISCOVERIES.length) % FOREST_DISCOVERIES.length];
