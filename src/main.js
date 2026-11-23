@@ -2,6 +2,8 @@
 import { loadAssets } from './assets.js';
 import { PARTS, HOUSE_CENTER_X, MAT_X, LEVELS, OUTDOOR } from './parts.js';
 import { inWater } from './fishing.js';
+import { todaysDiscovery, koreaDay } from './forest.js';
+import { FOREST } from './forest-view.js';
 import { createState, createStore, houseRect } from './state.js';
 import { createView } from './view.js';
 import { createCharacter } from './character.js';
@@ -286,6 +288,8 @@ async function start(saved = {}) {
 
   let last = performance.now();
   let wasSeated = null;
+  let forestVisitDay = '';
+  let forestNearby = false;
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
@@ -293,6 +297,14 @@ async function start(saved = {}) {
     if (dir) { pending = null; fishing.cancel(); } // 방향 키로 걸으면 낚시를 그만둔다
     character.update(dt, dir);
     fishing.update(dt);
+    // 발견물은 가까이 걸어가면 한 번 알려 준다. 획득/저장/출석 보상은 없다.
+    const forestNear = character.place === 'yard' && Math.hypot(character.pos.x - FOREST.clearingX, character.pos.z - FOREST.clearingZ) < 1.8;
+    if (forestNear && (!forestNearby || forestVisitDay !== koreaDay())) {
+      const item = todaysDiscovery();
+      ui.toast('숲에서 발견: ' + item.name + ' — ' + item.description);
+      forestVisitDay = koreaDay();
+    }
+    forestNearby = forestNear;
     // 앉거나 일어나면 안내를 바꾼다
     const seated = character.seated?.id ?? null;
     if (seated !== wasSeated) { wasSeated = seated; input.syncUI(); if (seated) audio.play('sit'); }
