@@ -25,6 +25,8 @@ export const shoreZ = (x) => BEACH.shore + BEACH.wave * Math.sin(x * 0.27);
 // 마당 칸과 연못, 바닷가에 겹치지 않는다. 화면(view.js)과 걷기(character.js)가 함께 쓴다
 export const TREES = [[-7, -6], [-9, 5], [-8, 15], [-6.5, 23.5], [4, -8], [15, -9], [27, -7], [31, 2], [33, 14], [31.5, 23.5], [-11.5, 20], [36, 21], [12, -12.5], [-11, -11], [35, -10]];
 export const TREE_RADIUS = 0.5;
+// 북서쪽 숲은 기존 마당의 일부이며, 발견 위치는 forest.js에서 날짜별로 정한다.
+export const FOREST = Object.freeze({ x0: -13.5, x1: -2.5, z0: -14.5, z1: -2.5, clearingX: -8, clearingZ: -4 });
 // 마당 밖까지 걸을 수 있는 범위. 남쪽은 바닷가까지(물에 들어가는 것은 따로 막는다),
 // 나머지 세 쪽은 둘레의 나무 곁까지 넓혔다 (2026-11-22 사용자 결정: "나무로는 못 가네요" → 걷는 범위 넓히기)
 export const OUTDOOR = { x0: -14, z0: -15, x1: 38.5, z1: BEACH.shore + BEACH.wave };
