@@ -4,6 +4,7 @@
 // 2. 방을 다시 그려도 GPU 메모리의 기하·무늬 수가 늘지 않는다
 // 3. 360×640 화면에서도 방의 뒤쪽 벽이 위쪽 버튼에 가려지지 않는다
 // 4. Object.hasOwn 과 structuredClone 이 없는 오래된 브라우저에서도 게임이 뜨고, 놓기·되돌리기·저장이 된다
+// 5. 찌가 앞쪽 나무에 가리면 그 나무의 잎을 비친다 (2026-11-23 사용자 휴대폰 화면: "살짝 가리네요")
 export default async function upkeepTour(page, { out, logs }) {
   const say = (label, ok, extra = '') => logs.push(`${ok ? '통과' : '실패'}  ${label} ${extra}`);
   const g = (fn, arg) => page.evaluate(fn, arg);
@@ -11,6 +12,42 @@ export default async function upkeepTour(page, { out, logs }) {
     const step = () => (k-- <= 0 ? done() : requestAnimationFrame(step));
     step();
   }), n);
+
+  // 5. 연못 남쪽 물가에서 던지면 찌가 남동쪽 나무(31.5, 23.5) 뒤에 떨어진다
+  const cdp = await page.context().newCDPSession(page);
+  const tap = async (x, y) => {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Math.round(x), y: Math.round(y), id: 1 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  const groundTap = async (x, z) => {
+    let p = await g(([a, b]) => window.__game.view.screenPoint(a, b), [x, z]);
+    for (let i = 0; i < 40; i++) {
+      await frames(4);
+      const q = await g(([a, b]) => window.__game.view.screenPoint(a, b), [x, z]);
+      const still = Math.hypot(q.x - p.x, q.y - p.y) < 0.5;
+      p = q;
+      if (still) break;
+    }
+    await tap(p.x, p.y);
+  };
+  await g(() => { window.__game.character.teleport(26, 15); window.__game.view.snapFocus(26, 15); window.__game.fishing.setRandom(() => 0.05); });
+  await groundTap(29.2, 19.8);
+  await page.waitForFunction(() => window.__game.fishing.phase === 'wait' && window.__game.view.closeAmount > 0.99, null, { timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(700);
+  const cover = await g(async () => {
+    const T = await import('./src/three.js');
+    const { view } = window.__game;
+    // 찌에서 카메라 쪽으로 그은 선에 걸리는 나뭇잎들의 불투명도
+    const [p] = window.__game.pondWatch();
+    const ray = new T.Raycaster(new T.Vector3(p.x, p.y, p.z), view.camera.getWorldDirection(new T.Vector3()).negate());
+    ray.camera = view.camera; // 장면의 그림 조각(Sprite)도 훑으려면 카메라가 있어야 한다
+    const leaves = ray.intersectObjects(view.scene.children, true).filter((h) => h.object.geometry?.type === 'IcosahedronGeometry');
+    return { opacity: leaves.map((h) => +h.object.material.opacity.toFixed(2)), see: view.trees.find((t) => t.x === 31.5 && t.z === 23.5).see };
+  });
+  say('찌가 앞쪽 나무에 가리면 그 나무의 잎을 비친다', cover.opacity.length > 0 && cover.opacity.every((o) => o < 0.5) && cover.see < 0.5, JSON.stringify(cover));
+  await page.screenshot({ path: `${out}-bobber.png` });
+  await g(() => window.__game.fishing.cancel());
+  await page.waitForTimeout(300);
 
   // 1. Firebase 모듈을 막는다 (Claude 미리 보기 주소에서 일어나는 일)
   await page.route('https://www.gstatic.com/firebasejs/**', (route) => route.abort());
