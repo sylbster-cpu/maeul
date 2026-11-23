@@ -919,7 +919,7 @@ export function createView({ canvas, assets, store }) {
       }
       fx.update(dt);
       beach.update(dt);
-      forest.update();
+      forest.update(dt);
       if (markerLife > 0) {
         markerLife = Math.max(0, markerLife - dt * 1.6);
         marker.material.opacity = markerLife * 0.9;
