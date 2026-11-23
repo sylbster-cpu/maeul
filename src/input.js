@@ -3,7 +3,7 @@
 import { PARTS, LEVELS, MAX_LEVEL } from './parts.js';
 import { cellKey, clearCommands, layerOf, seatSpots } from './state.js';
 import { sampleCommands } from './sample.js';
-import { todaysDiscoverySite } from './forest.js';
+import { todaysDiscoverySite, forestViewingPoint } from './forest.js';
 
 const KEY_HINTS = {
   walkYard: '땅을 누르거나 WASD로 걷습니다. 집을 누르면 안으로 들어갑니다.',
@@ -293,8 +293,8 @@ export function createInput({ canvas, view, store, history, character, ui, audio
       if (here() === 'yard') {
         const site = todaysDiscoverySite();
         if (Math.hypot(at.pt.x - site.x, at.pt.z - site.z) < 0.75) {
-          // 카메라가 +Z 쪽에 있으므로 발견물의 뒤(-Z)에 서야 몸으로 가리지 않는다.
-          target = { x: site.x - 0.8, z: site.z - 0.8 };
+          // 카메라를 돌려도 발견물 뒤쪽에 서도록 현재 화면 방향을 사용한다.
+          target = forestViewingPoint(site, view.basis().forward);
         }
       }
       const walking = character.goTo(target.x, target.z);
