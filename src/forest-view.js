@@ -40,7 +40,7 @@ export function createForestView(parent) {
   post.position.y=0.65; sign.add(post);
   const board = new THREE.Mesh(new THREE.BoxGeometry(1.1,0.42,0.12),trail);
   board.position.set(0,1.25,0); board.rotation.y=0.2; sign.add(board);
-  sign.position.set(0,-0.01,-1.8); group.add(sign);
+  sign.position.set(5,-0.01,6.5); group.add(sign);
   const find = new THREE.Group();
   find.position.set(FOREST.clearingX,0,FOREST.clearingZ);
   group.add(find);
