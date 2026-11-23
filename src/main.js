@@ -226,9 +226,10 @@ async function start(saved = {}) {
   });
   const history = createHistory(store); // 처음 놓인 가구는 기록에 넣지 않는다
   // 낚시. 기록은 이 브라우저에 집과 따로 저장한다. 친구 집을 구경하는 중에도 내 낚시 기록에 남는다
+  const pondView = createPondView({ view, figure: character.figure });
   const fishing = createFishing({
     character, ui, audio, haptics, storage: openStorage(), catchCard: createCatchCard(),
-    pondView: createPondView({ view, figure: character.figure }),
+    pondView,
     onChange: () => input?.syncUI(),
   });
   createFishingUI({ fishing });
@@ -298,6 +299,7 @@ async function start(saved = {}) {
     if (!busy) {
       if (character.place === 'yard') {
         view.setCloseUp(fishing.focus()); // 낚시하는 동안은 물가와 찌 사이를 가까이 본다
+        view.setWatch(pondView.watchPoints); // 찌가 나무에 가리면 그 나무를 비친다
         view.setFocus(character.pos.x, character.pos.z);
         // 문 앞에서 집 쪽으로 걷거나, 집을 눌러 문 앞에 닿으면 들어간다
         if (character.atHouseDoor() && ((dir && dir.z < -0.3) || pending)) go('main');
@@ -311,7 +313,7 @@ async function start(saved = {}) {
 
   // 열어 둔 화면에 새 판이 도착해도 꾸민 집을 잃지 않게 한다
   window.claude?.hot?.snapshot?.(() => guest || switchingHouse ? {} : ({ state: store.state, place: character.place, pos: { ...character.pos }, mode: input.state.mode }));
-  window.__game = { store, view, character, input, history, saveNow, travel, fishing, haptics };
+  window.__game = { store, view, character, input, history, saveNow, travel, fishing, haptics, pondWatch: () => pondView.watchPoints };
   window.__ready = true;
 }
 

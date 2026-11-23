@@ -474,6 +474,24 @@ export function createView({ canvas, assets, store }) {
     }
   }
 
+  // ---- 가려지면 안 되는 점 (낚시 중의 찌) ----
+  // 그 점에서 카메라 쪽으로 곧게 선을 그어 나뭇잎에 걸리면, 그 나무의 잎을 비친다.
+  // 2026-11-23 사용자 확인(휴대폰 화면): 찌가 앞쪽 나무에 살짝 가렸다. 전에는 캐릭터가 가릴 때만 비쳤다
+  let watch = [];
+  const watchRay = new THREE.Raycaster();
+  const toCamera = new THREE.Vector3();
+  const watchPoint = new THREE.Vector3();
+  function covers(tr) {
+    if (!watch.length) return false;
+    camera.getWorldDirection(toCamera).negate();
+    for (const p of watch) {
+      if (Math.hypot(p.x - tr.x, p.z - tr.z) > 16) continue; // 멀리 있는 나무는 볼 것도 없다
+      watchRay.set(watchPoint.set(p.x, p.y, p.z), toCamera);
+      if (watchRay.intersectObjects([tr.crown, tr.top], false).length) return true;
+    }
+    return false;
+  }
+
   // ---- 상태에서 장면 다시 만들기 ----
   const nodes = new Map(); // 지금 보이는 곳의 가구
   let pickables = [];
@@ -794,6 +812,8 @@ export function createView({ canvas, assets, store }) {
     setFocus(x, z) { if (place === 'yard') { if (closeGoal) cam.focus.copy(closeAt); else cam.focus.set(x, 0, z); } },
     // 낚시하는 곳을 가까이 본다. null 이면 평소대로
     // 땅이 아니라 1.5 높이를 겨눈다. 찌부터 캐릭터 머리 위의 느낌표까지가 화면 가운데에 오게 한다
+    // 가려지면 안 되는 점들 ({x, y, z} 배열). 빈 배열이면 캐릭터만 본다
+    setWatch(points) { watch = points || []; },
     setCloseUp(point) { closeGoal = point ? 1 : 0; if (point) closeAt.set(point.x, 1.5, point.z); },
     get closeAmount() { return close; },
     // 화면을 살짝 흔든다 (움직임 줄이기를 켠 사람에게는 흔들지 않는다)
@@ -840,17 +860,12 @@ export function createView({ canvas, assets, store }) {
           // 가까이(4.4) 지나가면 흔들린다. 2026-11-22부터 나무 곁까지 걸어갈 수 있다
           const near = Math.hypot(who.x - tr.x, who.z - tr.z) < 4.4;
           // 캐릭터가 나무 뒤(카메라 반대쪽)에 서서 잎에 가리면 그 나무의 잎을 비쳐 보이게 한다.
-          // 낚시로 가까이 볼 때는 낚시하는 곳(물가와 찌 사이)이 가려도 비친다. 카메라를 낮추면 앞의 나무가 찌를 가리기 쉽다
-          const behind = (px, pz) => {
-            const dx = tr.x - px, dz = tr.z - pz;
-            const along = dx * camX + dz * camZ, side = Math.abs(dx * camZ - dz * camX);
-            // 카메라가 낮을수록 같은 나무가 더 먼 땅까지 가린다 (36도에서 4.6칸)
-            const reach = 4.6 * Math.tan(ELEVATION) / Math.tan(elevation);
-            return along > -0.8 && along < reach * tr.size && side < 1.8 * tr.size;
-          };
-          // 낚시하는 곳은 캐릭터와 찌의 가운데이므로, 찌는 그만큼 더 간 자리에 있다
-          const hidden = behind(who.x, who.z) || (closeGoal > 0 &&
-            (behind(closeAt.x, closeAt.z) || behind(2 * closeAt.x - who.x, 2 * closeAt.z - who.z)));
+          // 찌는 따로 본다(covers: 찌에서 카메라 쪽으로 그은 선이 잎에 걸리는지)
+          const dx = tr.x - who.x, dz = tr.z - who.z;
+          const along = dx * camX + dz * camZ, side = Math.abs(dx * camZ - dz * camX);
+          // 카메라가 낮을수록 같은 나무가 더 먼 땅까지 가린다 (36도에서 4.6칸)
+          const reach = 4.6 * Math.tan(ELEVATION) / Math.tan(elevation);
+          const hidden = (along > -0.8 && along < reach * tr.size && side < 1.8 * tr.size) || covers(tr);
           tr.see += ((hidden ? 0.35 : 1) - tr.see) * (calm ? 1 : Math.min(1, dt * 8));
           tr.crown.material.opacity = tr.top.material.opacity = tr.see;
           tr.crown.material.depthWrite = tr.top.material.depthWrite = tr.see > 0.99;
