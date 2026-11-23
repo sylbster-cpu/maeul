@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FOREST_DISCOVERIES, discoveryForDay, koreaDay, todaysDiscovery, discoverySiteForDay, FOREST_SITES } from '../src/forest.js';
+import { FOREST_DISCOVERIES, discoveryForDay, koreaDay, todaysDiscovery, discoverySiteForDay, FOREST_SITES, forestViewingPoint } from '../src/forest.js';
 
 test('한국 날짜 자정에 발견물이 바뀐다', () => {
   const before = new Date('2026-11-23T14:59:59Z');
@@ -24,4 +24,13 @@ test('날마다 발견 위치가 달라지고 다시 순환한다', () => {
 test('잘못된 날짜 형식은 거부한다', () => {
   assert.throws(()=>discoveryForDay('2026/11/23'),TypeError);
   assert.throws(()=>koreaDay(new Date(NaN)),TypeError);
+});
+
+test('카메라 네 방향에서 발견물 뒤에 관찰 지점을 둔다', () => {
+  const site = { x: -8, z: -6 };
+  for (const forward of [{x:1,z:0},{x:-1,z:0},{x:0,z:1},{x:0,z:-1}]) {
+    const point = forestViewingPoint(site, forward);
+    assert.ok(Math.abs(Math.hypot(point.x-site.x,point.z-site.z)-1.15)<1e-9);
+    assert.ok((point.x-site.x)*forward.x+(point.z-site.z)*forward.z>0);
+  }
 });
