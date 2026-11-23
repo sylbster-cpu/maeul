@@ -1,6 +1,7 @@
 // 마을 북서쪽의 작은 숲. 기존 마당 배치와 낚시 물가는 바꾸지 않는다.
 import * as THREE from './three.js';
-import { todaysDiscovery } from './forest.js';
+import { todaysDiscovery, koreaDay } from './forest.js';
+import { TREES, TREE_RADIUS } from './parts.js';
 export const FOREST = Object.freeze({ x0: -13.5, x1: -2.5, z0: -14.5, z1: -2.5, clearingX: -8, clearingZ: -4 });
 export function createForestView(parent) {
   const group = new THREE.Group();
@@ -12,24 +13,26 @@ export function createForestView(parent) {
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(11, 12), earth);
   ground.rotation.x = -Math.PI / 2; ground.position.set(-8, -0.035, -8.5); ground.receiveShadow = true; group.add(ground);
   // 숲으로 이어지는 길: 집 왼편에서 숲 안쪽 공터까지 이어진다.
-  const paths = [[-1, -3, 8, 2.5], [-5.5, -3, 4, 2.5], [-8, -5.5, 2.5, 5]];
+  // 두 입구: 동쪽의 짧은 길과 남쪽에서 돌아가는 길. 두 길 모두 기존 나무줄기를 피한다.
+  const paths = [[-1,-3,8,1.5],[-5.5,-3,4,1.5],[-8,-3.7,2.2,2.4],[-8,-9,1.5,7],[-3,-12,11,1.5]];
   for (const [x,z,w,d] of paths) {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w,d), trail);
     m.rotation.x = -Math.PI / 2; m.position.set(x, 0.005, z); m.receiveShadow = true; group.add(m);
   }
-  const trees = [[-12,-13],[-9,-13],[-5,-13],[-12,-10],[-4,-10],[-12,-6],[-4,-6],[-12,-3],[-5,-3]];
-  for (const [x,z] of trees) {
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.31,1.8,6),trunkMat);
-    trunk.position.set(x,0.9,z); trunk.castShadow = true; group.add(trunk);
-    const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(1.2,0),leafMat);
-    crown.position.set(x,2.5,z); crown.castShadow = true; group.add(crown);
+  // 기존 나무는 character.js와 충돌 판정을 공유한다. 여기에 별도 나무를
+  // 그리면 보이기만 하고 통과하는 문제가 생기므로 새 줄기는 만들지 않는다.
+  const nearTree = (x,z) => TREES.some(([tx,tz])=>Math.hypot(x-tx,z-tz)<TREE_RADIUS+0.8);
+  for (const [x,z] of [[-10,-9],[-6,-11],[-11,-4],[-3,-8]]) {
+    if (nearTree(x,z)) continue;
+    const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.35,0.35,5),leafMat);
+    tuft.position.set(x,0.18,z); group.add(tuft); // 작은 풀은 이동을 막지 않는다
   }
   const find = new THREE.Group();
   find.position.set(FOREST.clearingX,0,FOREST.clearingZ);
   group.add(find);
   let day = '';
   function refresh(now = new Date()) {
-    const date = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
+    const date = koreaDay(now);
     if (day === date) return;
     day = date;
     for (const child of [...find.children]) { find.remove(child); child.geometry?.dispose(); child.material?.dispose(); }
@@ -43,5 +46,15 @@ export function createForestView(parent) {
     ring.rotation.x = -Math.PI/2; ring.position.y = 0.025; find.add(ring);
   }
   refresh();
-  return { update:refresh };
+  let elapsed = 0;
+  function update(dt = 0, now = new Date()) {
+    refresh(now);
+    if (!Number.isFinite(dt) || dt < 0) return;
+    elapsed += dt;
+    const object = find.children[0];
+    if (object) object.rotation.y = elapsed * 0.5;
+    const halo = find.children[1];
+    if (halo) halo.scale.setScalar(1 + 0.08 * Math.sin(elapsed * 2));
+  }
+  return { update };
 }
