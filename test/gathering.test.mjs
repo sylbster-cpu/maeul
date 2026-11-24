@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   GATHER, GATHER_ORDER, DAILY_FINDS, SPECIAL_ID, findsForDay, findById, createGatherState, createGatherStore, pickedOn,
-  validate, apply, inverseOf, serializeGather, parseGather, createGatherSaver, GATHER_KEY, GATHER_VERSION,
+  validate, apply, inverseOf, serializeGather, parseGather, createGatherSaver, GATHER_KEY, GATHER_VERSION, validDay,
 } from '../src/gathering.js';
+import { createGathering } from '../src/gathering-play.js';
 import { GATHER_SPOTS, discoveryForDay, discoverySiteForDay } from '../src/forest.js';
 import { TREES, TREE_RADIUS } from '../src/parts.js';
 
@@ -111,4 +112,49 @@ test('저장소: 처음엔 빈 기록, 망가진 기록은 옆에 남기고, 더
 test('종류는 숲의 발견물 세 가지다', () => {
   assert.deepEqual(GATHER_ORDER, ['pinecone', 'mushroom', 'feather']);
   assert.equal(findById(DAY, SPECIAL_ID).special, true);
+});
+
+// ---- PR #41 GPT 검토 2·3 ----
+test('달력에 없는 날짜는 거절하고, 손상된 날짜가 든 기록을 읽어도 예외로 끝나지 않는다', () => {
+  assert.equal(validDay('2026-13-01'), false);
+  assert.equal(validDay('2026-02-30'), false);
+  assert.equal(validDay('2028-02-29'), true);
+  assert.equal(validate(createGatherState(), { type: 'pick', day: '2026-02-30', id: 's0' }).ok, false);
+  const r = parseGather(JSON.stringify({ format: 'gather-log', version: 1, log: { pinecone: { best: 5, first: '2026-02-30', count: 1 } }, day: '2026-13-01', picked: ['s0'] }));
+  assert.ok(r.ok && r.dropped === 2 && !r.state.log.pinecone && r.state.day === null);
+  assert.equal(parseGather(JSON.stringify({ format: 'gather-log', version: 1, log: { pinecone: null }, picked: 5, day: 7 })).ok, true);
+  assert.doesNotThrow(() => parseGather('{"format":"gather-log","version":1,"log":{"__proto__":{"best":1}}}'));
+  const st = memory();
+  st.setItem(GATHER_KEY, JSON.stringify({ format: 'gather-log', version: 1, log: {}, day: '2026-13-01', picked: ['s0'] }));
+  assert.doesNotThrow(() => createGatherSaver(st).load());
+});
+test('저장소에 쓰지 못하면 줍기 전으로 되돌려, 다음 줍기가 앞의 것을 소리 없이 지우지 않는다', async () => {
+  let fail = true;
+  const st = memory();
+  const setItem = st.setItem;
+  st.setItem = (k, v) => { if (k === GATHER_KEY && fail) { fail = false; throw new Error('가득 참'); } setItem(k, v); };
+  const toasts = [];
+  const character = { place: 'yard', pos: { x: 99, z: 99 } };
+  const view = { forest: { setPicked() {}, found() {}, pick() {} } };
+  const g = createGathering({ character, view, ui: { toast: (t, k) => toasts.push(k || 'info') }, audio: { play() {} }, storage: st, now: () => new Date('2026-11-24T03:00:00Z') });
+  const [a, b] = findsForDay(DAY).filter((f) => !f.special);
+  const visit = async (f) => { character.pos = { x: f.x, z: f.z }; g.update(0.016); await new Promise((r) => setTimeout(r, 10)); character.pos = { x: 99, z: 99 }; g.update(0.016); };
+  await visit(a);
+  assert.deepEqual(g.store.state.picked, [], '저장 실패면 줍지 않은 상태로 돌아간다');
+  assert.ok(toasts.includes('error'));
+  assert.ok(g.left.some((f) => f.id === a.id), '숲에 다시 보인다');
+  await visit(b);
+  await visit(a);
+  const saved = JSON.parse(st.getItem(GATHER_KEY));
+  assert.deepEqual([...saved.picked].sort(), [a.id, b.id].sort());
+  assert.deepEqual([...g.store.state.picked].sort(), [a.id, b.id].sort());
+});
+test('저장소가 아예 없는 브라우저에서는 이번 접속 동안만 줍기가 남는다', async () => {
+  const character = { place: 'yard', pos: { x: 99, z: 99 } };
+  const toasts = [];
+  const g = createGathering({ character, view: { forest: { setPicked() {}, found() {}, pick() {} } }, ui: { toast: (t, k) => toasts.push(t) }, audio: { play() {} }, storage: null, now: () => new Date('2026-11-24T03:00:00Z') });
+  const f = findsForDay(DAY).find((x) => !x.special);
+  character.pos = { x: f.x, z: f.z }; g.update(0.016); await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(g.store.state.picked, [f.id]);
+  assert.ok(toasts.some((t) => t.includes('이번 접속 동안만')));
 });

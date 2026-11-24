@@ -25,13 +25,19 @@ export function createGathering({ character, view, ui, audio, haptics = null, st
   store.subscribe(sync);
   sync();
 
-  // 다른 탭에서 주운 기록을 먼저 읽고 더한다. 웹 잠금이 있으면 탭끼리 차례를 지킨다(낚시 기록과 같다)
+  // 다른 탭에서 주운 기록을 먼저 읽고 더한다. 웹 잠금이 있으면 탭끼리 차례를 지킨다(낚시 기록과 같다).
+  // 저장소가 있는데 쓰지 못했으면 줍기 전으로 되돌린다. 메모리에만 남기면 다음 줍기가 저장소의 옛 기록을 읽어
+  // 앞서 주운 것을 소리 없이 지운다(PR #41 GPT 검토 2). 저장소가 아예 없는 브라우저에서는 이번 접속 동안만 메모리에 남긴다
   function record(cmd) {
     const run = () => {
       const latest = saver.load();
       if (latest?.ok) store.replace(latest.state);
+      const before = store.state;
       const r = store.dispatch(cmd);
-      return r.ok ? saver.save(store.state) : 'already'; // 다른 탭에서 먼저 주웠으면 'already'
+      if (!r.ok) return 'already'; // 다른 탭에서 먼저 주웠으면 'already'
+      const saved = saver.save(store.state);
+      if (!saved && saver.available) store.replace(before);
+      return saved;
     };
     const locks = typeof navigator !== 'undefined' ? navigator.locks : null;
     if (locks?.request) return locks.request(GATHER_KEY, run).catch(() => run());
@@ -66,7 +72,9 @@ export function createGathering({ character, view, ui, audio, haptics = null, st
       pending.delete(f.id);
       sync();
       if (saved === false) {
-        ui.toast(saver.newerStored() ? '더 새로운 판의 채집 기록이 있어 저장하지 않았습니다. 새로 고쳐 주세요' : '이 브라우저에서는 채집 기록이 저장되지 않습니다', 'error');
+        ui.toast(!saver.available ? '이 브라우저에서는 채집 기록이 저장되지 않습니다. 이번 접속 동안만 남습니다'
+          : saver.newerStored() ? '더 새로운 판의 채집 기록이 있어 줍지 못했습니다. 새로 고쳐 주세요'
+            : '채집 기록을 저장하지 못해 줍지 못했습니다. 저장 공간을 확인해 주세요', 'error');
       }
     });
   }

@@ -21,13 +21,16 @@ export const PICK_RADIUS = 0.8;
 export const SPECIAL_RADIUS = 1.3;
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
+// 달력에 있는 날짜인가 (2026-13-01, 2026-02-30 은 아니다). 모양만 보면 뒤에서 예외가 난다(PR #41 GPT 검토 3)
+export const validDay = (day) => typeof day === 'string' && DAY.test(day) && Number.isFinite(Date.parse(`${day}T00:00:00Z`)) &&
+  new Date(`${day}T00:00:00Z`).toISOString().slice(0, 10) === day;
 const dayNumber = (day) => Math.round(Date.parse(`${day}T00:00:00Z`) / 86400000);
 const round1 = (v) => Math.round(v * 10) / 10;
 
 // 그날 숲에 놓이는 것들. [{ id, x, z, kind, size, special }]. 같은 날이면 늘 같은 답이다
 const cache = new Map();
 export function findsForDay(day) {
-  if (typeof day !== 'string' || !DAY.test(day)) throw new TypeError('YYYY-MM-DD 날짜가 필요합니다');
+  if (!validDay(day)) throw new TypeError('YYYY-MM-DD 날짜가 필요합니다');
   if (cache.has(day)) return cache.get(day);
   const rand = seededRandom((dayNumber(day) * 2654435761 + 0x5eed) >>> 0);
   const order = GATHER_SPOTS.map((_, i) => i);
@@ -48,7 +51,7 @@ export function findsForDay(day) {
   cache.set(day, out);
   return out;
 }
-export const findById = (day, id) => findsForDay(day).find((f) => f.id === id) || null;
+export const findById = (day, id) => (validDay(day) ? findsForDay(day).find((f) => f.id === id) || null : null);
 
 // ---- 채집 기록 ----
 // state = { version, log: { 종류: { best, first, count } }, day: 주운 자리를 적은 날 | null, picked: [그날 주운 자리] }
@@ -61,11 +64,11 @@ const knownKind = (kind) => typeof kind === 'string' && Object.prototype.hasOwnP
 const sizeFits = (kind, size) => Number.isFinite(size) && size >= GATHER[kind].min && size <= GATHER[kind].max;
 function entryFits(kind, entry) {
   return !!entry && typeof entry === 'object' && sizeFits(kind, entry.best) &&
-    typeof entry.first === 'string' && DAY.test(entry.first) && Number.isInteger(entry.count) && entry.count >= 1;
+    validDay(entry.first) && Number.isInteger(entry.count) && entry.count >= 1;
 }
 function pickedFits(day, picked) {
   if (day === null) return Array.isArray(picked) && picked.length === 0;
-  if (typeof day !== 'string' || !DAY.test(day) || !Array.isArray(picked)) return false;
+  if (!validDay(day) || !Array.isArray(picked)) return false;
   return new Set(picked).size === picked.length && picked.every((id) => findById(day, id));
 }
 
@@ -73,7 +76,7 @@ export function validate(state, cmd) {
   switch (cmd?.type) {
     case 'pick': {
       // 명령에는 날짜와 자리만 있다. 종류와 크기는 규칙이 날짜로 정하므로 지어낼 수 없다
-      if (typeof cmd.day !== 'string' || !DAY.test(cmd.day)) return { ok: false, reason: '날짜가 맞지 않습니다' };
+      if (!validDay(cmd.day)) return { ok: false, reason: '날짜가 맞지 않습니다' };
       if (!findById(cmd.day, cmd.id)) return { ok: false, reason: '그날 그 자리에는 주울 것이 없습니다' };
       if (pickedOn(state, cmd.day).includes(cmd.id)) return { ok: false, reason: '이미 주웠습니다' };
       return { ok: true };
@@ -159,6 +162,10 @@ export function serializeGather(state) {
 
 // 글자를 기록으로 되읽는다. 지금 규칙에 맞지 않는 항목은 명령으로 다시 넣어 보며 걸러 낸다
 export function parseGather(text) {
+  // 어떤 글자가 와도 예외로 끝나지 않는다. 읽지 못하면 실패를 돌려주고, 저장소가 손상본을 옆에 남긴다
+  try { return readGather(text); } catch { return { ok: false, reason: '채집 기록을 읽을 수 없습니다' }; }
+}
+function readGather(text) {
   let data;
   try { data = JSON.parse(text); } catch { return { ok: false, reason: '채집 기록을 읽을 수 없습니다' }; }
   if (!data || data.format !== 'gather-log' || typeof data.log !== 'object' || data.log === null) {
