@@ -40,7 +40,8 @@ export function createForestView(parent) {
   post.position.y=0.65; sign.add(post);
   const board = new THREE.Mesh(new THREE.BoxGeometry(1.1,0.42,0.12),trail);
   board.position.set(0,1.25,0); board.rotation.y=0.2; sign.add(board);
-  sign.position.set(5,-0.01,6.5); group.add(sign);
+  // 꾸밀 수 있는 마당(0 이상) 밖에 두어 저장된 가구와 겹치지 않는다.
+  sign.position.set(-1.5,-0.01,-2.2); group.add(sign);
   const find = new THREE.Group();
   find.position.set(FOREST.clearingX,0,FOREST.clearingZ);
   group.add(find);
