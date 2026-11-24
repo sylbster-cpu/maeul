@@ -185,7 +185,7 @@ export function createView({ canvas, assets, store }) {
 
   // 마당 남쪽의 바닷가: 모래사장, 바다, 파도 (src/beach-view.js)
   const beach = createBeachView({ parent: outside, calm });
-  const forest = createForestView(outside);
+  const forest = createForestView(outside, { fx, calm }); // 숲 (src/forest-view.js)
 
   const houseGroup = new THREE.Group();
   const yardObjects = new THREE.Group();
@@ -780,6 +780,7 @@ export function createView({ canvas, assets, store }) {
   return {
     scene, camera, renderer, rebuild, showGhosts, pop, vanish, celebrate, groundPoint, wallPoint, pick, pickFront, thumbnails,
     fx, // 공통 연출 (src/fx.js). 캐릭터와 낚시도 쓴다
+    forest, // 숲의 발견 연출과 숲 쪽 단서 (src/forest-view.js)
     nope() { nopeT = 0; counts.nopes++; },
     // 앉을 때 방석이 눌린다
     bump(id, amount = 0.06) { pop({ id }, { kind: 'bump', amount }); },
@@ -919,7 +920,7 @@ export function createView({ canvas, assets, store }) {
       }
       fx.update(dt);
       beach.update(dt);
-      forest.update(dt);
+      forest.update(dt, who);
       if (markerLife > 0) {
         markerLife = Math.max(0, markerLife - dt * 1.6);
         marker.material.opacity = markerLife * 0.9;

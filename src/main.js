@@ -2,7 +2,7 @@
 import { loadAssets } from './assets.js';
 import { PARTS, HOUSE_CENTER_X, MAT_X, LEVELS, OUTDOOR } from './parts.js';
 import { inWater } from './fishing.js';
-import { todaysDiscovery, todaysDiscoverySite, koreaDay } from './forest.js';
+import { todaysDiscovery, todaysDiscoverySite, koreaDay, forestCue } from './forest.js';
 import { createState, createStore, houseRect } from './state.js';
 import { createView } from './view.js';
 import { createCharacter } from './character.js';
@@ -300,6 +300,7 @@ async function start(saved = {}) {
   let forestCheckTime = 0;
   let forestCurrentDay = koreaDay();
   let forestSite = todaysDiscoverySite();
+  let forestCueTime = 3.5; // 처음 단서는 3초쯤 뒤에
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
@@ -318,16 +319,36 @@ async function start(saved = {}) {
     if (forestNear && (!forestNearby || forestVisitDay !== forestCurrentDay)) {
       const item = todaysDiscovery();
       ui.toast('숲에서 발견: ' + item.name + ' — ' + item.description);
+      // 오늘 처음 찾았을 때만 소리·반짝임·솟음·말풍선을 같은 순간에 낸다. 다시 다가가면 알림 글만 (1-1, 1-7).
+      // 찾은 것은 저장하지 않는다(발견은 모으는 것이 아니라 보는 것). 다시 열면 다시 처음 찾는 셈이다
+      if (forestVisitDay !== forestCurrentDay) { view.forest.found(character.pos); audio.play('find'); }
       forestVisitDay = forestCurrentDay;
     }
     forestNearby = forestNear;
+    // 오늘의 발견을 아직 찾지 못했으면 가끔 바람에 날린 잎이 숲 쪽으로 흘러간다 (1-10, 움직이는 것으로 길 안내).
+    // 낚시하는 동안, 꾸미는 동안, 앉아 있을 때는 내지 않는다
+    forestCueTime += dt;
+    if (forestCueTime >= 6.5) {
+      forestCueTime = 0;
+      if (character.place === 'yard' && !busy && forestVisitDay !== forestCurrentDay && fishing.phase === 'idle' &&
+          input.state.mode === 'walk' && !character.seated) {
+        view.forest.cue(forestCue(character.pos, forestSite, houseRect(store.state.house.level)));
+      }
+    }
     // 앉거나 일어나면 안내를 바꾼다
     const seated = character.seated?.id ?? null;
     if (seated !== wasSeated) { wasSeated = seated; input.syncUI(); if (seated) audio.play('sit'); }
     if (!busy) {
       if (character.place === 'yard') {
         view.setCloseUp(fishing.focus()); // 낚시하는 동안은 물가와 찌 사이를 가까이 본다
-        view.setWatch(pondView.watchPoints); // 찌가 나무에 가리면 그 나무를 비친다
+        // 찌, 캐릭터 몸, 가까이 있는 오늘의 발견물이 나뭇잎에 가리면 그 나무를 비친다.
+        // 2026-11-24: 카메라를 돌리면 숲 앞쪽 나무가 캐릭터와 발견물을 함께 가렸다(PR #37 검토)
+        const watch = pondView.watchPoints;
+        watch.push({ x: character.pos.x, y: 0.8, z: character.pos.z }, { x: character.pos.x, y: 1.4, z: character.pos.z });
+        if (Math.hypot(character.pos.x - forestSite.x, character.pos.z - forestSite.z) < 7) {
+          watch.push({ x: forestSite.x, y: 0.85, z: forestSite.z }, { x: forestSite.x, y: 0.3, z: forestSite.z });
+        }
+        view.setWatch(watch);
         view.setFocus(character.pos.x, character.pos.z);
         // 문 앞에서 집 쪽으로 걷거나, 집을 눌러 문 앞에 닿으면 들어간다
         if (character.atHouseDoor() && ((dir && dir.z < -0.3) || pending)) go('main');
