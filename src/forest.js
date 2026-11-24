@@ -53,6 +53,12 @@ export function forestViewingPoint(site, forward, distance = 1.15) {
 // 저장하지 않는다. 화면이 같은 답을 내도록 계산만 한다. three.js 를 부르지 않는다.
 // 숲으로 이어지는 길 [가운데 x, 가운데 z, 너비, 깊이]. 화면(forest-view.js)과 바닥 꾸밈이 함께 쓴다
 export const FOREST_PATHS = Object.freeze([[-1, -3, 8, 1.5], [-5.5, -3, 4, 1.5], [-8, -3.7, 2.2, 2.4], [-8, -9, 1.5, 7], [-3, -12, 11, 1.5]]);
+// 주울 거리가 놓일 수 있는 자리 12곳 (4단계 채집, gathering.js). 날마다 이 가운데 6곳에 놓인다.
+// 줄기에서 1.5칸, 오늘의 발견 자리에서 1.5칸, 서로 1.8칸 넘게 떨어져 있다. 길 위도 있고 나무 사이도 있다
+export const GATHER_SPOTS = Object.freeze([
+  [-12.3, -5.8], [-9.6, -7.4], [-6.4, -4.6], [-4.2, -5.6], [-6.2, -12.9], [-9.6, -9.9],
+  [-12.6, -12.5], [-3.4, -9.6], [-2.9, -13.6], [-12.6, -3.2], [-7.1, -7.8], [-4.6, -11.9],
+].map(([x, z]) => Object.freeze({ x, z })));
 // 마당에서 숲길로 들어서는 곳 (입구 표지 곁)
 export const FOREST_MOUTH = Object.freeze({ x: -1.5, z: -3 });
 
@@ -85,6 +91,7 @@ export function forestFloorLayout(seed = FOREST_SEED, { stones = 16, tufts = 30,
     !onPath(x, z, 0.25) &&
     !TREES.some(([tx, tz]) => Math.hypot(x - tx, z - tz) < TREE_RADIUS + 0.35) &&
     !FOREST_SITES.some((s) => Math.hypot(x - s.x, z - s.z) < 1.3) &&
+    !GATHER_SPOTS.some((s) => Math.hypot(x - s.x, z - s.z) < 0.8) && // 주울 거리와 헷갈리지 않게
     !taken.some((p) => Math.hypot(x - p.x, z - p.z) < gap);
   function scatter(n, gap) {
     const out = [];

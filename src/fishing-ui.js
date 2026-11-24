@@ -1,9 +1,11 @@
-// 낚시 기록 창과 낚은 순간의 카드. 기록 창은 잡아 본 물고기만 보여 주고, 아직 못 본 물고기는 수만 알린다.
+// 기록 창(낚시·채집 두 칸, 2026-11-24 사용자 결정)과 낚은 순간의 카드.
+// 기록 창은 잡아 보거나 주워 본 것만 보여 주고, 아직 못 본 것은 수만 알린다.
 import { FISH, FISH_ORDER, WATERS, WATER_ORDER, fishIn } from './fishing.js';
+import { GATHER, GATHER_ORDER } from './gathering.js';
 
 const dayText = (day) => { const [, m, d] = day.split('-').map(Number); return `${m}월 ${d}일`; };
 
-export function createFishingUI({ fishing }) {
+export function createFishingUI({ fishing, gathering = null }) {
   const $ = (id) => document.getElementById(id);
   const layer = $('fish-layer');
   const list = $('fish-list');
@@ -33,7 +35,47 @@ export function createFishingUI({ fishing }) {
         : '연못과 바다의 물고기를 모두 잡아 보았습니다.';
     $('fish-today').textContent = `오늘 잘 잡히는 물고기는 ${WATER_ORDER.map((w) => `${WATERS[w].label}에서 ${fishing.todayLabel(w)}`).join(', ')}입니다. 한국 날짜로 날마다 바뀝니다.`;
   }
-  function open() { render(); layer.hidden = false; $('fish-close').focus(); }
+  // 채집 칸 (4단계 채집 실험)
+  function renderGather() {
+    if (!gathering) return;
+    const log = gathering.store.state.log;
+    const found = GATHER_ORDER.filter((id) => log[id]);
+    const glist = $('gather-list');
+    glist.replaceChildren();
+    for (const id of found) {
+      const entry = log[id];
+      const row = document.createElement('li');
+      const name = document.createElement('strong');
+      name.textContent = GATHER[id].label;
+      const best = document.createElement('span');
+      best.textContent = `가장 큰 것 ${entry.best}cm`;
+      const more = document.createElement('small');
+      more.textContent = `숲 · ${entry.count}${GATHER[id].unit} · 처음 주운 날 ${dayText(entry.first)}`;
+      row.append(name, best, more);
+      glist.append(row);
+    }
+    const missing = GATHER_ORDER.length - found.length;
+    $('gather-summary').textContent = !found.length
+      ? '아직 주운 것이 없습니다. 집 왼편 숲길로 가서 땅에 놓인 것을 눌러 보세요.'
+      : missing ? `아직 주워 보지 못한 것이 ${missing}종 더 있습니다.` : '숲의 세 가지를 모두 주워 보았습니다.';
+    const left = gathering.left;
+    const special = left.some((f) => f.special);
+    $('gather-today').textContent = left.length
+      ? `오늘 숲에 주울 것이 ${left.length}개 남았습니다${special ? '. 금빛 고리 안의 것은 오늘의 발견으로, 같은 종류 가운데 그날 가장 큽니다' : ''}. 한국 날짜로 날마다 새로 놓입니다.`
+      : '오늘 숲의 것은 모두 주웠습니다. 한국 날짜로 내일 새로 놓입니다.';
+  }
+  let tab = 'fish';
+  function showTab(next) {
+    tab = next;
+    $('log-tab-fish').setAttribute('aria-pressed', String(tab === 'fish'));
+    $('log-tab-gather').setAttribute('aria-pressed', String(tab === 'gather'));
+    $('log-fish').hidden = tab !== 'fish';
+    $('log-gather').hidden = tab !== 'gather';
+    if (tab === 'gather') renderGather(); else render();
+  }
+  $('log-tab-fish').addEventListener('click', () => showTab('fish'));
+  $('log-tab-gather').addEventListener('click', () => showTab('gather'));
+  function open() { render(); renderGather(); layer.hidden = false; $('fish-close').focus(); }
   function close() { layer.hidden = true; button.focus(); }
   button.addEventListener('click', open);
   $('fish-close').addEventListener('click', close);
@@ -43,7 +85,8 @@ export function createFishingUI({ fishing }) {
   });
   // 창을 연 채 다른 탭에서 낚아도 바로 보이게 한다
   fishing.store.subscribe(() => { if (!layer.hidden) render(); });
-  return { open, close };
+  gathering?.store.subscribe(() => { if (!layer.hidden) renderGather(); });
+  return { open, close, showTab };
 }
 
 // 낚은 순간 화면 가운데에 크게 뜨는 카드. 누르는 것을 막지 않는다
