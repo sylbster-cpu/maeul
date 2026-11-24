@@ -1,11 +1,75 @@
 // 마을 북서쪽의 작은 숲. 기존 마당 배치와 낚시 물가는 바꾸지 않는다.
+// 2026-11-24 사용자 결정으로 연출 넷을 더했다(코드는 Claude): 바닥 무늬와 흩뿌림, 발견하는 순간, 숲 쪽으로 이끄는 잎.
+// 나무 가림은 view.setWatch 가 맡는다(main.js).
 import * as THREE from './three.js';
-import { todaysDiscovery, todaysDiscoverySite, koreaDay } from './forest.js';
+import { wobble, squash } from './fx.js';
+import { todaysDiscovery, todaysDiscoverySite, koreaDay, FOREST_PATHS, forestFloorLayout, seededRandom, FOREST_SEED } from './forest.js';
 import { TREES, TREE_RADIUS, FOREST } from './parts.js';
-export function createForestView(parent) {
+
+const LEAF_COLORS = [0xe2c35a, 0xd99a3e, 0xb8d36a, 0xf0dc8a]; // 풀밭에서 눈에 띄는 마른 잎 빛 (숲 잎과 같은 초록이면 풀에 묻힌다)
+
+// 숲 바닥의 풀빛 무늬. 씨앗을 준 값 노이즈 두 겹(옥타브)을 더해 이끼·흙·밝은 풀이 얼룩지게 한다
+// (docs/GAME_PRINCIPLES.md 지형 노이즈 편을 높이 없이 빛깔에만 씀). 격자가 돌아 이어지므로 반복해 깔아도 이음매가 없다
+function floorTexture(seed) {
+  const rand = seededRandom(seed);
+  const grid = (n) => ({ n, v: Array.from({ length: n * n }, () => rand()) });
+  const g1 = grid(5), g2 = grid(11);
+  const ease = (t) => t * t * (3 - 2 * t);
+  const sample = ({ n, v }, u, w) => {
+    const x = u * n, y = w * n, x0 = Math.floor(x), y0 = Math.floor(y);
+    const at = (i, j) => v[(((j % n) + n) % n) * n + (((i % n) + n) % n)];
+    const sx = ease(x - x0), sy = ease(y - y0);
+    const a = at(x0, y0), b = at(x0 + 1, y0), c = at(x0, y0 + 1), d = at(x0 + 1, y0 + 1);
+    return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+  };
+  // [노이즈 값, r, g, b]: 흙 → 짙은 이끼 → 원래 숲 바닥(0x648c50) → 밝은 풀
+  const stops = [[0, 118, 104, 70], [0.36, 84, 122, 68], [0.55, 100, 140, 80], [0.82, 124, 160, 92]];
+  const size = 128;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d');
+  const img = g.createImageData(size, size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const n = 0.65 * sample(g1, x / size, y / size) + 0.35 * sample(g2, x / size, y / size);
+      let i = 1;
+      while (i < stops.length - 1 && n > stops[i][0]) i++;
+      const [n0, r0, g0, b0] = stops[i - 1], [n1, r1, g1c, b1] = stops[i];
+      const k = Math.min(1, Math.max(0, (n - n0) / (n1 - n0)));
+      const o = (y * size + x) * 4;
+      img.data[o] = r0 + (r1 - r0) * k; img.data[o + 1] = g0 + (g1c - g0) * k; img.data[o + 2] = b0 + (b1 - b0) * k; img.data[o + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1 / 7, 1 / 7); // 7칸마다 한 장
+  return tex;
+}
+
+// 발견했을 때 머리 위에 뜨는 말풍선 느낌표. 낚시의 입질 표시(주황 동그라미, "지금 누르세요")와
+// 모양과 빛깔을 다르게 한다. 같은 모양이면 진짜 신호와 헷갈린다(1-8)
+function bubbleTexture() {
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 144;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fffaf0'; g.strokeStyle = '#2f5d3a'; g.lineWidth = 7;
+  g.beginPath();
+  g.moveTo(30, 8); g.lineTo(98, 8); g.quadraticCurveTo(120, 8, 120, 30); g.lineTo(120, 86); g.quadraticCurveTo(120, 108, 98, 108);
+  g.lineTo(74, 108); g.lineTo(64, 136); g.lineTo(54, 108); g.lineTo(30, 108); g.quadraticCurveTo(8, 108, 8, 86); g.lineTo(8, 30); g.quadraticCurveTo(8, 8, 30, 8);
+  g.closePath(); g.fill(); g.stroke();
+  g.fillStyle = '#3f8a46'; g.font = 'bold 82px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('!', 64, 62);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+export function createForestView(parent, { fx = null, calm = false } = {}) {
   const group = new THREE.Group();
   parent.add(group);
-  const earth = new THREE.MeshStandardMaterial({ color: 0x648c50, roughness: 1 });
+  const earth = new THREE.MeshStandardMaterial({ color: 0xffffff, map: floorTexture(FOREST_SEED), roughness: 1 });
   const trail = new THREE.MeshStandardMaterial({ color: 0xc5ab7e, roughness: 1 });
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x735139, roughness: 1 });
   const leafMat = new THREE.MeshStandardMaterial({ color: 0x477f49, roughness: 1, flatShading: true });
@@ -21,8 +85,7 @@ export function createForestView(parent) {
   ground.rotation.x = -Math.PI / 2; ground.position.set(-8, -0.035, -8.5); ground.receiveShadow = true; group.add(ground);
   // 숲으로 이어지는 길: 집 왼편에서 숲 안쪽 공터까지 이어진다.
   // 두 입구: 동쪽의 짧은 길과 남쪽에서 돌아가는 길. 두 길 모두 기존 나무줄기를 피한다.
-  const paths = [[-1,-3,8,1.5],[-5.5,-3,4,1.5],[-8,-3.7,2.2,2.4],[-8,-9,1.5,7],[-3,-12,11,1.5]];
-  for (const [x,z,w,d] of paths) {
+  for (const [x,z,w,d] of FOREST_PATHS) {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w,d), trail);
     m.rotation.x = -Math.PI / 2; m.position.set(x, 0.005, z); m.receiveShadow = true; group.add(m);
   }
@@ -34,6 +97,36 @@ export function createForestView(parent) {
     const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.35,0.35,5),leafMat);
     tuft.position.set(x,0.18,z); group.add(tuft); // 작은 풀은 이동을 막지 않는다
   }
+
+  // ---- 바닥에 흩뿌린 돌·풀·꽃 (씨앗 고정, forest.js forestFloorLayout) ----
+  // 걷기를 막지 않는 장식이다. 발견물과 닮은 것은 흩뿌리지 않는다
+  const layout = forestFloorLayout();
+  const dummy = new THREE.Object3D();
+  const color = new THREE.Color();
+  function scatter(items, geometry, material, tones, place) {
+    const mesh = new THREE.InstancedMesh(geometry, material, items.length);
+    items.forEach((p, i) => {
+      dummy.position.set(p.x, 0, p.z); dummy.rotation.set(0, p.turn, 0); dummy.scale.setScalar(1);
+      place(dummy, p);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+      mesh.setColorAt(i, color.setHex(tones[p.tone % tones.length]));
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    group.add(mesh);
+    return mesh;
+  }
+  const decor = {
+    stones: scatter(layout.stones, new THREE.DodecahedronGeometry(0.21, 0), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }),
+      [0x9a968c, 0x86837a, 0xaba699], (o, p) => { o.scale.set(p.size, p.size * 0.55, p.size * 0.85); o.position.y = 0.04 * p.size; }),
+    // 풀 한 포기는 가는 원뿔 하나. 크기와 기울기를 조금씩 달리한다
+    tufts: scatter(layout.tufts, new THREE.ConeGeometry(0.09, 0.34, 4).translate(0, 0.17, 0), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }),
+      [0x4f8a45, 0x5e9a4a, 0x6ea85a], (o, p) => { o.scale.set(p.size, p.size * (0.8 + 0.3 * (p.tone / 2)), p.size); o.rotation.z = (p.size - 1) * 0.5; }),
+    flowers: scatter(layout.flowers, new THREE.SphereGeometry(0.06, 6, 4), new THREE.MeshStandardMaterial({ roughness: 0.9 }),
+      [0xfff7e0, 0xf6e27a, 0xf2c6d0], (o, p) => { o.position.y = 0.1 + 0.04 * p.size; }),
+  };
+
   // 집에서 보이는 숲 입구의 표지. 안내 UI를 추가하지 않는다.
   const sign = new THREE.Group();
   const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.11,1.3,6),trunkMat);
@@ -61,18 +154,85 @@ export function createForestView(parent) {
     mesh.position.y = 0.85; mesh.castShadow = true; find.add(mesh);
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.48,0.59,32),new THREE.MeshBasicMaterial({color:0xf5db83,side:THREE.DoubleSide}));
     ring.rotation.x = -Math.PI/2; ring.position.y = 0.025; find.add(ring);
+    pop = null;
   }
+
+  // ---- 발견하는 순간 (1-1 같은 순간의 짧은 신호들, 1-4 찌그러짐, 과장 편) ----
+  // 소리(main.js 의 audio 'find'), 반짝임, 발견물이 솟았다 내려앉음, 머리 위 말풍선이 같은 화면에서 시작한다.
+  // 메기·감성돔을 처음 낚았을 때보다 작게 한다(1-7). 움직임 줄이기를 켜면 움직이지 않고 말풍선만 잠깐 보인다
+  const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ map: bubbleTexture(), depthTest: false, transparent: true }));
+  bubble.renderOrder = 10;
+  bubble.visible = false;
+  parent.add(bubble);
+  let pop = null, bubbleT = 0, angle = 0;
+  const counts = { found: 0, cues: 0 }; // 자동 시험이 읽는다
+
   refresh();
   let elapsed = 0;
-  function update(dt = 0, now = new Date()) {
+  function update(dt = 0, who = null, now = new Date()) {
     // 날짜 검사는 5초마다 한 번만 수행한다.
     if (elapsed === 0 || Math.floor(elapsed / 5) !== Math.floor((elapsed + dt) / 5)) refresh(now);
     if (!Number.isFinite(dt) || dt < 0) return;
     elapsed += dt;
     const object = find.children[0];
-    if (object) object.rotation.y = elapsed * 0.5;
     const halo = find.children[1];
-    if (halo) halo.scale.setScalar(1 + 0.08 * Math.sin(elapsed * 2));
+    let spin = 0.5;
+    if (pop && object && halo) {
+      pop.t += dt;
+      const t = pop.t;
+      // 0~0.18초 감속하며 솟고, 0.38초까지 떠 있다가, 0.52초까지 가속하며 떨어진 뒤 납작해졌다 돌아온다.
+      // 캐릭터 머리(약 1.6) 높이까지 솟아, 어느 쪽에서 다가가도 몸에 다 가리지 않는다
+      const TOP = 0.8;
+      let lift = 0;
+      if (t < 0.18) { const k = t / 0.18; lift = TOP * (1 - (1 - k) * (1 - k)); }
+      else if (t < 0.38) lift = TOP + 0.04 * Math.sin(((t - 0.18) / 0.2) * Math.PI);
+      else if (t < 0.52) { const k = (t - 0.38) / 0.14; lift = TOP * (1 - k * k); }
+      object.position.y = 0.85 + lift;
+      // 떠 있는 동안 1.3배로 키운다. 작은 화면에서 보이게 하되 끝까지 과장하지 않는다
+      if (t < 0.52) object.scale.setScalar(1 + 0.3 * Math.min(1, lift / TOP));
+      else squash(object, 1 + wobble(-0.22, t - 0.52, 0.08, 0.09));
+      spin = 0.5 + 9 * Math.exp(-t / 0.35);
+      halo.scale.setScalar(1 + wobble(0.35, t, 0.12, 0.18));
+      if (t > 1.0) { pop = null; object.position.y = 0.85; object.scale.setScalar(1); halo.scale.setScalar(1); }
+    } else if (halo) halo.scale.setScalar(1 + 0.08 * Math.sin(elapsed * 2));
+    angle += dt * spin;
+    if (object) object.rotation.y = angle;
+    if (bubble.visible) {
+      bubbleT += dt;
+      // 0.08초에 튀어나와 조금 지나쳤다 돌아오고, 1.1초 뒤 0.3초에 걸쳐 옅어진다
+      const s = calm ? 1 : Math.min(1, bubbleT / 0.08) * (1 + wobble(0.22, Math.max(0, bubbleT - 0.08), 0.1, 0.1));
+      bubble.scale.set(0.92 * s, 1.04 * s, 1);
+      if (who) bubble.position.set(who.x, 2.6 + (calm ? 0 : 0.12 * Math.min(1, bubbleT / 0.3)), who.z);
+      bubble.material.opacity = bubbleT < 1.1 ? 1 : Math.max(0, 1 - (bubbleT - 1.1) / 0.3);
+      if (bubbleT > 1.4) bubble.visible = false;
+    }
   }
-  return { update };
+  return {
+    update,
+    // 오늘의 발견을 이번에 처음 찾았다
+    found(who) {
+      counts.found++;
+      bubbleT = 0;
+      bubble.visible = true;
+      if (who) bubble.position.set(who.x, 2.6, who.z);
+      if (calm) return;
+      pop = { t: 0 };
+      fx?.sparkle(find.position.x, 0.95, find.position.z, { count: 6, radius: 0.55, size: 0.42, life: 0.7, parent: group });
+    },
+    // 숲 쪽으로 이끄는 잎 몇 장과 작은 반짝임 하나 (forest.js forestCue 가 자리와 방향을 정한다)
+    cue(c) {
+      if (!fx || calm || !c) return;
+      counts.cues++;
+      fx.drift(c.x, 0.15, c.z, c.dir, { count: 5, colors: LEAF_COLORS, size: 2.8, parent: group });
+      fx.sparkle(c.x + c.dir.x * 0.8, 0.5, c.z + c.dir.z * 0.8, { count: 2, radius: 0.25, size: 0.55, life: 0.8, parent: group });
+    },
+    // 연출 상태 (자동 시험이 읽는다)
+    get state() {
+      return {
+        ...counts, popping: !!pop, bubble: bubble.visible, itemY: find.children[0]?.position.y ?? 0,
+        site: { x: find.position.x, z: find.position.z },
+        decor: { stones: decor.stones.count, tufts: decor.tufts.count, flowers: decor.flowers.count },
+      };
+    },
+  };
 }

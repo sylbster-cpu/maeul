@@ -56,6 +56,7 @@ export function createFx({ scene, calm }) {
   leafGeo.setIndex([0, 1, 2, 0, 2, 3]);
   leafGeo.computeVertexNormals();
   const leaves = [];
+  const newLeaf = () => new THREE.Mesh(leafGeo, new THREE.MeshStandardMaterial({ roughness: 1, side: THREE.DoubleSide, transparent: true }));
   const live = []; // { obj, kind, t, life, v, size, spin, sway }
 
   function add(obj, parent, item) {
@@ -95,12 +96,30 @@ export function createFx({ scene, calm }) {
       if (calm) return;
       for (let i = 0; i < count; i++) {
         let m = leaves.find((l) => !l.visible);
-        if (!m) { m = new THREE.Mesh(leafGeo, new THREE.MeshStandardMaterial({ roughness: 1, side: THREE.DoubleSide })); leaves.push(m); }
+        if (!m) { m = newLeaf(); leaves.push(m); }
         m.material.color.setHex(color);
+        m.material.opacity = 1;
         m.position.set(x + (Math.random() - 0.5) * 1.4, y - Math.random() * 0.6, z + (Math.random() - 0.5) * 1.4);
         m.rotation.set(Math.random() * 3, Math.random() * 3, 0);
         m.scale.setScalar(1.6 + Math.random() * 0.8);
         add(m, parent, { kind: 'leaf', life: 1.6 + Math.random() * 0.6, sway: Math.random() * 6, v: new THREE.Vector3(0, -(0.9 + Math.random() * 0.5), 0) });
+      }
+    },
+    // 바람에 날린 잎이 땅 가까이 한쪽(dir)으로 흘러간다. 숲 쪽으로 눈길을 이끄는 단서(1-10).
+    // 낮게 통통 튀듯 흐르다 옅어진다. 숲으로 이끄는 것이 목적이므로 몇 장만, 가끔만
+    drift(x, y, z, dir, { count = 4, colors = [0x5e9a4a], size = 1.8, speed = 1.6, life = 1.8, parent = scene } = {}) {
+      if (calm) return;
+      for (let i = 0; i < count; i++) {
+        let m = leaves.find((l) => !l.visible);
+        if (!m) { m = newLeaf(); leaves.push(m); }
+        m.material.color.setHex(colors[i % colors.length]);
+        m.material.opacity = 0;
+        const side = (Math.random() - 0.5) * 0.9, back = -i * 0.35;
+        m.position.set(x + dir.x * back - dir.z * side, y, z + dir.z * back + dir.x * side);
+        m.rotation.set(Math.random() * 3, Math.random() * 3, 0);
+        m.scale.setScalar(size * (0.85 + Math.random() * 0.3));
+        const v = speed * (0.85 + Math.random() * 0.3);
+        add(m, parent, { kind: 'drift', life: life * (0.85 + Math.random() * 0.3), base: y, delay: i * 0.12, sway: Math.random() * 6, v: new THREE.Vector3(dir.x * v, 0, dir.z * v) });
       }
     },
     update(dt) {
@@ -109,6 +128,18 @@ export function createFx({ scene, calm }) {
         p.t += dt;
         const k = p.t / p.life;
         if (k >= 1 || (p.kind === 'leaf' && p.obj.position.y < 0.02)) { p.obj.visible = false; live.splice(i, 1); continue; }
+        if (p.kind === 'drift') {
+          // 처음엔 빨리, 끝에선 느리게. 두 번 낮게 튀어 오르며 흐르고, 들어올 때와 나갈 때 옅다
+          const kk = Math.max(0, (p.t - p.delay) / (p.life - p.delay));
+          const slow = 1.25 - 0.6 * kk;
+          p.obj.position.x += p.v.x * dt * slow + Math.sin(p.t * 3 + p.sway) * 0.25 * dt * -p.v.z;
+          p.obj.position.z += p.v.z * dt * slow + Math.sin(p.t * 3 + p.sway) * 0.25 * dt * p.v.x;
+          p.obj.position.y = p.base + 0.35 * Math.abs(Math.sin(Math.PI * 2 * kk)) * (1 - 0.5 * kk);
+          p.obj.rotation.z += dt * 5;
+          p.obj.rotation.x = Math.sin(p.t * 5 + p.sway) * 0.9;
+          p.obj.material.opacity = kk <= 0 ? 0 : Math.min(1, kk / 0.12, (1 - kk) / 0.3);
+          continue;
+        }
         if (p.kind === 'dust') {
           // 처음엔 빨리 퍼지고 곧 느려진다 (감속). 커지면서 옅어진다
           const slow = Math.max(0, 1 - k * 1.6);
