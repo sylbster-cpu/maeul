@@ -239,6 +239,14 @@ async function start(saved = {}) {
   ui.setHistory(history.status());
   if (!guest && handed?.mode === 'build') input.setMode('build');
   ui.loaded();
+  // 시작 화면에는 숲 입구가 보이지 않는다. 표지판을 마당으로 옮기는 대신
+  // 첫 방문에만 짧은 길 안내를 보여 가구 배치의 자유를 지킨다.
+  try {
+    if (!guest && character.place === 'yard' && !window.localStorage.getItem('maeul:forest-hint-seen')) {
+      ui.toast('집 왼편으로 걸어가면 작은 숲길이 있어요. 날마다 다른 발견이 기다립니다.');
+      window.localStorage.setItem('maeul:forest-hint-seen', '1');
+    }
+  } catch { /* 저장소가 막힌 환경에서는 안내를 생략한다. */ }
 
   // ---- 자동 저장: 오래된 탭이 새로 가져온 집/보관본을 덮어쓰지 않게 검사한다 ----
   let saveTimer = 0;
