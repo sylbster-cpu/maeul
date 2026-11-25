@@ -2,8 +2,9 @@
 // 기록하는 것은 명령이다: 앞으로 가는 명령(forward)과 그것을 되돌리는 명령(backward).
 // 되돌릴 때는 반대 명령을 보통 명령처럼 다시 검증한다. 그사이 상태가 바뀌어 맞지 않으면
 // 아무것도 바꾸지 않고 거절하며, 그 기록은 버린다. (나중에 공동 마을에서도 같은 규칙을 쓴다)
-// guard(cmds) 를 주면 명령을 보내기 전에 한 번 더 본다. 집 규칙 밖의 제한(가진 만큼만 놓는 주운 것, gathering.js)을
-// 놓을 때와 되돌리기·다시 하기에 똑같이 지키게 한다. 막히면 그 기록은 버리지 않고 그대로 둔다(나중에 더 주워 오면 된다).
+// guard(cmds) 를 주면 새 조작(run)을 보내기 전에 한 번 더 본다. 집 규칙 밖의 제한(가진 만큼만 놓는 주운 것, gathering.js)이다.
+// 되돌리기·다시 하기에는 걸지 않는다. 이번 접속에서 이미 있었던 상태로만 돌아가므로 새로 늘어나는 것이 없고,
+// 가져온 친구 집처럼 처음부터 가진 것보다 많이 놓인 집도 치운 뒤 원래대로 되돌릴 수 있어야 하기 때문이다(PR #42 GPT 검토 2).
 // three.js 를 불러오지 않는다.
 
 export function createHistory(store, { limit = 100, guard = null } = {}) {
@@ -58,8 +59,6 @@ export function createHistory(store, { limit = 100, guard = null } = {}) {
       api.end();
       const entry = undoStack.pop();
       if (!entry) return { ok: false, reason: '되돌릴 것이 없습니다' };
-      const g = guard?.(entry.backward);
-      if (g && !g.ok) { undoStack.push(entry); notify(); return { ok: false, reason: g.reason }; }
       const r = store.transact(entry.backward, { history: 'undo' });
       if (!r.ok) { notify(); return { ok: false, reason: '그사이 바뀐 것이 있어 되돌리지 못했습니다' }; }
       redoStack.push(entry);
@@ -70,8 +69,6 @@ export function createHistory(store, { limit = 100, guard = null } = {}) {
       api.end();
       const entry = redoStack.pop();
       if (!entry) return { ok: false, reason: '다시 할 것이 없습니다' };
-      const g = guard?.(entry.forward);
-      if (g && !g.ok) { redoStack.push(entry); notify(); return { ok: false, reason: g.reason }; }
       const r = store.transact(entry.forward, { history: 'redo' });
       if (!r.ok) { notify(); return { ok: false, reason: '그사이 바뀐 것이 있어 다시 하지 못했습니다' }; }
       undoStack.push(entry);

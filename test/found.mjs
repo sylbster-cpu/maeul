@@ -2,7 +2,7 @@
 //   TOUCH=1 node tools/shot.mjs / <출력> 390 844 test/found.mjs
 // 1. 꾸미기 소품 탭에 "숲에서 주운 것" 칸이 있고, 그림과 더 놓을 수 있는 수가 보인다 (가진 것 0 이면 흐리게)
 // 2. 가진 만큼 마당에 놓고, 그 뒤로는 놓이지 않으며 왜 안 되는지 알린다
-// 3. 치우면 다시 놓을 수 있고, 되돌리기로 다시 놓을 때도 가진 수를 넘지 않는다
+// 3. 치우면 다시 놓을 수 있다. 되돌리기는 막지 않는다(이번 접속에서 있었던 상태로만 돌아감, PR #42 GPT 검토 2)
 // 4. 새로 열어도 놓인 것과 수가 그대로다. 주운 적 없는 것은 방에서도 놓이지 않는다
 export default async function foundTour(page, { out, logs }) {
   const say = (label, ok, extra = '') => logs.push(`${ok ? '통과' : '실패'}  ${label} ${extra}`);
@@ -72,21 +72,23 @@ export default async function foundTour(page, { out, logs }) {
   const why = await toast();
   say('가진 것보다 많이는 놓이지 않고 왜 안 되는지 알린다', third.length === 2 && why.includes('더 주워 와야'), why);
 
-  // 3. 치우면 다시 놓을 수 있다. 되돌리기로 다시 놓을 때도 가진 수를 넘지 않는다
+  // 3. 치우면 다시 놓을 수 있다. 되돌리기는 막지 않는다
   await page.click('#tool-erase');
   await groundTap(two[0].x + 0.5, two[0].y + 0.5);
   const afterErase = await placed('yard', 'found_pinecone');
   say('치우면 하나 줄고 다시 놓을 수 있다', afterErase.length === 1 && (await tile('found_pinecone')).label === '솔방울 ×1', JSON.stringify(afterErase));
-  // 그사이 가진 수가 하나로 줄었다고 치고(예: 다른 탭에서 기록이 바뀜) 치우기를 되돌리면 막힌다
+  // 그사이 가진 수가 하나로 줄었다고 쳐도(예: 다른 탭에서 기록이 바뀜) 치우기를 되돌리면 그대로 돌아온다. 새로 놓기만 막힌다
   await g(() => { const s = window.__game.gathering.store; s.replace({ ...s.state, log: { pinecone: { best: 9.5, first: '2026-11-25', count: 1 } } }); });
   await page.click('#undo');
   await frames(3);
-  const blocked = { n: (await placed('yard', 'found_pinecone')).length, toast: await toast(), canUndo: await g(() => window.__game.history.status().canUndo) };
-  say('되돌리기로 다시 놓을 때도 가진 수를 넘지 않고, 그 기록은 남는다', blocked.n === 1 && blocked.toast.includes('더 주워 와야') && blocked.canUndo, JSON.stringify(blocked));
+  const restored = { n: (await placed('yard', 'found_pinecone')).length, label: (await tile('found_pinecone')).label };
+  say('가진 수가 줄었어도 되돌리기로 치운 것이 돌아온다', restored.n === 2 && restored.label === '솔방울 ×0', JSON.stringify(restored));
+  await page.click('#tool-found_pinecone');
+  await g(() => { const t = document.getElementById('toast'); if (t) t.textContent = ''; }); // 앞의 알림과 섞이지 않게
+  await groundTap(cells[2].x + 0.5, cells[2].y + 0.5);
+  const still = { n: (await placed('yard', 'found_pinecone')).length, toast: await toast() };
+  say('그 상태에서 새로 놓기는 막힌다', still.n === 2 && still.toast.includes('더 주워 와야'), JSON.stringify(still));
   await g(() => { const s = window.__game.gathering.store; s.replace({ ...s.state, log: { pinecone: { best: 9.5, first: '2026-11-25', count: 2 } } }); });
-  await page.click('#undo');
-  await frames(3);
-  say('가진 수가 넉넉하면 되돌리기로 다시 놓인다', (await placed('yard', 'found_pinecone')).length === 2, '');
 
   // 4. 새로 열어도 그대로. 걸어 다녀도 오류가 없다(모델 없는 물건의 충돌 상자)
   await g(() => window.__game.saveNow());

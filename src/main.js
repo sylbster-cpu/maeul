@@ -227,7 +227,7 @@ async function start(saved = {}) {
     openShare: (link, options) => ui.openShare(link, options),
     toast: (message, kind) => ui.toast(message, kind),
   });
-  // 숲에서 주운 것은 가진 만큼만 놓는다. 놓기·되돌리기·다시 하기에 똑같이 본다(gathering.js checkFoundCommands)
+  // 숲에서 주운 것은 가진 만큼만 놓는다. 새로 놓을 때만 보고, 되돌리기·다시 하기는 막지 않는다(gathering.js checkFoundCommands)
   let gathering = null;
   const history = createHistory(store, { guard: (cmds) => (gathering ? checkFoundCommands(store.state, gathering.store.state, cmds) : { ok: true }) }); // 처음 놓인 가구는 기록에 넣지 않는다
   // 낚시. 기록은 이 브라우저에 집과 따로 저장한다. 친구 집을 구경하는 중에도 내 낚시 기록에 남는다
