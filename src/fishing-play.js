@@ -74,13 +74,19 @@ export function createFishing({ character, pondView, ui, audio, haptics = null, 
 
   // 다른 탭에서 낚은 기록을 먼저 읽고 더한다. 덮어써서 지우지 않게 한다.
   // 웹 잠금(Web Locks)이 있는 브라우저에서는 탭끼리 차례를 지켜 읽고 쓴다. 거의 동시에 낚아도 하나가 빠지지 않는다.
-  // 없는 브라우저에서는 차례를 지킬 수 없어, 두 탭에서 거의 동시에 낚으면 하나가 빠질 수 있다
+  // 없는 브라우저에서는 차례를 지킬 수 없어, 두 탭에서 거의 동시에 낚으면 하나가 빠질 수 있다.
+  // 저장소가 있는데 쓰지 못했으면 기록을 낚기 전으로 되돌린다. 메모리에만 남기면 다음 낚시가 저장소의 옛 기록을 읽어
+  // 앞서 낚은 것을 소리 없이 지운다(2026-11-25 사용자 결정, PR #41 GPT 검토 2와 같은 문제). 저장소가 아예 없으면 이번 접속 동안만 남긴다
   function record(cmd) {
     const run = () => {
       const latest = saver.load();
       if (latest?.ok) store.replace(latest.state);
+      const before = store.state;
       const r = store.dispatch(cmd);
-      return r.ok ? saver.save(store.state) : false;
+      if (!r.ok) return false;
+      const saved = saver.save(store.state);
+      if (!saved && saver.available) store.replace(before);
+      return saved;
     };
     const locks = typeof navigator !== 'undefined' ? navigator.locks : null;
     if (locks?.request) return locks.request(FISHING_KEY, run).catch(() => run());
@@ -144,7 +150,9 @@ export function createFishing({ character, pondView, ui, audio, haptics = null, 
       const was = store.state.log[fish];
       record({ type: 'recordCatch', fish, size, day: kstDay(now()) }).then((saved) => {
         if (saved) return;
-        ui.toast(saver.newerStored() ? '더 새로운 판의 낚시 기록이 있어 저장하지 않았습니다. 새로 고쳐 주세요' : '이 브라우저에서는 낚시 기록이 저장되지 않습니다', 'error');
+        ui.toast(!saver.available ? '이 브라우저에서는 낚시 기록이 저장되지 않습니다. 이번 접속 동안만 남습니다'
+          : saver.newerStored() ? '더 새로운 판의 낚시 기록이 있어 저장하지 않았습니다. 새로 고쳐 주세요'
+            : '낚시 기록을 저장하지 못해 이번 물고기는 기록에 남지 않았습니다. 저장 공간을 확인해 주세요', 'error');
       });
       const note = !was ? '처음 잡은 물고기입니다' : size > was.best ? '최고 기록입니다' : '';
       // 낚아챈 바로 그 순간에 신호를 몰아 준다: 멈춤·흔들림·물보라·낚싯대(pondView), 묵직한 소리, 진동.

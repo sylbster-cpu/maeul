@@ -2,7 +2,9 @@
 import { loadAssets } from './assets.js';
 import { PARTS, HOUSE_CENTER_X, MAT_X, LEVELS, OUTDOOR } from './parts.js';
 import { inWater } from './fishing.js';
-import { todaysDiscovery, todaysDiscoverySite, koreaDay, forestCue } from './forest.js';
+import { todaysDiscoverySite, koreaDay, forestCue } from './forest.js';
+import { SPECIAL_ID } from './gathering.js';
+import { createGathering } from './gathering-play.js';
 import { createState, createStore, houseRect } from './state.js';
 import { createView } from './view.js';
 import { createCharacter } from './character.js';
@@ -233,8 +235,10 @@ async function start(saved = {}) {
     pondView,
     onChange: () => input?.syncUI(),
   });
-  createFishingUI({ fishing });
-  input = createInput({ canvas, view, store, history, character, ui, audio, haptics, travel, fishing, readOnly: guest });
+  // 숲에서 줍기(4단계 채집). 기록은 집·낚시 기록과 따로 이 브라우저에 둔다. 친구 집을 구경하는 중에도 내 기록에 남는다
+  const gathering = createGathering({ character, view, ui, audio, haptics, storage: openStorage() });
+  createFishingUI({ fishing, gathering });
+  input = createInput({ canvas, view, store, history, character, ui, audio, haptics, travel, fishing, gathering, readOnly: guest });
   history.subscribe((status) => ui.setHistory(status));
   ui.setHistory(history.status());
   if (!guest && handed?.mode === 'build') input.setMode('build');
@@ -292,11 +296,10 @@ async function start(saved = {}) {
   if (loaded && !loaded.ok) ui.toast(`${loaded.reason}. 처음 배치로 시작합니다`, 'error');
   else if (loaded?.dropped) ui.toast(`저장된 것 가운데 ${loaded.dropped}개는 지금 규칙에 맞지 않아 빼고 불러왔습니다`, 'error');
   else if (fishing.loadProblem) ui.toast(fishing.loadProblem, 'error');
+  else if (gathering.loadProblem) ui.toast(gathering.loadProblem, 'error');
 
   let last = performance.now();
   let wasSeated = null;
-  let forestVisitDay = '';
-  let forestNearby = false;
   let forestCheckTime = 0;
   let forestCurrentDay = koreaDay();
   let forestSite = todaysDiscoverySite();
@@ -308,29 +311,20 @@ async function start(saved = {}) {
     if (dir) { pending = null; fishing.cancel(); } // 방향 키로 걸으면 낚시를 그만둔다
     character.update(dt, dir);
     fishing.update(dt);
-    // 발견물은 가까이 걸어가면 한 번 알려 준다. 획득/저장/출석 보상은 없다.
+    // 숲의 주울 거리: 가까이 가면 줍는다(4단계 채집). 오늘의 발견(금빛 고리)은 주울 때 발견하는 순간의 연출이 난다
+    gathering.update(dt);
     forestCheckTime += dt;
     if (forestCheckTime >= 5) {
       forestCheckTime = 0;
       const nextDay = koreaDay();
       if (nextDay !== forestCurrentDay) { forestCurrentDay = nextDay; forestSite = todaysDiscoverySite(); }
     }
-    const forestNear = character.place === 'yard' && Math.hypot(character.pos.x - forestSite.x, character.pos.z - forestSite.z) < 1.3;
-    if (forestNear && (!forestNearby || forestVisitDay !== forestCurrentDay)) {
-      const item = todaysDiscovery();
-      ui.toast('숲에서 발견: ' + item.name + ' — ' + item.description);
-      // 오늘 처음 찾았을 때만 소리·반짝임·솟음·말풍선을 같은 순간에 낸다. 다시 다가가면 알림 글만 (1-1, 1-7).
-      // 찾은 것은 저장하지 않는다(발견은 모으는 것이 아니라 보는 것). 다시 열면 다시 처음 찾는 셈이다
-      if (forestVisitDay !== forestCurrentDay) { view.forest.found(character.pos); audio.play('find'); }
-      forestVisitDay = forestCurrentDay;
-    }
-    forestNearby = forestNear;
     // 오늘의 발견을 아직 찾지 못했으면 가끔 바람에 날린 잎이 숲 쪽으로 흘러간다 (1-10, 움직이는 것으로 길 안내).
     // 낚시하는 동안, 꾸미는 동안, 앉아 있을 때는 내지 않는다
     forestCueTime += dt;
     if (forestCueTime >= 6.5) {
       forestCueTime = 0;
-      if (character.place === 'yard' && !busy && forestVisitDay !== forestCurrentDay && fishing.phase === 'idle' &&
+      if (character.place === 'yard' && !busy && !gathering.pickedToday(SPECIAL_ID) && fishing.phase === 'idle' &&
           input.state.mode === 'walk' && !character.seated) {
         view.forest.cue(forestCue(character.pos, forestSite, houseRect(store.state.house.level)));
       }
@@ -345,8 +339,11 @@ async function start(saved = {}) {
         // 2026-11-24: 카메라를 돌리면 숲 앞쪽 나무가 캐릭터와 발견물을 함께 가렸다(PR #37 검토)
         const watch = pondView.watchPoints;
         watch.push({ x: character.pos.x, y: 0.8, z: character.pos.z }, { x: character.pos.x, y: 1.4, z: character.pos.z });
-        if (Math.hypot(character.pos.x - forestSite.x, character.pos.z - forestSite.z) < 7) {
-          watch.push({ x: forestSite.x, y: 0.85, z: forestSite.z }, { x: forestSite.x, y: 0.3, z: forestSite.z });
+        // 가까이 있는 주울 거리(오늘의 발견과 땅의 것)도 나뭇잎에 가리면 비친다
+        for (const f of gathering.left) {
+          if (Math.hypot(character.pos.x - f.x, character.pos.z - f.z) > 7) continue;
+          if (f.special) watch.push({ x: f.x, y: 0.85, z: f.z }, { x: f.x, y: 0.3, z: f.z });
+          else watch.push({ x: f.x, y: 0.2, z: f.z });
         }
         view.setWatch(watch);
         view.setFocus(character.pos.x, character.pos.z);
@@ -362,7 +359,7 @@ async function start(saved = {}) {
 
   // 열어 둔 화면에 새 판이 도착해도 꾸민 집을 잃지 않게 한다
   window.claude?.hot?.snapshot?.(() => guest || switchingHouse ? {} : ({ state: store.state, place: character.place, pos: { ...character.pos }, mode: input.state.mode }));
-  window.__game = { store, view, character, input, history, saveNow, travel, fishing, haptics, pondWatch: () => pondView.watchPoints };
+  window.__game = { store, view, character, input, history, saveNow, travel, fishing, gathering, haptics, pondWatch: () => pondView.watchPoints };
   window.__ready = true;
 }
 

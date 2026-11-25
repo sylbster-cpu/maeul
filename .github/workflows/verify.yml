@@ -81,6 +81,7 @@ jobs:
           run_tour beach 390 844 test/beach.mjs yes
           run_tour upkeep 390 844 test/upkeep.mjs yes
           run_tour forest 390 844 test/forest.mjs yes
+          run_tour gather 390 844 test/gather.mjs yes
 
       - name: 브라우저 시험 로그·화면 보관
         if: always()

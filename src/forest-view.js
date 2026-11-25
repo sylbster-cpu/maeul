@@ -3,7 +3,8 @@
 // 나무 가림은 view.setWatch 가 맡는다(main.js).
 import * as THREE from './three.js';
 import { wobble, squash } from './fx.js';
-import { todaysDiscovery, todaysDiscoverySite, koreaDay, FOREST_PATHS, forestFloorLayout, seededRandom, FOREST_SEED } from './forest.js';
+import { FOREST_PATHS, forestFloorLayout, seededRandom, FOREST_SEED } from './forest.js';
+import { GATHER, SPECIAL_ID, findsForDay, kstSlot } from './gathering.js';
 import { TREES, TREE_RADIUS, FOREST } from './parts.js';
 
 const LEAF_COLORS = [0xe2c35a, 0xd99a3e, 0xb8d36a, 0xf0dc8a]; // 풀밭에서 눈에 띄는 마른 잎 빛 (숲 잎과 같은 초록이면 풀에 묻힌다)
@@ -135,26 +136,66 @@ export function createForestView(parent, { fx = null, calm = false } = {}) {
   board.position.set(0,1.25,0); board.rotation.y=0.2; sign.add(board);
   // 꾸밀 수 있는 마당(0 이상) 밖에 두어 저장된 가구와 겹치지 않는다.
   sign.position.set(-1.5,-0.01,-2.2); group.add(sign);
+  // ---- 주울 거리 (4단계 채집, 2026-11-24 사용자 결정, src/gathering.js) ----
+  // 금빛 고리의 오늘의 발견(find)과 땅에 놓인 보통 주울 거리(items). 자리·종류·크기는 날짜로 정해져 모두에게 같다.
+  // 주우면 사라진다. 크기가 클수록 크게 그린다
   const find = new THREE.Group();
   find.position.set(FOREST.clearingX,0,FOREST.clearingZ);
   group.add(find);
-  let day = '';
-  function refresh(now = new Date()) {
-    const date = koreaDay(now);
-    if (day === date) return;
-    day = date;
-    for (const child of [...find.children]) { find.remove(child); child.geometry?.dispose(); child.material?.dispose(); }
-    const item = todaysDiscovery(now);
-    const site = todaysDiscoverySite(now);
-    find.position.set(site.x, 0, site.z);
-    const colors = {pinecone:0x9b653b,mushroom:0xe5b98a,feather:0xe6e2cf};
-    const shape = item.id === 'feather' ? new THREE.ConeGeometry(0.17,0.7,6) :
-      item.id === 'mushroom' ? new THREE.SphereGeometry(0.34,10,8) : new THREE.ConeGeometry(0.28,0.6,7);
-    const mesh = new THREE.Mesh(shape,new THREE.MeshStandardMaterial({color:colors[item.id],roughness:0.8}));
-    mesh.position.y = 0.85; mesh.castShadow = true; find.add(mesh);
+  const items = new THREE.Group();
+  group.add(items);
+  const COLORS = { pinecone: 0x9b653b, mushroom: 0xe5b98a, feather: 0xe6e2cf };
+  const sizeK = (f) => (f.size - GATHER[f.kind].min) / (GATHER[f.kind].max - GATHER[f.kind].min);
+  const mat = (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
+  function smallItem(f) {
+    const g = new THREE.Group();
+    const part = (geo, color, y) => { const m = new THREE.Mesh(geo, mat(color)); m.position.y = y; m.castShadow = true; g.add(m); return m; };
+    if (f.kind === 'pinecone') part(new THREE.ConeGeometry(0.16, 0.34, 7), COLORS.pinecone, 0.17);
+    else if (f.kind === 'mushroom') {
+      part(new THREE.CylinderGeometry(0.05, 0.065, 0.16, 7), 0xf3e6cc, 0.08);
+      part(new THREE.SphereGeometry(0.15, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), 0xd98c5f, 0.14);
+    } else part(new THREE.ConeGeometry(0.06, 0.44, 5), COLORS.feather, 0.07).rotation.z = Math.PI / 2;
+    g.scale.setScalar(0.85 + 0.75 * sizeK(f)); // 가장 작은 것도 풀 포기보다 크게
+    g.position.set(f.x, 0, f.z);
+    g.rotation.y = (f.size * 7.3) % (Math.PI * 2);
+    g.userData = { id: f.id };
+    return g;
+  }
+  const disposeAll = (obj) => obj.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
+  let day = '', slot = -1; // 지금 그리는 날과 시간대 (gathering-play.js 가 setPicked 로 알린다)
+  let picked = new Set(), pickedDay = '';
+  let specialPicked = false;
+  const anims = []; // 줍는 중인 것 { obj, t }
+  function applyPicked() {
+    const ids = pickedDay === day ? picked : new Set();
+    specialPicked = ids.has(SPECIAL_ID);
+    for (const c of items.children) c.visible = !ids.has(c.userData.id) || anims.some((a) => a.obj === c);
+    find.visible = !specialPicked || !!pop;
+  }
+  // 그 날·시간대의 것으로 다시 놓는다. 오늘의 발견은 하루 내내 같으므로 날이 바뀔 때만 다시 만든다
+  function refresh(forDay, forSlot) {
+    if (day === forDay && slot === forSlot) return;
+    const newDay = day !== forDay;
+    day = forDay; slot = forSlot;
+    for (const child of [...(newDay ? find.children : []), ...items.children]) { child.removeFromParent(); disposeAll(child); }
+    anims.length = 0;
+    const finds = findsForDay(day, slot);
+    for (const f of finds) if (!f.special) items.add(smallItem(f));
+    if (!newDay) { applyPicked(); return; }
+    const special = finds.find((f) => f.special);
+    find.position.set(special.x, 0, special.z);
+    const shape = special.kind === 'feather' ? new THREE.ConeGeometry(0.17,0.7,6) :
+      special.kind === 'mushroom' ? new THREE.SphereGeometry(0.34,10,8) : new THREE.ConeGeometry(0.28,0.6,7);
+    // 받침(holder)이 위치·회전·솟음을 맡고, 그 안의 모양이 크기를 맡는다
+    const holder = new THREE.Group();
+    holder.position.y = 0.85;
+    const mesh = new THREE.Mesh(shape, mat(COLORS[special.kind]));
+    mesh.scale.setScalar(0.9 + 0.3 * sizeK(special)); mesh.castShadow = true; holder.add(mesh);
+    find.add(holder);
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.48,0.59,32),new THREE.MeshBasicMaterial({color:0xf5db83,side:THREE.DoubleSide}));
     ring.rotation.x = -Math.PI/2; ring.position.y = 0.025; find.add(ring);
     pop = null;
+    applyPicked();
   }
 
   // ---- 발견하는 순간 (1-1 같은 순간의 짧은 신호들, 1-4 찌그러짐, 과장 편) ----
@@ -165,13 +206,12 @@ export function createForestView(parent, { fx = null, calm = false } = {}) {
   bubble.visible = false;
   parent.add(bubble);
   let pop = null, bubbleT = 0, angle = 0;
-  const counts = { found: 0, cues: 0 }; // 자동 시험이 읽는다
+  const counts = { found: 0, cues: 0, picks: 0, glints: 0 }; // 자동 시험이 읽는다
+  let glintT = 0;
 
-  refresh();
+  { const at = kstSlot(new Date()); refresh(at.day, at.slot); } // 처음 그림. 곧 gathering-play.js 가 알려 주는 것으로 맞춘다
   let elapsed = 0;
-  function update(dt = 0, who = null, now = new Date()) {
-    // 날짜 검사는 5초마다 한 번만 수행한다.
-    if (elapsed === 0 || Math.floor(elapsed / 5) !== Math.floor((elapsed + dt) / 5)) refresh(now);
+  function update(dt = 0, who = null) {
     if (!Number.isFinite(dt) || dt < 0) return;
     elapsed += dt;
     const object = find.children[0];
@@ -193,10 +233,31 @@ export function createForestView(parent, { fx = null, calm = false } = {}) {
       else squash(object, 1 + wobble(-0.22, t - 0.52, 0.08, 0.09));
       spin = 0.5 + 9 * Math.exp(-t / 0.35);
       halo.scale.setScalar(1 + wobble(0.35, t, 0.12, 0.18));
-      if (t > 1.0) { pop = null; object.position.y = 0.85; object.scale.setScalar(1); halo.scale.setScalar(1); }
+      if (t > 1.0) { pop = null; object.position.y = 0.85; object.scale.setScalar(1); halo.scale.setScalar(1); applyPicked(); } // 주웠으면 사라진다
     } else if (halo) halo.scale.setScalar(1 + 0.08 * Math.sin(elapsed * 2));
     angle += dt * spin;
     if (object) object.rotation.y = angle;
+    // 보통 주울 거리를 주울 때: 0.32초에 걸쳐 캐릭터 가슴 쪽으로 작게 튀어 올라 오므라들며 사라진다
+    for (let i = anims.length - 1; i >= 0; i--) {
+      const a = anims[i];
+      a.t += dt;
+      const k = Math.min(1, a.t / 0.32);
+      const to = who || a.from;
+      a.obj.position.set(a.from.x + (to.x - a.from.x) * k, 0.9 * k + 0.5 * Math.sin(Math.PI * k), a.from.z + (to.z - a.from.z) * k);
+      a.obj.scale.setScalar(a.scale * (1 - 0.85 * k));
+      if (k >= 1) { anims.splice(i, 1); applyPicked(); }
+    }
+    // 아직 남은 주울 거리 하나가 가끔 반짝인다. 찾기를 돕되 많지 않게 (1-10)
+    glintT += dt;
+    if (glintT > 3.2 && fx && !calm) {
+      glintT = 0;
+      const left = items.children.filter((c) => c.visible && !anims.some((a) => a.obj === c));
+      if (left.length) {
+        const c = left[Math.floor(Math.random() * left.length)];
+        counts.glints++;
+        fx.sparkle(c.position.x, 0.35, c.position.z, { count: 1, radius: 0.1, size: 0.42, life: 0.7, parent: group });
+      }
+    }
     if (bubble.visible) {
       bubbleT += dt;
       // 0.08초에 튀어나와 조금 지나쳤다 돌아오고, 1.1초 뒤 0.3초에 걸쳐 옅어진다
@@ -215,9 +276,28 @@ export function createForestView(parent, { fx = null, calm = false } = {}) {
       bubbleT = 0;
       bubble.visible = true;
       if (who) bubble.position.set(who.x, 2.6, who.z);
-      if (calm) return;
+      if (pickedDay !== day) { picked = new Set(); pickedDay = day; }
+      picked.add(SPECIAL_ID);
+      if (calm) { applyPicked(); return; }
       pop = { t: 0 };
       fx?.sparkle(find.position.x, 0.95, find.position.z, { count: 6, radius: 0.55, size: 0.42, life: 0.7, parent: group });
+    },
+    // 보통 주울 거리를 주웠다. 작게 튀어 올라 캐릭터 쪽으로 사라지고 반짝임 셋 (오늘의 발견보다 작게, 1-7)
+    pick(id) {
+      const obj = items.children.find((c) => c.userData.id === id);
+      if (pickedDay !== day) { picked = new Set(); pickedDay = day; }
+      picked.add(id);
+      if (!obj) return;
+      counts.picks++;
+      if (calm) { applyPicked(); return; }
+      anims.push({ obj, t: 0, from: obj.position.clone(), scale: obj.scale.x });
+      fx?.sparkle(obj.position.x, 0.4, obj.position.z, { count: 3, radius: 0.3, size: 0.38, life: 0.6, parent: group });
+    },
+    // 기록에 적힌 그날 주운 자리 (다른 탭에서 주운 것, 새로 열었을 때)
+    setPicked(forDay, forSlot, ids) {
+      refresh(forDay, forSlot);
+      picked = new Set(ids); pickedDay = forDay;
+      applyPicked();
     },
     // 숲 쪽으로 이끄는 잎 몇 장과 작은 반짝임 하나 (forest.js forestCue 가 자리와 방향을 정한다)
     cue(c) {
@@ -231,6 +311,7 @@ export function createForestView(parent, { fx = null, calm = false } = {}) {
       return {
         ...counts, popping: !!pop, bubble: bubble.visible, itemY: find.children[0]?.position.y ?? 0,
         site: { x: find.position.x, z: find.position.z },
+        day, slot, special: find.visible, items: items.children.filter((c) => c.visible).map((c) => c.userData.id),
         decor: { stones: decor.stones.count, tufts: decor.tufts.count, flowers: decor.flowers.count },
       };
     },

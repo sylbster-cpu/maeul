@@ -239,13 +239,15 @@ img { max-width: 100%; }
   #online-notes-list { max-height: 180px; overflow: auto; }
   .online-more { width: 100%; margin-top: 8px; }
   #online-close { width: 100%; margin-top: 10px; }
-  /* 낚시 기록 창. 공유 창의 틀을 같이 쓴다 */
-  #fish-list { list-style: none; margin: 0 0 10px; padding: 0; }
-  #fish-list li { display: grid; grid-template-columns: auto 1fr; gap: 0 12px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--tile-edge); }
-  #fish-list strong { font: 400 18px/1.2 var(--font-display); }
-  #fish-list span { text-align: right; }
-  #fish-list small { grid-column: 1 / -1; color: var(--ink-soft); font-size: 12.5px; }
-  #fish-today { color: var(--ink-soft); font-size: 13.5px; }
+  /* 기록 창(낚시·채집 두 칸). 공유 창의 틀을 같이 쓴다 */
+  .log-tabs { display: flex; gap: 8px; margin: 0 0 6px; }
+  .log-tabs button { flex: 1; min-height: 44px; }
+  #fish-list, #gather-list { list-style: none; margin: 0 0 10px; padding: 0; }
+  #fish-list li, #gather-list li { display: grid; grid-template-columns: auto 1fr; gap: 0 12px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--tile-edge); }
+  #fish-list strong, #gather-list strong { font: 400 18px/1.2 var(--font-display); }
+  #fish-list span, #gather-list span { text-align: right; }
+  #fish-list small, #gather-list small { grid-column: 1 / -1; color: var(--ink-soft); font-size: 12.5px; }
+  #fish-today, #gather-today { color: var(--ink-soft); font-size: 13.5px; }
   #fish-close { width: 100%; min-height: 44px; margin-top: 4px; }
   /* 낚은 순간의 카드. 안내 문구 자리에 겹쳐 뜬다(낚은 동안 안내는 쓸모가 없다). 작은 화면에서도
      물고기를 든 캐릭터를 가리지 않게 작게 둔다. 아래쪽 높이는 띄울 때 쟁반 높이에 맞춘다. 누르는 것은 막지 않는다 */
@@ -357,7 +359,7 @@ img { max-width: 100%; }
           <button type="button" id="mode-build" aria-pressed="false">꾸미기</button>
         </div>
         <div class="extras" id="walk-extras">
-          <button type="button" id="fish-log">낚시 기록</button>
+          <button type="button" id="fish-log">기록</button>
         </div>
         <div class="extras" id="build-extras" hidden>
           <button type="button" id="cancel-carry" hidden>그만두기</button>
@@ -417,10 +419,21 @@ img { max-width: 100%; }
 
   <div class="share-layer" id="fish-layer" hidden>
     <section class="share-panel" role="dialog" aria-modal="true" aria-labelledby="fish-title">
-      <h2 id="fish-title">낚시 기록</h2>
-      <ul id="fish-list"></ul>
-      <p id="fish-summary"></p>
-      <p id="fish-today"></p>
+      <h2 id="fish-title">기록</h2>
+      <div class="log-tabs" role="group" aria-label="기록 종류">
+        <button type="button" id="log-tab-fish" aria-pressed="true">낚시</button>
+        <button type="button" id="log-tab-gather" aria-pressed="false">채집</button>
+      </div>
+      <div id="log-fish">
+        <ul id="fish-list"></ul>
+        <p id="fish-summary"></p>
+        <p id="fish-today"></p>
+      </div>
+      <div id="log-gather" hidden>
+        <ul id="gather-list"></ul>
+        <p id="gather-summary"></p>
+        <p id="gather-today"></p>
+      </div>
       <p>기록은 이 브라우저에만 저장됩니다. 다른 기기나 브라우저와 이어지지 않고, 집 공유 링크에도 들어가지 않습니다.</p>
       <button type="button" id="fish-close">닫기</button>
     </section>

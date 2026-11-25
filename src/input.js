@@ -3,7 +3,6 @@
 import { PARTS, LEVELS, MAX_LEVEL } from './parts.js';
 import { cellKey, clearCommands, layerOf, seatSpots } from './state.js';
 import { sampleCommands } from './sample.js';
-import { todaysDiscoverySite, forestViewingPoint } from './forest.js';
 
 const KEY_HINTS = {
   walkYard: '땅을 누르거나 WASD로 걷습니다. 집을 누르면 안으로 들어갑니다.',
@@ -29,7 +28,7 @@ const TOUCH_HINTS = {
   carry: '옮길 자리를 누릅니다. 돌리기와 그만두기 버튼을 쓸 수 있습니다.',
 };
 
-export function createInput({ canvas, view, store, history, character, ui, audio, haptics = null, travel, fishing = null, readOnly = false }) {
+export function createInput({ canvas, view, store, history, character, ui, audio, haptics = null, travel, fishing = null, gathering = null, readOnly = false }) {
   const s = { mode: 'walk', tool: 'select', rot: 0, drag: null, carry: null, pointer: null, press: null, lastPlaced: null };
   const keys = new Set();
   const coarse = window.matchMedia('(pointer: coarse)').matches;
@@ -287,16 +286,10 @@ export function createInput({ canvas, view, store, history, character, ui, audio
       travel.cancel(); // 드나들려고 걷던 중이었으면 그만둔다
       if (trySit(hit, at)) return;
       if (water) { fishing.start(at.pt); return; }
-      // 발견물을 누르면 그 위에 서지 않고 남쪽의 관찰 지점에서 멈춘다.
+      // 숲의 주울 거리를 누르면 그 위에 서지 않고 카메라 반대쪽 곁으로 걸어간다(가까이 가면 줍는다, gathering-play.js).
       // 일반 바닥을 누르는 이동 방식은 그대로 유지한다.
       let target = at.pt;
-      if (here() === 'yard') {
-        const site = todaysDiscoverySite();
-        if (Math.hypot(at.pt.x - site.x, at.pt.z - site.z) < 0.75) {
-          // 카메라를 돌려도 발견물 뒤쪽에 서도록 현재 화면 방향을 사용한다.
-          target = forestViewingPoint(site, view.basis().forward);
-        }
-      }
+      if (here() === 'yard') target = gathering?.walkTarget(at.pt, view.basis().forward) || at.pt;
       const walking = character.goTo(target.x, target.z);
       if (character.routeBlocked) {
         // 구경하는 사람은 꾸미기를 쓸 수 없으므로 고치는 방법은 집주인에게만 알린다
