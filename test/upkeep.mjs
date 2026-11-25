@@ -5,6 +5,7 @@
 // 3. 360×640 화면에서도 방의 뒤쪽 벽이 위쪽 버튼에 가려지지 않는다
 // 4. Object.hasOwn 과 structuredClone 이 없는 오래된 브라우저에서도 게임이 뜨고, 놓기·되돌리기·저장이 된다
 // 5. 찌가 앞쪽 나무에 가리면 그 나무의 잎을 비친다 (2026-11-23 사용자 휴대폰 화면: "살짝 가리네요")
+// 6. 이 화면이 모르는 부품(더 새로운 판에서 놓은 것)이 든 집을 열면 원문을 남기고 저장하지 않는다 (2026-11-25, PR #42 GPT 검토 1)
 export default async function upkeepTour(page, { out, logs }) {
   const say = (label, ok, extra = '') => logs.push(`${ok ? '통과' : '실패'}  ${label} ${extra}`);
   const g = (fn, arg) => page.evaluate(fn, arg);
@@ -124,4 +125,24 @@ export default async function upkeepTour(page, { out, logs }) {
   await page.reload();
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 30000 }).catch(() => {});
   say('오래된 브라우저에서 저장한 집을 다시 연다', (await count()) === start + 1);
+
+  // 6. 더 새로운 판의 집: 미래의 부품 하나를 끼운 저장을 열면, 옆에 남기고 자동 저장을 멈춘다
+  const future = await g(() => {
+    const data = JSON.parse(localStorage.getItem('house-lab-web:save'));
+    data.state.spaces.yard.objects.zz = { id: 'zz', part: 'future_thing', x: 1, y: 1, rot: 0, by: 'p1' };
+    const text = JSON.stringify(data);
+    localStorage.setItem('house-lab-web:save', text);
+    return text;
+  });
+  await page.reload();
+  await page.waitForFunction(() => window.__ready === true, null, { timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  const lock = await g(() => ({
+    status: document.getElementById('save-status')?.textContent || '', toast: document.getElementById('toast')?.textContent || '',
+    saved: window.__game.saveNow(),
+  }));
+  const stored = await g(() => ({ same: localStorage.getItem('house-lab-web:save'), kept: localStorage.getItem('house-lab-web:save:newer') }));
+  say('새 판의 부품이 든 집을 열면 원문을 남기고 저장하지 않는다', lock.saved === false && lock.status.includes('새 판') && lock.toast.includes('새로 고쳐') && stored.same === future && stored.kept === future,
+    JSON.stringify({ status: lock.status, saved: lock.saved, same: stored.same === future, kept: stored.kept === future }));
 }
+

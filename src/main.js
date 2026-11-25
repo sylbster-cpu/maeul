@@ -269,19 +269,24 @@ async function start(saved = {}) {
     ui.setSaveStatus('conflict');
     ui.toast('다른 탭에서 집이 바뀌었습니다. 이 탭에서는 저장하지 않습니다. 다시 열어 주세요', 'error');
   }
+  // 더 새로운 판에서 저장한 집을 읽었으면 이 화면에서는 저장하지 않는다(save.js createSaver 의 locked, PR #42 GPT 검토 1)
+  const newerLock = () => { clearTimeout(saveTimer); saveTimer = 0; ui.setSaveStatus('newer'); return false; };
   const saveNow = () => {
     if (guest || switchingHouse) return false;
     if (!saver.available) { ui.setSaveStatus('off'); return false; }
+    if (saver.locked) return newerLock();
     if (!saveGuard.isCurrent()) { stopStaleTab(); return false; }
     clearTimeout(saveTimer);
     saveTimer = 0;
     const ok = saver.save(store.state, { place: character.place, pos: { x: character.pos.x, z: character.pos.z } });
     if (ok) saveGuard.refresh();
+    if (!ok && saver.locked) return newerLock();
     ui.setSaveStatus(ok ? 'saved' : 'off');
     return ok;
   };
   function saveSoon() {
     if (guest || switchingHouse || !saver.available) return;
+    if (saver.locked) { newerLock(); return; }
     if (!saveGuard.isCurrent()) { stopStaleTab(); return; }
     ui.setSaveStatus('pending');
     clearTimeout(saveTimer);
@@ -297,10 +302,11 @@ async function start(saved = {}) {
           !saveGuard.isCurrent()) stopStaleTab();
     });
   }
-  ui.setSaveStatus(transferError ? 'conflict' : guest ? 'guest' : (saver.available ? 'saved' : 'off'));
+  ui.setSaveStatus(transferError ? 'conflict' : guest ? 'guest' : saver.locked ? 'newer' : (saver.available ? 'saved' : 'off'));
   if (transferError) ui.toast(transferError, 'error');
   if (shareError) ui.toast(`공유 링크 오류: ${shareError}. 내 집으로 열었습니다`, 'error');
-  if (loaded && !loaded.ok) ui.toast(`${loaded.reason}. 처음 배치로 시작합니다`, 'error');
+  if (saver.locked) ui.toast('이 집은 더 새로운 판의 게임에서 저장되었습니다. 이 화면에서는 저장하지 않으니 새로 고쳐 주세요', 'error');
+  else if (loaded && !loaded.ok) ui.toast(`${loaded.reason}. 처음 배치로 시작합니다`, 'error');
   else if (loaded?.dropped) ui.toast(`저장된 것 가운데 ${loaded.dropped}개는 지금 규칙에 맞지 않아 빼고 불러왔습니다`, 'error');
   else if (fishing.loadProblem) ui.toast(fishing.loadProblem, 'error');
   else if (gathering.loadProblem) ui.toast(gathering.loadProblem, 'error');
