@@ -124,7 +124,8 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, blo
     const why = blocked();
     if (why) { report(why); toast(why, 'error'); return; }
     stateRun++; showState('checking'); task(
-    (service) => service.publish(store.state),
+    // 연결을 기다리는 사이 다른 탭의 새 판이 저장했을 수 있으니, 보내기 직전에 한 번 더 본다(PR #43 GPT 재검토)
+    (service) => { const late = blocked(); if (late) throw new Error(late); return service.publish(store.state); },
     (link) => {
       showState('public', new Date());
       hide();
