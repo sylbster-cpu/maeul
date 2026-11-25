@@ -25,10 +25,14 @@ export function createGathering({ character, view, ui, audio, haptics = null, st
   // 지금 시간대에 놓인 것과 오늘의 발견 가운데 아직 줍지 않은 것
   const left = () => { const done = pickedToday(); return findsForDay(day, slot).filter((f) => !done.includes(f.id) && !pending.has(f.id)); };
   const sync = () => view.forest.setPicked(day, slot, [...pickedToday(), ...pending]);
+  // 기록이나 시간대가 바뀌면 알린다(기록 창이 열린 채 시간대가 바뀌어도 남은 수와 다음 시각을 고치게, PR #41 GPT 재검토 3)
+  const listeners = new Set();
+  const emit = () => { for (const fn of listeners) fn(); };
+  store.subscribe(emit);
   // 날이나 시간대가 바뀌었으면 숲을 새로 놓는다
   function tick() {
     const at = kstSlot(now());
-    if (at.day !== day || at.slot !== slot) { ({ day, slot } = at); sync(); }
+    if (at.day !== day || at.slot !== slot) { ({ day, slot } = at); sync(); emit(); }
   }
   store.subscribe(sync);
   sync();
@@ -92,6 +96,8 @@ export function createGathering({ character, view, ui, audio, haptics = null, st
     loadProblem,
     get day() { return day; },
     get slot() { return slot; },
+    // 기록이 바뀌거나 시간대가 바뀔 때 부른다
+    subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     // 자동 시험이 시간을 옮겨 본다 (시간대가 바뀌면 새로 놓인다)
     setClock(fn) { now = fn || clock; tick(); },
     // 오늘 아직 줍지 않은 것 (자동 시험과 기록 창이 읽는다)

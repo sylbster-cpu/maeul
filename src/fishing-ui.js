@@ -87,7 +87,7 @@ export function createFishingUI({ fishing, gathering = null }) {
   });
   // 창을 연 채 다른 탭에서 낚아도 바로 보이게 한다
   fishing.store.subscribe(() => { if (!layer.hidden) render(); });
-  gathering?.store.subscribe(() => { if (!layer.hidden) renderGather(); });
+  gathering?.subscribe(() => { if (!layer.hidden) renderGather(); }); // 주웠을 때, 그리고 3시간마다 새로 놓일 때
   return { open, close, showTab };
 }
 

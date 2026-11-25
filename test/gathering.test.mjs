@@ -199,3 +199,18 @@ test('1판 기록(미리 보기)은 종류별 기록을 남기고, 그날 주운
   assert.equal(r.state.day, null);
   assert.equal(GATHER_VERSION, 2);
 });
+test('시간대가 바뀌면 알려서, 열린 기록 창이 남은 수와 다음 시각을 고칠 수 있다 (PR #41 GPT 재검토 3)', () => {
+  let t = Date.parse('2026-11-24T03:00:00Z');
+  const seen = [];
+  const g = createGathering({ character: { place: 'house', pos: { x: 0, z: 0 } }, view: { forest: { setPicked: (d, s) => seen.push(s) } }, ui: { toast() {} }, audio: { play() {} }, storage: null, now: () => new Date(t) });
+  let calls = 0;
+  g.subscribe(() => calls++);
+  const slot = g.slot;
+  t += 3 * 3600 * 1000;
+  g.update(5);
+  assert.equal(g.slot, (slot + 1) % SLOTS);
+  assert.equal(calls, 1);
+  assert.equal(seen.at(-1), g.slot, '숲 화면에도 새 시간대를 알린다');
+  g.update(5);
+  assert.equal(calls, 1, '바뀌지 않으면 알리지 않는다');
+});

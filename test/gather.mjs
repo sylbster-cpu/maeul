@@ -129,7 +129,10 @@ export default async function gatherTour(page, { out, logs }) {
   say('주울 거리가 아닌 곳을 누르면 줍지 않는다', still === 6, JSON.stringify({ left: still, at: empty }));
 
   // 7. 3시간 뒤: 새로 놓이고, 앞 시간대에 주운 것과 상관없이 6개, 오늘의 발견은 그대로
-  const before = await g(() => ({ slot: window.__game.gathering.slot, items: window.__game.view.forest.state.items, special: window.__game.view.forest.state.special }));
+  // 기록 창의 채집 칸을 연 채로 시간대를 넘긴다. 남은 수와 다음 시각이 바로 고쳐져야 한다
+  await page.click('#fish-log');
+  await page.click('#log-tab-gather');
+  const before = await g(() => ({ slot: window.__game.gathering.slot, items: window.__game.view.forest.state.items, special: window.__game.view.forest.state.special, text: document.getElementById('gather-today').textContent }));
   await pin(T0 + 3 * 3600 * 1000);
   await page.waitForTimeout(200);
   const later = await g(() => ({ slot: window.__game.gathering.slot, day: window.__game.gathering.day, items: window.__game.view.forest.state.items, left: window.__game.gathering.left.length, special: window.__game.view.forest.state.special, today: document.getElementById('gather-today')?.textContent || '' }));
@@ -137,5 +140,8 @@ export default async function gatherTour(page, { out, logs }) {
   say('3시간 뒤에는 새 6개가 놓이고 오늘의 발견은 그대로다',
     later.slot !== before.slot && later.items.length === 6 && later.items.every((id) => !before.items.includes(id)) && (sameDay ? later.special === before.special : later.special),
     JSON.stringify({ before: before.slot, after: later.slot, items: later.items.length, sameDay, special: later.special }));
+  say('기록 창을 연 채 시간대가 바뀌면 남은 수와 다음 시각이 바로 바뀐다', later.today !== before.text && later.left === 7 && later.today.includes('7개 남았습니다'), // 새 6개 + 아직 줍지 않은 오늘의 발견
+    JSON.stringify({ before: before.text.slice(-28), after: later.today.slice(-28) }));
+  await page.click('#fish-close');
 }
 
