@@ -1,27 +1,35 @@
 // 숲에서 줍기의 흐름 (4단계 채집). 주울 거리에 가까이 가면 줍는다. 주울 거리를 누르면 그 곁으로 걸어간다.
 // 기록은 gathering.js 의 명령으로만 바꾸고, 집 저장·낚시 기록과 다른 열쇠에 둔다.
+// 숲 화면(forest-view.js)이 지금 어느 날·시간대의 것을 그릴지는 여기서 정해 알린다(시계는 여기 하나).
 import {
-  GATHER, SPECIAL_ID, PICK_RADIUS, SPECIAL_RADIUS, findsForDay, pickedOn, createGatherStore, createGatherSaver, GATHER_KEY,
+  GATHER, SPECIAL_ID, PICK_RADIUS, SPECIAL_RADIUS, findsForDay, pickedOn, kstSlot, createGatherStore, createGatherSaver, GATHER_KEY,
 } from './gathering.js';
-import { koreaDay, forestViewingPoint, FOREST_DISCOVERIES } from './forest.js';
+import { forestViewingPoint, FOREST_DISCOVERIES } from './forest.js';
 
 const TAP_RADIUS = 0.75; // 주울 거리를 이만큼 가까이 누르면 그것을 누른 것으로 본다
 const STAND = 0.5; // 보통 주울 거리를 눌렀을 때 그 뒤로 이만큼 떨어져 선다(걸어가는 도중 PICK_RADIUS 안에 들면 줍는다)
 
-export function createGathering({ character, view, ui, audio, haptics = null, storage, now = () => new Date() }) {
+export function createGathering({ character, view, ui, audio, haptics = null, storage, now: clock = () => new Date() }) {
+  let now = clock;
   const saver = createGatherSaver(storage);
   const first = saver.load();
   const store = createGatherStore(first?.ok ? first.state : undefined);
   const loadProblem = first?.newer ? '더 새로운 판에서 저장한 채집 기록이 있어, 이 화면에서는 채집 기록을 저장하지 않습니다. 새로 고쳐 주세요'
     : first && !first.ok ? `${first.reason}. 새 기록으로 시작합니다`
     : first?.dropped ? `채집 기록 가운데 ${first.dropped}개는 맞지 않아 빼고 불러왔습니다` : '';
-  let day = koreaDay(now());
+  let { day, slot } = kstSlot(now());
   let checkT = 0;
   const pending = new Set(); // 저장하는 중인 자리 (같은 자리를 두 번 줍지 않게)
 
   const pickedToday = () => pickedOn(store.state, day);
-  const left = () => { const done = pickedToday(); return findsForDay(day).filter((f) => !done.includes(f.id) && !pending.has(f.id)); };
-  const sync = () => view.forest.setPicked(day, [...pickedToday(), ...pending]);
+  // 지금 시간대에 놓인 것과 오늘의 발견 가운데 아직 줍지 않은 것
+  const left = () => { const done = pickedToday(); return findsForDay(day, slot).filter((f) => !done.includes(f.id) && !pending.has(f.id)); };
+  const sync = () => view.forest.setPicked(day, slot, [...pickedToday(), ...pending]);
+  // 날이나 시간대가 바뀌었으면 숲을 새로 놓는다
+  function tick() {
+    const at = kstSlot(now());
+    if (at.day !== day || at.slot !== slot) { ({ day, slot } = at); sync(); }
+  }
   store.subscribe(sync);
   sync();
 
@@ -83,6 +91,9 @@ export function createGathering({ character, view, ui, audio, haptics = null, st
     store,
     loadProblem,
     get day() { return day; },
+    get slot() { return slot; },
+    // 자동 시험이 시간을 옮겨 본다 (시간대가 바뀌면 새로 놓인다)
+    setClock(fn) { now = fn || clock; tick(); },
     // 오늘 아직 줍지 않은 것 (자동 시험과 기록 창이 읽는다)
     get left() { return left(); },
     pickedToday: (id) => pickedToday().includes(id) || pending.has(id),
@@ -96,11 +107,7 @@ export function createGathering({ character, view, ui, audio, haptics = null, st
     },
     update(dt) {
       checkT += dt;
-      if (checkT >= 5) {
-        checkT = 0;
-        const d = koreaDay(now());
-        if (d !== day) { day = d; sync(); }
-      }
+      if (checkT >= 5) { checkT = 0; tick(); }
       if (character.place !== 'yard') return;
       const p = character.pos;
       for (const f of left()) {

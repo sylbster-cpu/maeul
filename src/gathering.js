@@ -1,6 +1,7 @@
 // 숲에서 줍기 (4단계 채집 실험, 2026-11-24 사용자 결정. 질문: 주운 것을 집에 두고 싶어 하는가).
-// 날마다(한국 날짜) 숲의 12곳 가운데 6곳에 주울 거리가 놓이고, 금빛 고리의 "오늘의 발견"도 주울 수 있다.
-// 놓이는 자리·종류·크기는 날짜만으로 정하므로 모두에게 같다(docs/GAME_PRINCIPLES.md 1-11). 하루에 주울 수는 제한하지 않는다.
+// 3시간마다(한국 시각 0·3·6…21시) 숲의 12곳 가운데 6곳에 주울 거리가 새로 놓이고(2026-11-25 사용자 결정 "같은 날 다시 놓이게"),
+// 금빛 고리의 "오늘의 발견"은 하루에 하나 주울 수 있다. 놓이는 자리·종류·크기는 날짜와 시간대만으로 정하므로
+// 모두에게 같다(docs/GAME_PRINCIPLES.md 1-11). 하루에 주울 수는 제한하지 않는다.
 // 기록을 바꾸는 것은 모두 명령을 거친다: validate → apply, 그리고 되돌리는 명령(inverseOf) (AGENTS.md 규칙 4).
 // 기록은 집 저장·공유 링크·Firebase 와 섞지 않고 따로 둔다. 집에 놓기는 이번에 넣지 않는다.
 // three.js 를 부르지 않는다.
@@ -13,7 +14,10 @@ export const GATHER = Object.freeze({
   feather: Object.freeze({ label: '새 깃털', min: 6, max: 24, unit: '개' }),
 });
 export const GATHER_ORDER = FOREST_DISCOVERIES.map((d) => d.id);
-export const DAILY_FINDS = 6;
+export const DAILY_FINDS = 6; // 한 시간대에 놓이는 보통 주울 거리 수
+// 다시 놓이는 간격(시간). 하루를 이만큼씩 나눈 시간대마다 새로 놓인다. 바꾸면 이 값 하나만 바꾼다
+export const SLOT_HOURS = 3;
+export const SLOTS = 24 / SLOT_HOURS;
 export const SPECIAL_ID = 'special';
 const SPECIAL_FROM = 0.85; // 보통 것은 크기 범위의 이만큼까지, 오늘의 발견은 그 위
 // 이만큼 가까이 가면 줍는다. 오늘의 발견은 지금까지처럼 조금 더 멀리서(숲 연출의 발견하는 순간)
@@ -27,12 +31,38 @@ export const validDay = (day) => typeof day === 'string' && DAY.test(day) && Num
 const dayNumber = (day) => Math.round(Date.parse(`${day}T00:00:00Z`) / 86400000);
 const round1 = (v) => Math.round(v * 10) / 10;
 
-// 그날 숲에 놓이는 것들. [{ id, x, z, kind, size, special }]. 같은 날이면 늘 같은 답이다
-const cache = new Map();
-export function findsForDay(day) {
+// 한국 시각으로 몇째 날, 몇째 시간대인가. 한국은 서머타임이 없어 9시간을 더하면 된다
+export function kstSlot(date = new Date()) {
+  const t = new Date(date.getTime() + 9 * 3600 * 1000);
+  return { day: t.toISOString().slice(0, 10), slot: Math.floor(t.getUTCHours() / SLOT_HOURS) };
+}
+// 다음 시간대가 시작하는 한국 시각(시). 마지막 시간대 다음은 0(자정)
+export const nextSlotHour = (slot) => ((slot + 1) * SLOT_HOURS) % 24;
+const validSlot = (slot) => Number.isInteger(slot) && slot >= 0 && slot < SLOTS;
+
+// 오늘의 발견: 금빛 고리 자리. 하루 내내 같고, 언제나 그날 같은 종류의 보통 것보다 크다(크기 범위의 위쪽 15%)
+const specials = new Map();
+export function specialForDay(day) {
   if (!validDay(day)) throw new TypeError('YYYY-MM-DD 날짜가 필요합니다');
-  if (cache.has(day)) return cache.get(day);
+  if (specials.has(day)) return specials.get(day);
   const rand = seededRandom((dayNumber(day) * 2654435761 + 0x5eed) >>> 0);
+  const kind = discoveryForDay(day).id;
+  const { min, max } = GATHER[kind];
+  const site = discoverySiteForDay(day);
+  const out = Object.freeze({ id: SPECIAL_ID, x: site.x, z: site.z, kind, size: round1(min + (max - min) * (SPECIAL_FROM + 0.01 + (0.99 - SPECIAL_FROM) * rand())), special: true });
+  specials.set(day, out);
+  return out;
+}
+
+// 그 날 그 시간대에 숲에 놓이는 것들. [{ id, x, z, kind, size, special }]. 보통 것 6개와 오늘의 발견.
+// 보통 것의 id 는 "시간대:s자리"라서 시간대마다 다르다. 같은 날·시간대면 늘 같은 답이다
+const cache = new Map();
+export function findsForDay(day, slot) {
+  if (!validDay(day)) throw new TypeError('YYYY-MM-DD 날짜가 필요합니다');
+  if (!validSlot(slot)) throw new TypeError('시간대가 맞지 않습니다');
+  const key = `${day}#${slot}`;
+  if (cache.has(key)) return cache.get(key);
+  const rand = seededRandom(((dayNumber(day) * SLOTS + slot) * 2654435761 + 0x9a7e) >>> 0);
   const order = GATHER_SPOTS.map((_, i) => i);
   for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
   const finds = order.slice(0, DAILY_FINDS).sort((a, b) => a - b).map((i) => {
@@ -40,23 +70,27 @@ export function findsForDay(day) {
     const { min, max } = GATHER[kind];
     // 작은 것이 흔하고 큰 것은 드물다. 보통 것은 크기 범위의 85%까지만 나온다(그 위는 오늘의 발견)
     const size = round1(min + (max - min) * SPECIAL_FROM * rand() ** 1.6);
-    return Object.freeze({ id: `s${i}`, ...GATHER_SPOTS[i], kind, size, special: false });
+    return Object.freeze({ id: `${slot}:s${i}`, ...GATHER_SPOTS[i], kind, size, special: false });
   });
-  // 오늘의 발견: 금빛 고리 자리. 언제나 그날 보통 것보다 크다(크기 범위의 위쪽 15%)
-  const kind = discoveryForDay(day).id;
-  const { min, max } = GATHER[kind];
-  const site = discoverySiteForDay(day);
-  finds.push(Object.freeze({ id: SPECIAL_ID, x: site.x, z: site.z, kind, size: round1(min + (max - min) * (SPECIAL_FROM + 0.01 + (0.99 - SPECIAL_FROM) * rand())), special: true }));
+  finds.push(specialForDay(day));
   const out = Object.freeze(finds);
-  cache.set(day, out);
+  cache.set(key, out);
   return out;
 }
-export const findById = (day, id) => (validDay(day) ? findsForDay(day).find((f) => f.id === id) || null : null);
+// id 로 그날의 주울 거리를 찾는다. 오늘의 발견이거나 "시간대:s자리" 꼴이어야 한다
+export function findById(day, id) {
+  if (!validDay(day) || typeof id !== 'string') return null;
+  if (id === SPECIAL_ID) return specialForDay(day);
+  const m = /^(\d+):s\d+$/.exec(id);
+  const slot = m ? Number(m[1]) : -1;
+  return validSlot(slot) ? findsForDay(day, slot).find((f) => f.id === id) || null : null;
+}
 
 // ---- 채집 기록 ----
-// state = { version, log: { 종류: { best, first, count } }, day: 주운 자리를 적은 날 | null, picked: [그날 주운 자리] }
-// picked 는 날이 바뀌면 비운 것으로 본다(pickedOn)
-export const GATHER_VERSION = 1;
+// state = { version, log: { 종류: { best, first, count } }, day: 주운 자리를 적은 날 | null, picked: [그날 주운 것의 id] }
+// picked 는 날이 바뀌면 비운 것으로 본다(pickedOn). 시간대가 바뀌면 id 가 달라 새로 놓인 것은 주운 적이 없는 셈이다
+// 2판(2026-11-25): 시간대마다 다시 놓이면서 보통 것의 id 가 "s자리"에서 "시간대:s자리"로 바뀌었다
+export const GATHER_VERSION = 2;
 export function createGatherState() { return { version: GATHER_VERSION, log: {}, day: null, picked: [] }; }
 export const pickedOn = (state, day) => (state.day === day ? state.picked : []);
 
@@ -154,7 +188,10 @@ export function createGatherStore(initial = createGatherState()) {
 // ---- 저장 ----
 export const GATHER_KEY = 'maeul:gathering';
 // 형식을 바꾸면 GATHER_VERSION 을 올리고 여기에 변환을 더한다. MIGRATIONS[1] 은 1판을 2판으로 바꾼다
-const MIGRATIONS = {};
+const MIGRATIONS = {
+  // 1판은 미리 보기(Claude 게시 주소 판 35·36)에만 있었다. 종류별 기록은 그대로 두고, 그날 주운 자리는 id 꼴이 달라 비운다
+  1: (data) => ({ ...data, version: 2, day: null, picked: [] }),
+};
 
 export function serializeGather(state) {
   return JSON.stringify({ format: 'gather-log', version: GATHER_VERSION, log: state.log, day: state.day, picked: state.picked });

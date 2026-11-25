@@ -319,3 +319,33 @@ test('저장소: 더 새로운 판의 기록은 망가진 것으로 보지 않�
   assert.equal(saver.save(store.state), false, '1판 기록으로 덮어쓰지 않는다');
   assert.equal(storage.getItem(FISHING_KEY), newer, '새 판의 기록이 그대로 남는다');
 });
+
+// ---- 2026-11-25 사용자 결정: 저장 실패 뒤 다음 낚시가 앞의 기록을 지우지 않게 (PR #41 GPT 검토 2와 같은 문제) ----
+test('낚시 기록을 저장하지 못하면 낚기 전으로 되돌려, 다음 낚시가 앞의 것을 소리 없이 지우지 않는다', async () => {
+  const { createFishing } = await import('../src/fishing-play.js');
+  const noop = () => {};
+  const m = new Map();
+  let fail = 1;
+  const storage = { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { if (k === FISHING_KEY && fail > 0) { fail--; throw new Error('가득 참'); } m.set(k, String(v)); } };
+  const toasts = [];
+  const character = { place: 'yard', pos: { x: POND.x, z: POND.z + POND.rz + 1 }, walking: false, goTo(x, z) { this.pos = { x, z }; return true; }, face: noop };
+  const pondView = new Proxy({ fx: {} }, { get: (t, k) => (k in t ? t[k] : noop) });
+  const f = createFishing({ character, pondView, ui: { toast: (t, k) => toasts.push(k || 'info'), setHint: noop }, audio: { play: noop, ambient: noop, surf: noop }, storage, random: () => 0.3 });
+  async function catchOne() {
+    f.start({ x: POND.x, z: POND.z });
+    for (let i = 0; i < 4000 && f.phase !== 'bite'; i++) f.update(0.02);
+    assert.equal(f.phase, 'bite');
+    f.pull();
+    for (let i = 0; i < 400 && f.phase !== 'idle'; i++) { f.setHolding(true); f.update(0.02); }
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  await catchOne();
+  assert.deepEqual(f.store.state.log, {}, '저장하지 못한 물고기는 기록에 남지 않는다');
+  assert.ok(toasts.includes('error'));
+  await catchOne();
+  const saved = JSON.parse(m.get(FISHING_KEY));
+  const fish = Object.keys(saved.log);
+  assert.equal(fish.length, 1);
+  assert.equal(saved.log[fish[0]].count, 1);
+  assert.deepEqual(f.store.state.log, saved.log, '메모리와 저장소가 같다');
+});

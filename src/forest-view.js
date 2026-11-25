@@ -3,8 +3,8 @@
 // 나무 가림은 view.setWatch 가 맡는다(main.js).
 import * as THREE from './three.js';
 import { wobble, squash } from './fx.js';
-import { koreaDay, FOREST_PATHS, forestFloorLayout, seededRandom, FOREST_SEED } from './forest.js';
-import { GATHER, SPECIAL_ID, findsForDay } from './gathering.js';
+import { FOREST_PATHS, forestFloorLayout, seededRandom, FOREST_SEED } from './forest.js';
+import { GATHER, SPECIAL_ID, findsForDay, kstSlot } from './gathering.js';
 import { TREES, TREE_RADIUS, FOREST } from './parts.js';
 
 const LEAF_COLORS = [0xe2c35a, 0xd99a3e, 0xb8d36a, 0xf0dc8a]; // 풀밭에서 눈에 띄는 마른 잎 빛 (숲 잎과 같은 초록이면 풀에 묻힌다)
@@ -162,7 +162,7 @@ export function createForestView(parent, { fx = null, calm = false } = {}) {
     return g;
   }
   const disposeAll = (obj) => obj.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
-  let day = '';
+  let day = '', slot = -1; // 지금 그리는 날과 시간대 (gathering-play.js 가 setPicked 로 알린다)
   let picked = new Set(), pickedDay = '';
   let specialPicked = false;
   const anims = []; // 줍는 중인 것 { obj, t }
@@ -172,12 +172,16 @@ export function createForestView(parent, { fx = null, calm = false } = {}) {
     for (const c of items.children) c.visible = !ids.has(c.userData.id) || anims.some((a) => a.obj === c);
     find.visible = !specialPicked || !!pop;
   }
-  function refresh(now = new Date()) {
-    const date = koreaDay(now);
-    if (day === date) return;
-    day = date;
-    for (const child of [...find.children, ...items.children]) { child.removeFromParent(); disposeAll(child); }
-    const finds = findsForDay(day);
+  // 그 날·시간대의 것으로 다시 놓는다. 오늘의 발견은 하루 내내 같으므로 날이 바뀔 때만 다시 만든다
+  function refresh(forDay, forSlot) {
+    if (day === forDay && slot === forSlot) return;
+    const newDay = day !== forDay;
+    day = forDay; slot = forSlot;
+    for (const child of [...(newDay ? find.children : []), ...items.children]) { child.removeFromParent(); disposeAll(child); }
+    anims.length = 0;
+    const finds = findsForDay(day, slot);
+    for (const f of finds) if (!f.special) items.add(smallItem(f));
+    if (!newDay) { applyPicked(); return; }
     const special = finds.find((f) => f.special);
     find.position.set(special.x, 0, special.z);
     const shape = special.kind === 'feather' ? new THREE.ConeGeometry(0.17,0.7,6) :
@@ -190,9 +194,7 @@ export function createForestView(parent, { fx = null, calm = false } = {}) {
     find.add(holder);
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.48,0.59,32),new THREE.MeshBasicMaterial({color:0xf5db83,side:THREE.DoubleSide}));
     ring.rotation.x = -Math.PI/2; ring.position.y = 0.025; find.add(ring);
-    for (const f of finds) if (!f.special) items.add(smallItem(f));
     pop = null;
-    anims.length = 0;
     applyPicked();
   }
 
@@ -207,11 +209,9 @@ export function createForestView(parent, { fx = null, calm = false } = {}) {
   const counts = { found: 0, cues: 0, picks: 0, glints: 0 }; // 자동 시험이 읽는다
   let glintT = 0;
 
-  refresh();
+  { const at = kstSlot(new Date()); refresh(at.day, at.slot); } // 처음 그림. 곧 gathering-play.js 가 알려 주는 것으로 맞춘다
   let elapsed = 0;
-  function update(dt = 0, who = null, now = new Date()) {
-    // 날짜 검사는 5초마다 한 번만 수행한다.
-    if (elapsed === 0 || Math.floor(elapsed / 5) !== Math.floor((elapsed + dt) / 5)) refresh(now);
+  function update(dt = 0, who = null) {
     if (!Number.isFinite(dt) || dt < 0) return;
     elapsed += dt;
     const object = find.children[0];
@@ -294,8 +294,8 @@ export function createForestView(parent, { fx = null, calm = false } = {}) {
       fx?.sparkle(obj.position.x, 0.4, obj.position.z, { count: 3, radius: 0.3, size: 0.38, life: 0.6, parent: group });
     },
     // 기록에 적힌 그날 주운 자리 (다른 탭에서 주운 것, 새로 열었을 때)
-    setPicked(forDay, ids) {
-      refresh();
+    setPicked(forDay, forSlot, ids) {
+      refresh(forDay, forSlot);
       picked = new Set(ids); pickedDay = forDay;
       applyPicked();
     },
@@ -311,7 +311,7 @@ export function createForestView(parent, { fx = null, calm = false } = {}) {
       return {
         ...counts, popping: !!pop, bubble: bubble.visible, itemY: find.children[0]?.position.y ?? 0,
         site: { x: find.position.x, z: find.position.z },
-        day, special: find.visible, items: items.children.filter((c) => c.visible).map((c) => c.userData.id),
+        day, slot, special: find.visible, items: items.children.filter((c) => c.visible).map((c) => c.userData.id),
         decor: { stones: decor.stones.count, tufts: decor.tufts.count, flowers: decor.flowers.count },
       };
     },

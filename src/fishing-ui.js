@@ -1,7 +1,7 @@
 // 기록 창(낚시·채집 두 칸, 2026-11-24 사용자 결정)과 낚은 순간의 카드.
 // 기록 창은 잡아 보거나 주워 본 것만 보여 주고, 아직 못 본 것은 수만 알린다.
 import { FISH, FISH_ORDER, WATERS, WATER_ORDER, fishIn } from './fishing.js';
-import { GATHER, GATHER_ORDER } from './gathering.js';
+import { GATHER, GATHER_ORDER, SLOT_HOURS, nextSlotHour } from './gathering.js';
 
 const dayText = (day) => { const [, m, d] = day.split('-').map(Number); return `${m}월 ${d}일`; };
 
@@ -59,10 +59,12 @@ export function createFishingUI({ fishing, gathering = null }) {
       ? '아직 주운 것이 없습니다. 집 왼편 숲길로 가서 땅에 놓인 것을 눌러 보세요.'
       : missing ? `아직 주워 보지 못한 것이 ${missing}종 더 있습니다.` : '숲의 세 가지를 모두 주워 보았습니다.';
     const left = gathering.left;
+    const h = nextSlotHour(gathering.slot);
+    const next = `${SLOT_HOURS}시간마다 새로 놓이고, 다음은 ${h === 0 ? '자정' : `${h}시`}입니다(한국 시각).`;
     const special = left.some((f) => f.special);
     $('gather-today').textContent = left.length
-      ? `오늘 숲에 주울 것이 ${left.length}개 남았습니다${special ? '. 금빛 고리 안의 것은 오늘의 발견으로, 같은 종류 가운데 그날 가장 큽니다' : ''}. 한국 날짜로 날마다 새로 놓입니다.`
-      : '오늘 숲의 것은 모두 주웠습니다. 한국 날짜로 내일 새로 놓입니다.';
+      ? `지금 숲에 주울 것이 ${left.length}개 남았습니다${special ? '. 금빛 고리 안의 것은 오늘의 발견으로, 같은 종류 가운데 그날 가장 큽니다' : ''}. ${next}`
+      : `지금 숲의 것은 모두 주웠습니다. ${next}`;
   }
   let tab = 'fish';
   function showTab(next) {

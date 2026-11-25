@@ -6,6 +6,7 @@
 // 4. 기록 창: 처음엔 낚시 칸, 채집 칸으로 바꾸면 주운 것과 오늘 남은 수가 보인다
 // 5. 새로 열어도 주운 것은 기록에 남고 숲에서 사라진 채다
 // 6. 주울 거리가 아닌 곳을 누르면 아무것도 줍지 않는다
+// 7. 3시간 뒤(다음 시간대)에는 새 6개가 놓이고, 오늘의 발견은 그대로다 (2026-11-25 사용자 결정 "같은 날 다시 놓이게")
 export default async function gatherTour(page, { out, logs }) {
   const say = (label, ok, extra = '') => logs.push(`${ok ? '통과' : '실패'}  ${label} ${extra}`);
   const g = (fn, arg) => page.evaluate(fn, arg);
@@ -27,6 +28,10 @@ export default async function gatherTour(page, { out, logs }) {
     await tap(p.x, p.y);
   };
   await page.waitForTimeout(300);
+  // 시험 도중 시간대가 바뀌지 않게 시각을 붙잡는다. 새로 연 뒤에도 다시 붙잡는다
+  const T0 = await g(() => Date.now());
+  const pin = (t) => g((t) => window.__game.gathering.setClock(() => new Date(t)), t);
+  await pin(T0);
 
   // 1. 오늘 숲의 주울 거리
   const today = await g(() => ({ left: window.__game.gathering.left.map((f) => ({ ...f })), forest: window.__game.view.forest.state }));
@@ -77,7 +82,7 @@ export default async function gatherTour(page, { out, logs }) {
   // 3. 저장
   const saved = await g(() => ({ text: localStorage.getItem('maeul:gathering'), house: localStorage.getItem('house-lab-web:save'), locks: window.__locks || [] }));
   const data = JSON.parse(saved.text || '{}');
-  say('채집 기록은 웹 잠금을 거쳐 따로 된 열쇠에 1판으로 저장된다', lockable && saved.locks.includes('maeul:gathering') && data.format === 'gather-log' && data.version === 1 && data.picked?.includes(f.id),
+  say('채집 기록은 웹 잠금을 거쳐 따로 된 열쇠에 2판으로 저장된다', lockable && saved.locks.includes('maeul:gathering') && data.format === 'gather-log' && data.version === 2 && data.picked?.includes(f.id),
     JSON.stringify({ lockable, locks: saved.locks, format: data.format, version: data.version }));
   say('줍기는 집 저장을 바꾸지 않는다', saved.house === houseBefore, '');
 
@@ -105,6 +110,7 @@ export default async function gatherTour(page, { out, logs }) {
   await page.waitForTimeout(200);
   await page.reload();
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 30000 });
+  await pin(T0);
   await page.waitForTimeout(300);
   const reloaded = await g((id) => ({ items: window.__game.view.forest.state.items, left: window.__game.gathering.left.length, count: Object.values(window.__game.gathering.store.state.log).reduce((n, e) => n + e.count, 0) }), f.id);
   say('새로 열어도 주운 것은 기록에 남고 숲에서 사라진 채다', !reloaded.items.includes(f.id) && reloaded.items.length === 5 && reloaded.left === 6 && reloaded.count === 1, JSON.stringify(reloaded));
@@ -121,4 +127,15 @@ export default async function gatherTour(page, { out, logs }) {
   await page.waitForFunction(() => !window.__game.character.walking, null, { timeout: 20000 }).catch(() => {});
   const still = await g(() => window.__game.gathering.left.length);
   say('주울 거리가 아닌 곳을 누르면 줍지 않는다', still === 6, JSON.stringify({ left: still, at: empty }));
+
+  // 7. 3시간 뒤: 새로 놓이고, 앞 시간대에 주운 것과 상관없이 6개, 오늘의 발견은 그대로
+  const before = await g(() => ({ slot: window.__game.gathering.slot, items: window.__game.view.forest.state.items, special: window.__game.view.forest.state.special }));
+  await pin(T0 + 3 * 3600 * 1000);
+  await page.waitForTimeout(200);
+  const later = await g(() => ({ slot: window.__game.gathering.slot, day: window.__game.gathering.day, items: window.__game.view.forest.state.items, left: window.__game.gathering.left.length, special: window.__game.view.forest.state.special, today: document.getElementById('gather-today')?.textContent || '' }));
+  const sameDay = later.day === today.forest.day;
+  say('3시간 뒤에는 새 6개가 놓이고 오늘의 발견은 그대로다',
+    later.slot !== before.slot && later.items.length === 6 && later.items.every((id) => !before.items.includes(id)) && (sameDay ? later.special === before.special : later.special),
+    JSON.stringify({ before: before.slot, after: later.slot, items: later.items.length, sameDay, special: later.special }));
 }
+
