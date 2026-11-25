@@ -13,7 +13,7 @@ import { createHistory } from './history.js';
 import { createUI } from './ui.js';
 import { createAudio } from './audio.js';
 import { createHaptics } from './haptics.js';
-import { createSaver, parse, serialize } from './save.js';
+import { createSaver, parse, serialize, isNewerHouse } from './save.js';
 import { importSharedHouse, restorePreviousHouse, hasPreviousHouse,
   recoverInterruptedHouseTransfer, createHouseSaveGuard, HOUSE_STORAGE_KEYS } from './house-transfer.js';
 import { SAVE_KEY } from './save.js';
@@ -77,6 +77,11 @@ async function start(saved = {}) {
   catch (error) { transferError = error.message; }
   const saveGuard = createHouseSaveGuard(storage);
   const saver = createSaver(storage);
+  // 더 새로운 판에서 저장한 집이면 이 화면은 그 집의 일부만 안다. 저장뿐 아니라 온라인 게시·공유 링크·집 가져오기도 하지 않는다.
+  // 빠진 배치를 밖으로 내보내거나, 가져오기로 원문을 잃지 않게 하려는 것이다(PR #43 GPT 검토). 맞바꾸기는 원문을 그대로 옮기므로 막지 않는다
+  // '집'으로 시작해야 온라인 창이 이 글을 그대로 보인다(online-data.js onlineErrorText)
+  const NEWER_HOUSE = '집이 더 새로운 판의 게임에서 저장되어 있습니다. 새로 고친 뒤 다시 해 주세요';
+  const newerHouse = () => { if (saver.locked) return true; try { return isNewerHouse(storage?.getItem(SAVE_KEY)); } catch { return false; } };
   const handed = guest ? null : (saved.state?.version === 2 ? saved : null);
   const loaded = guest ? null : (handed ? null : saver.load());
   const kept = sharedState || handed?.state || (loaded?.ok ? loaded.state : null);
@@ -143,6 +148,18 @@ async function start(saved = {}) {
     thumbs: view.thumbnails(Object.keys(PARTS)),
     on: {
       share: async () => {
+        if (!guest && newerHouse()) {
+          ui.toast(NEWER_HOUSE, 'error');
+          // 공유 주소는 만들지 않는다. 맞바꾸기는 원문을 글자 그대로 옮기므로, 보관된 집이 있으면 그 창은 연다(PR #43 GPT 재검토)
+          if (hasPreviousHouse(storage)) {
+            ui.openShare('', {
+              title: '보관된 집과 맞바꾸기',
+              description: '이 집은 더 새로운 판의 게임에서 저장되어 공유 주소를 만들지 않습니다. 새로 고친 뒤 다시 해 주세요. 보관된 다른 집과 맞바꾸기는 할 수 있습니다.',
+              footnote: '맞바꿔도 두 집의 저장 내용은 그대로 옮겨집니다. Firebase 온라인 집과 방명록은 바뀌지 않습니다.',
+            });
+          }
+          return;
+        }
         try { ui.openShare(await makeShareLink(store.state, PUBLIC_SHARE_URL)); }
         catch (error) {
           // 공유 링크가 너무 길어도 이미 보관된 이전 집으로 돌아갈 길은 막지 않는다.
@@ -159,6 +176,7 @@ async function start(saved = {}) {
       // 서버 없는 집 공유 링크를 열었을 때만, 확인을 받은 뒤 현재 브라우저의 집을 복사한다.
       importHouse: () => {
         if (switchingHouse || !canImport || !sharedState) return;
+        if (newerHouse()) { ui.toast(NEWER_HOUSE, 'error'); return; } // 지금 내 집이 새 판의 집이면 가져오기로 잃을 수 있다
         // 보관 칸은 하나다. 이미 보관된 집이 있으면 그 집은 두고 지금 집이 바뀐다는 것을 미리 알린다
         const replaceCurrent = hasPreviousHouse(storage);
         const question = replaceCurrent
@@ -224,6 +242,7 @@ async function start(saved = {}) {
   // 온라인 기능은 설정이 없으면 버튼을 숨긴다. 로컬 집/오프라인 링크는 항상 독립적으로 작동한다.
   createOnlineUI({
     store, visitorUid: onlineGuestOwner, readOnly: guest,
+    blocked: () => (!guest && newerHouse() ? NEWER_HOUSE : null), // 새 판의 집이면 빠진 배치로 온라인 집을 덮지 않는다
     openShare: (link, options) => ui.openShare(link, options),
     toast: (message, kind) => ui.toast(message, kind),
   });
@@ -262,19 +281,24 @@ async function start(saved = {}) {
     ui.setSaveStatus('conflict');
     ui.toast('다른 탭에서 집이 바뀌었습니다. 이 탭에서는 저장하지 않습니다. 다시 열어 주세요', 'error');
   }
+  // 더 새로운 판에서 저장한 집을 읽었으면 이 화면에서는 저장하지 않는다(save.js createSaver 의 locked, PR #42 GPT 검토 1)
+  const newerLock = () => { clearTimeout(saveTimer); saveTimer = 0; ui.setSaveStatus('newer'); return false; };
   const saveNow = () => {
     if (guest || switchingHouse) return false;
     if (!saver.available) { ui.setSaveStatus('off'); return false; }
+    if (saver.locked) return newerLock();
     if (!saveGuard.isCurrent()) { stopStaleTab(); return false; }
     clearTimeout(saveTimer);
     saveTimer = 0;
     const ok = saver.save(store.state, { place: character.place, pos: { x: character.pos.x, z: character.pos.z } });
     if (ok) saveGuard.refresh();
+    if (!ok && saver.locked) return newerLock();
     ui.setSaveStatus(ok ? 'saved' : 'off');
     return ok;
   };
   function saveSoon() {
     if (guest || switchingHouse || !saver.available) return;
+    if (saver.locked) { newerLock(); return; }
     if (!saveGuard.isCurrent()) { stopStaleTab(); return; }
     ui.setSaveStatus('pending');
     clearTimeout(saveTimer);
@@ -290,10 +314,11 @@ async function start(saved = {}) {
           !saveGuard.isCurrent()) stopStaleTab();
     });
   }
-  ui.setSaveStatus(transferError ? 'conflict' : guest ? 'guest' : (saver.available ? 'saved' : 'off'));
+  ui.setSaveStatus(transferError ? 'conflict' : guest ? 'guest' : saver.locked ? 'newer' : (saver.available ? 'saved' : 'off'));
   if (transferError) ui.toast(transferError, 'error');
   if (shareError) ui.toast(`공유 링크 오류: ${shareError}. 내 집으로 열었습니다`, 'error');
-  if (loaded && !loaded.ok) ui.toast(`${loaded.reason}. 처음 배치로 시작합니다`, 'error');
+  if (saver.locked) ui.toast('이 집은 더 새로운 판의 게임에서 저장되었습니다. 이 화면에서는 저장하지 않으니 새로 고쳐 주세요', 'error');
+  else if (loaded && !loaded.ok) ui.toast(`${loaded.reason}. 처음 배치로 시작합니다`, 'error');
   else if (loaded?.dropped) ui.toast(`저장된 것 가운데 ${loaded.dropped}개는 지금 규칙에 맞지 않아 빼고 불러왔습니다`, 'error');
   else if (fishing.loadProblem) ui.toast(fishing.loadProblem, 'error');
   else if (gathering.loadProblem) ui.toast(gathering.loadProblem, 'error');

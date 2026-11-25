@@ -3,7 +3,7 @@
 import { getOnlineService, isOnlineConfigured, ONLINE_TIMEOUT_MS } from './online.js';
 import { MAX_NOTE_LENGTH, normalizeVisitNote, onlineErrorText, withOnlineTimeout, SDK_BLOCKED } from './online-data.js';
 
-export function createOnlineUI({ store, visitorUid = null, readOnly = false, openShare, toast }) {
+export function createOnlineUI({ store, visitorUid = null, readOnly = false, blocked = () => null, openShare, toast }) {
   const $ = (id) => document.getElementById(id);
   const button = $('online-action');
   const layer = $('online-layer');
@@ -119,8 +119,13 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, ope
   });
 
   // 게시 상태를 바꾸는 동안에는 앞서 읽던 상태를 버린다. 실패하면 다시 읽는다
-  $('online-publish').addEventListener('click', () => { stateRun++; showState('checking'); task(
-    (service) => service.publish(store.state),
+  $('online-publish').addEventListener('click', () => {
+    // 이 화면이 집의 일부만 알 때(더 새로운 판의 집)는 게시하지 않는다. 게시는 서버의 내 집을 통째로 바꾼다
+    const why = blocked();
+    if (why) { report(why); toast(why, 'error'); return; }
+    stateRun++; showState('checking'); task(
+    // 연결을 기다리는 사이 다른 탭의 새 판이 저장했을 수 있으니, 보내기 직전에 한 번 더 본다(PR #43 GPT 재검토)
+    (service) => { const late = blocked(); if (late) throw new Error(late); return service.publish(store.state); },
     (link) => {
       showState('public', new Date());
       hide();

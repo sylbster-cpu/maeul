@@ -227,7 +227,7 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
     },
     setHistory({ canUndo, canRedo }) { $('undo').disabled = !canUndo; $('redo').disabled = !canRedo; },
     setSaveStatus(status) {
-      $('save-status').textContent = { saved: '자동 저장됨', pending: '저장하는 중', off: '이 브라우저에서는 저장되지 않습니다', guest: '친구 집 구경 중 · 내 집 유지', conflict: '다른 탭에서 집이 바뀌어 자동 저장 중지 · 새로고침 필요' }[status] || '';
+      $('save-status').textContent = { saved: '자동 저장됨', pending: '저장하는 중', off: '이 브라우저에서는 저장되지 않습니다', guest: '친구 집 구경 중 · 내 집 유지', conflict: '다른 탭에서 집이 바뀌어 자동 저장 중지 · 새로고침 필요', newer: '새 판에서 저장한 집이라 자동 저장 중지 · 새로고침 필요' }[status] || '';
     },
     toast: showToast,
     openShare(link, options = {}) {

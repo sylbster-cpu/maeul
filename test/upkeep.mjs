@@ -5,6 +5,9 @@
 // 3. 360×640 화면에서도 방의 뒤쪽 벽이 위쪽 버튼에 가려지지 않는다
 // 4. Object.hasOwn 과 structuredClone 이 없는 오래된 브라우저에서도 게임이 뜨고, 놓기·되돌리기·저장이 된다
 // 5. 찌가 앞쪽 나무에 가리면 그 나무의 잎을 비친다 (2026-11-23 사용자 휴대폰 화면: "살짝 가리네요")
+// 6. 이 화면이 모르는 부품(더 새로운 판에서 놓은 것)이 든 집을 열면 원문을 남기고 저장하지 않는다 (2026-11-25, PR #42 GPT 검토 1)
+//    그 상태에서는 공유 링크도, 온라인 게시도 하지 않는다. 연결을 기다리는 사이 새 판이 저장해도 게시하지 않는다.
+//    맞바꾸기는 원문을 그대로 옮기므로 할 수 있다 (PR #43 GPT 검토·재검토)
 export default async function upkeepTour(page, { out, logs }) {
   const say = (label, ok, extra = '') => logs.push(`${ok ? '통과' : '실패'}  ${label} ${extra}`);
   const g = (fn, arg) => page.evaluate(fn, arg);
@@ -124,4 +127,87 @@ export default async function upkeepTour(page, { out, logs }) {
   await page.reload();
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 30000 }).catch(() => {});
   say('오래된 브라우저에서 저장한 집을 다시 연다', (await count()) === start + 1);
+
+  // 6. 더 새로운 판의 집: 미래의 부품 하나를 끼운 저장을 열면, 옆에 남기고 자동 저장을 멈춘다
+  // 온라인 기능은 가짜 서버로 바꿔, 게시를 부르는지만 센다(실제 Firebase 를 쓰지 않는다).
+  // globalThis.__gate 를 걸면 연결이 그것을 기다린다(연결을 기다리는 사이의 일을 흉내 낸다)
+  await page.route('**/src/online.js', (route) => route.fulfill({
+    contentType: 'text/javascript', headers: { 'access-control-allow-origin': '*' },
+    body: `
+      export const ONLINE_TIMEOUT_MS = 20000;
+      export function isOnlineConfigured() { return true; }
+      export function getOnlineService() {
+        const service = {
+          uid: 'ownerAa123456789',
+          async ownStatus() { return { published: true, isPublic: true, updatedAt: null }; },
+          async publish() { globalThis.__published = (globalThis.__published || 0) + 1; return 'https://example.invalid/#visit=x'; },
+          async getNotes() { return { notes: [], next: null }; },
+          async unpublish() {}, async removeNote() {}, async leaveNote() {}, async visit() { return null; },
+        };
+        return (globalThis.__gate || Promise.resolve()).then(() => service);
+      }`,
+  }));
+  await page.reload();
+  await page.waitForFunction(() => window.__ready === true, null, { timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  const normal = await g(() => localStorage.getItem('house-lab-web:save'));
+  const future = (() => {
+    const data = JSON.parse(normal);
+    data.state.spaces.yard.objects.zz = { id: 'zz', part: 'future_thing', x: 1, y: 1, rot: 0, by: 'p1' };
+    return JSON.stringify(data);
+  })();
+  // 6-가. 게시를 누를 때는 보통 집이었는데, 연결을 기다리는 사이 다른 탭의 새 판이 저장하면 게시하지 않는다 (PR #43 GPT 재검토)
+  await page.click('#online-action');
+  await page.waitForTimeout(300);
+  await g(() => { globalThis.__gate = new Promise((done) => { globalThis.__open = done; }); });
+  await page.click('#online-publish');
+  await page.waitForTimeout(200);
+  await g((text) => { localStorage.setItem('house-lab-web:save', text); globalThis.__open(); }, future);
+  await page.waitForTimeout(500);
+  const raced = await g(() => ({ published: globalThis.__published || 0, status: document.getElementById('online-status')?.textContent || '' }));
+  say('게시를 누른 뒤 연결을 기다리는 사이 새 판이 저장하면 게시하지 않는다', raced.published === 0 && raced.status.includes('새로 고친 뒤'), JSON.stringify(raced));
+  await page.click('#online-close');
+  // 6-나. 그 집을 새로 열면: 원문을 남기고 저장하지 않으며, 공유 링크·온라인 게시도 하지 않는다
+  await page.reload();
+  await page.waitForFunction(() => window.__ready === true, null, { timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  const lock = await g(() => ({
+    status: document.getElementById('save-status')?.textContent || '', toast: document.getElementById('toast')?.textContent || '',
+    saved: window.__game.saveNow(),
+  }));
+  const stored = await g(() => ({ same: localStorage.getItem('house-lab-web:save'), kept: localStorage.getItem('house-lab-web:save:newer') }));
+  say('새 판의 부품이 든 집을 열면 원문을 남기고 저장하지 않는다', lock.saved === false && lock.status.includes('새 판') && lock.toast.includes('새로 고쳐') && stored.same === future && stored.kept === future,
+    JSON.stringify({ status: lock.status, saved: lock.saved, same: stored.same === future, kept: stored.kept === future }));
+  // 공유 링크: 빠진 배치로 만들지 않고 새로 고치라고 알린다 (보관된 집이 없으면 창도 열지 않는다)
+  await page.click('#share-house');
+  await page.waitForTimeout(300);
+  const shared = await g(() => ({ open: !document.getElementById('share-layer').hidden, link: document.getElementById('share-link').value, toast: document.getElementById('toast')?.textContent || '' }));
+  say('그 상태에서는 공유 링크를 만들지 않는다', !shared.open && !shared.link && shared.toast.includes('새로 고친 뒤'), JSON.stringify(shared));
+  // 온라인 게시: 서버의 내 집을 빠진 배치로 덮지 않는다
+  await page.click('#online-action');
+  await page.waitForTimeout(300);
+  await page.click('#online-publish');
+  await page.waitForTimeout(500);
+  const online = await g(() => ({ published: globalThis.__published || 0, status: document.getElementById('online-status')?.textContent || '' }));
+  say('그 상태에서는 온라인 게시를 하지 않는다', online.published === 0 && online.status.includes('새로 고친 뒤'), JSON.stringify(online));
+  await page.click('#online-close');
+  const untouched = await g(() => localStorage.getItem('house-lab-web:save'));
+  say('그 뒤에도 저장된 원문은 그대로다', untouched === future, '');
+  // 6-다. 맞바꾸기는 원문을 그대로 옮기므로 그 상태에서도 할 수 있다 (PR #43 GPT 재검토: 공유 창에서만 갈 수 있다)
+  await g((text) => localStorage.setItem('house-lab-web:before-import', JSON.stringify({ version: 1, previous: text })), normal);
+  await page.click('#share-house');
+  await page.waitForTimeout(300);
+  const swap = await g(() => ({
+    open: !document.getElementById('share-layer').hidden, link: document.getElementById('share-link').value,
+    button: !document.getElementById('share-restore-previous').hidden,
+  }));
+  say('그 상태에서도 보관된 집과 맞바꾸는 창은 열리고, 공유 주소는 없다', swap.open && !swap.link && swap.button, JSON.stringify(swap));
+  page.once('dialog', (dialog) => dialog.accept());
+  await Promise.all([page.waitForEvent('load', { timeout: 30000 }).catch(() => {}), page.click('#share-restore-previous')]);
+  await page.waitForFunction(() => window.__ready === true, null, { timeout: 30000 }).catch(() => {});
+  const swapped = await g(() => ({ save: localStorage.getItem('house-lab-web:save'), backup: localStorage.getItem('house-lab-web:before-import') }));
+  const previous = (() => { try { return JSON.parse(swapped.backup).previous; } catch { return null; } })();
+  const sameState = (() => { try { return JSON.stringify(JSON.parse(swapped.save).state) === JSON.stringify(JSON.parse(normal).state); } catch { return false; } })();
+  say('맞바꾸면 새 판의 집은 글자 그대로 보관되고, 보관했던 집이 열린다', previous === future && sameState, JSON.stringify({ kept: previous === future, sameState }));
 }
+
