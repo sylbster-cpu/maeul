@@ -71,7 +71,7 @@ export function createCharacter({ view, store, assets, start, place: startPlace 
     for (const obj of Object.values(store.state.spaces[place].objects)) {
       if (layerOf(obj.part) !== 'furniture') continue;
       const part = PARTS[obj.part];
-      const model = assets.models[part.model];
+      const model = part.model ? assets.models[part.model] : part.bounds; // 주운 것은 모델이 없어 bounds 를 쓴다
       const s = part.scale || 1, o = part.offset || [0, 0, 0];
       const { fw, fh } = footprint(obj);
       const cx = obj.x + fw / 2, cz = obj.y + fh / 2;

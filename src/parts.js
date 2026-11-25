@@ -76,8 +76,17 @@ export const PARTS = {
   frame_small: { label: '작은 액자', span: 1, hang: 2.1, model: 'furniture/pictureframe_small_A', layer: 'wall' },
   shelf: { label: '선반', span: 2, hang: 1.75, model: 'furniture/shelf_B_large_decorated', layer: 'wall' },
   shelf_small: { label: '작은 선반', span: 1, hang: 1.75, model: 'furniture/shelf_B_small_decorated', layer: 'wall' },
+  // 숲에서 주운 것 (4단계 채집, 2026-11-25 사용자 결정 "집에 놓기"). 바닥 한 칸에 놓는다. 모델 파일 대신 코드로 그린다(found-model.js).
+  // found 는 채집 기록의 종류, bounds 는 모델이 없을 때 쓰는 걷기 충돌 크기(모델 단위).
+  // 가진 수만큼만 놓을 수 있다. 그 제한은 집 규칙(state.js)이 아니라 놓는 사람의 조작(history.js guard, gathering.js)에서 본다.
+  // 집 규칙에 두면 불러오기·공유 링크·친구 집 구경에서 놓인 것이 지워지기 때문이다
+  found_pinecone: { label: '솔방울', size: [1, 1], found: 'pinecone', bounds: { min: [-0.24, 0, -0.24], max: [0.24, 0.7, 0.24] } },
+  found_mushroom: { label: '작은 버섯', size: [1, 1], found: 'mushroom', bounds: { min: [-0.24, 0, -0.24], max: [0.24, 0.55, 0.24] } },
+  found_feather: { label: '새 깃털', size: [1, 1], found: 'feather', bounds: { min: [-0.45, 0, -0.12], max: [0.45, 0.2, 0.12] } },
 };
 export const EXTRA_MODELS = [];
+// 주운 것의 종류 → 놓는 부품
+export const FOUND_PARTS = Object.freeze(Object.fromEntries(Object.entries(PARTS).filter(([, p]) => p.found).map(([id, p]) => [p.found, id])));
 
 // 방 바닥재
 export const FLOORS = {

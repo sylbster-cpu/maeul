@@ -5,6 +5,7 @@ import * as THREE from './three.js';
 import { wobble, squash } from './fx.js';
 import { FOREST_PATHS, forestFloorLayout, seededRandom, FOREST_SEED } from './forest.js';
 import { GATHER, SPECIAL_ID, findsForDay, kstSlot } from './gathering.js';
+import { buildFound, FOUND_COLORS } from './found-model.js';
 import { TREES, TREE_RADIUS, FOREST } from './parts.js';
 
 const LEAF_COLORS = [0xe2c35a, 0xd99a3e, 0xb8d36a, 0xf0dc8a]; // 풀밭에서 눈에 띄는 마른 잎 빛 (숲 잎과 같은 초록이면 풀에 묻힌다)
@@ -144,17 +145,11 @@ export function createForestView(parent, { fx = null, calm = false } = {}) {
   group.add(find);
   const items = new THREE.Group();
   group.add(items);
-  const COLORS = { pinecone: 0x9b653b, mushroom: 0xe5b98a, feather: 0xe6e2cf };
+  const COLORS = FOUND_COLORS;
   const sizeK = (f) => (f.size - GATHER[f.kind].min) / (GATHER[f.kind].max - GATHER[f.kind].min);
   const mat = (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
   function smallItem(f) {
-    const g = new THREE.Group();
-    const part = (geo, color, y) => { const m = new THREE.Mesh(geo, mat(color)); m.position.y = y; m.castShadow = true; g.add(m); return m; };
-    if (f.kind === 'pinecone') part(new THREE.ConeGeometry(0.16, 0.34, 7), COLORS.pinecone, 0.17);
-    else if (f.kind === 'mushroom') {
-      part(new THREE.CylinderGeometry(0.05, 0.065, 0.16, 7), 0xf3e6cc, 0.08);
-      part(new THREE.SphereGeometry(0.15, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), 0xd98c5f, 0.14);
-    } else part(new THREE.ConeGeometry(0.06, 0.44, 5), COLORS.feather, 0.07).rotation.z = Math.PI / 2;
+    const g = buildFound(f.kind); // 집에 놓을 때와 같은 모양 (found-model.js)
     g.scale.setScalar(0.85 + 0.75 * sizeK(f)); // 가장 작은 것도 풀 포기보다 크게
     g.position.set(f.x, 0, f.z);
     g.rotation.y = (f.size * 7.3) % (Math.PI * 2);

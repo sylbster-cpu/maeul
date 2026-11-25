@@ -126,7 +126,8 @@ export function createInput({ canvas, view, store, history, character, ui, audio
       if (t) ghosts.push({ type: 'object', part: s.carry.part, ...t, valid: store.can({ type: 'moveObject', space: here(), id: s.carry.id, ...t }).ok });
     } else if (placing()) {
       const t = targetFor(s.tool, s.rot, at);
-      if (t) ghosts.push({ type: 'object', part: s.tool, ...t, valid: store.can({ type: 'placeObject', space: here(), id: '-', part: s.tool, ...t }).ok });
+      // 주운 것은 가진 만큼만 놓을 수 있다(history.check). 모자라면 빨갛게 보인다
+      if (t) ghosts.push({ type: 'object', part: s.tool, ...t, valid: store.can({ type: 'placeObject', space: here(), id: '-', part: s.tool, ...t }).ok && history.check([{ type: 'placeObject', space: here(), id: '-', part: s.tool, ...t }]).ok });
     } else if (kind === 'erase' || kind === 'select') {
       const ref = objectAt(at);
       if (ref) ghosts.push({ type: 'highlight', ref, tone: kind });

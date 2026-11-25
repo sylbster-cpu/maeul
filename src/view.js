@@ -4,6 +4,7 @@ import * as THREE from './three.js';
 import { createFx, wobble, squash } from './fx.js';
 import { createBeachView } from './beach-view.js';
 import { createForestView } from './forest-view.js';
+import { buildFound } from './found-model.js';
 import { PARTS, WALL_HEIGHT, YARD, TREES, HOUSE_CENTER_X, MAT_X, WINDOW_X, LEVELS, FLOORS, WALLPAPERS, ROOFS, SIDINGS, DOORS } from './parts.js';
 import { footprint, layerOf, houseRect, cellKey } from './state.js';
 
@@ -379,6 +380,15 @@ export function createView({ canvas, assets, store }) {
   function makeObject(partId) {
     const part = PARTS[partId];
     const group = new THREE.Group();
+    if (part.found) {
+      // 숲에서 주운 것: 코드로 그린 모양(found-model.js)을 집 칸에 맞게 키운다. 다시 그릴 때 버리도록 표시한다
+      const node = buildFound(part.found);
+      node.scale.setScalar(2.1);
+      node.rotation.y = part.found === 'feather' ? Math.PI / 5 : 0;
+      node.traverse((o) => { if (o.geometry) temp(o.geometry); if (o.material) temp(o.material); });
+      group.add(node);
+      return group;
+    }
     const mesh = assets.mesh(part.model);
     mesh.scale.setScalar(part.scale || 1);
     mesh.position.set(...(part.offset || [0, 0, 0]));
@@ -532,7 +542,7 @@ export function createView({ canvas, assets, store }) {
       const mat = ghostMats[item.tone || (item.valid ? 'ok' : 'bad')];
       if (item.type === 'object') {
         const node = makeObject(item.part);
-        node.traverse((o) => { if (o.isMesh) { o.material = mat; o.castShadow = false; o.receiveShadow = false; } });
+        node.traverse((o) => { if (o.isMesh) { if (o.material?.userData.temp) o.material.dispose(); o.material = mat; o.castShadow = false; o.receiveShadow = false; } }); // 주운 것의 재질은 버린다
         placeObjectNode(node, item);
         ghostGroup.add(node);
         // 차지하는 칸도 바닥에 표시한다
@@ -758,6 +768,7 @@ export function createView({ canvas, assets, store }) {
       small.render(s, c);
       out[id] = small.domElement.toDataURL('image/png');
       s.remove(node);
+      node.traverse((o) => { if (o.geometry?.userData.temp) o.geometry.dispose(); if (o.material?.userData?.temp) o.material.dispose(); }); // 주운 것의 그림
     }
     small.dispose();
     small.forceContextLoss?.();

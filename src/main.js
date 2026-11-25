@@ -3,7 +3,7 @@ import { loadAssets } from './assets.js';
 import { PARTS, HOUSE_CENTER_X, MAT_X, LEVELS, OUTDOOR } from './parts.js';
 import { inWater } from './fishing.js';
 import { todaysDiscoverySite, koreaDay, forestCue } from './forest.js';
-import { SPECIAL_ID } from './gathering.js';
+import { SPECIAL_ID, checkFoundCommands, availableFound, ownedFound } from './gathering.js';
 import { createGathering } from './gathering-play.js';
 import { createState, createStore, houseRect } from './state.js';
 import { createView } from './view.js';
@@ -246,7 +246,9 @@ async function start(saved = {}) {
     openShare: (link, options) => ui.openShare(link, options),
     toast: (message, kind) => ui.toast(message, kind),
   });
-  const history = createHistory(store); // 처음 놓인 가구는 기록에 넣지 않는다
+  // 숲에서 주운 것은 가진 만큼만 놓는다. 새로 놓을 때만 보고, 되돌리기·다시 하기는 막지 않는다(gathering.js checkFoundCommands)
+  let gathering = null;
+  const history = createHistory(store, { guard: (cmds) => (gathering ? checkFoundCommands(store.state, gathering.store.state, cmds) : { ok: true }) }); // 처음 놓인 가구는 기록에 넣지 않는다
   // 낚시. 기록은 이 브라우저에 집과 따로 저장한다. 친구 집을 구경하는 중에도 내 낚시 기록에 남는다
   const pondView = createPondView({ view, figure: character.figure });
   const fishing = createFishing({
@@ -255,7 +257,12 @@ async function start(saved = {}) {
     onChange: () => input?.syncUI(),
   });
   // 숲에서 줍기(4단계 채집). 기록은 집·낚시 기록과 따로 이 브라우저에 둔다. 친구 집을 구경하는 중에도 내 기록에 남는다
-  const gathering = createGathering({ character, view, ui, audio, haptics, storage: openStorage() });
+  gathering = createGathering({ character, view, ui, audio, haptics, storage: openStorage() });
+  // 꾸미기 목록의 주운 것 칸에 더 놓을 수 있는 수를 보인다. 집이 바뀌거나 더 주우면 고친다
+  const showFound = () => ui.setFound(availableFound(store.state, gathering.store.state), ownedFound(gathering.store.state));
+  store.subscribe(showFound);
+  gathering.subscribe(showFound);
+  showFound();
   createFishingUI({ fishing, gathering });
   input = createInput({ canvas, view, store, history, character, ui, audio, haptics, travel, fishing, gathering, readOnly: guest });
   history.subscribe((status) => ui.setHistory(status));
