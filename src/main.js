@@ -13,7 +13,7 @@ import { createHistory } from './history.js';
 import { createUI } from './ui.js';
 import { createAudio } from './audio.js';
 import { createHaptics } from './haptics.js';
-import { createSaver, parse, serialize } from './save.js';
+import { createSaver, parse, serialize, isNewerHouse } from './save.js';
 import { importSharedHouse, restorePreviousHouse, hasPreviousHouse,
   recoverInterruptedHouseTransfer, createHouseSaveGuard, HOUSE_STORAGE_KEYS } from './house-transfer.js';
 import { SAVE_KEY } from './save.js';
@@ -77,6 +77,10 @@ async function start(saved = {}) {
   catch (error) { transferError = error.message; }
   const saveGuard = createHouseSaveGuard(storage);
   const saver = createSaver(storage);
+  // 더 새로운 판에서 저장한 집이면 이 화면은 그 집의 일부만 안다. 저장뿐 아니라 온라인 게시·공유 링크·집 가져오기도 하지 않는다.
+  // 빠진 배치를 밖으로 내보내거나, 가져오기로 원문을 잃지 않게 하려는 것이다(PR #43 GPT 검토). 맞바꾸기는 원문을 그대로 옮기므로 막지 않는다
+  const NEWER_HOUSE = '이 집은 더 새로운 판의 게임에서 저장되었습니다. 새로 고친 뒤 다시 해 주세요';
+  const newerHouse = () => { if (saver.locked) return true; try { return isNewerHouse(storage?.getItem(SAVE_KEY)); } catch { return false; } };
   const handed = guest ? null : (saved.state?.version === 2 ? saved : null);
   const loaded = guest ? null : (handed ? null : saver.load());
   const kept = sharedState || handed?.state || (loaded?.ok ? loaded.state : null);
@@ -143,6 +147,7 @@ async function start(saved = {}) {
     thumbs: view.thumbnails(Object.keys(PARTS)),
     on: {
       share: async () => {
+        if (!guest && newerHouse()) { ui.toast(NEWER_HOUSE, 'error'); return; }
         try { ui.openShare(await makeShareLink(store.state, PUBLIC_SHARE_URL)); }
         catch (error) {
           // 공유 링크가 너무 길어도 이미 보관된 이전 집으로 돌아갈 길은 막지 않는다.
@@ -159,6 +164,7 @@ async function start(saved = {}) {
       // 서버 없는 집 공유 링크를 열었을 때만, 확인을 받은 뒤 현재 브라우저의 집을 복사한다.
       importHouse: () => {
         if (switchingHouse || !canImport || !sharedState) return;
+        if (newerHouse()) { ui.toast(NEWER_HOUSE, 'error'); return; } // 지금 내 집이 새 판의 집이면 가져오기로 잃을 수 있다
         // 보관 칸은 하나다. 이미 보관된 집이 있으면 그 집은 두고 지금 집이 바뀐다는 것을 미리 알린다
         const replaceCurrent = hasPreviousHouse(storage);
         const question = replaceCurrent
@@ -224,6 +230,7 @@ async function start(saved = {}) {
   // 온라인 기능은 설정이 없으면 버튼을 숨긴다. 로컬 집/오프라인 링크는 항상 독립적으로 작동한다.
   createOnlineUI({
     store, visitorUid: onlineGuestOwner, readOnly: guest,
+    blocked: () => (!guest && newerHouse() ? NEWER_HOUSE : null), // 새 판의 집이면 빠진 배치로 온라인 집을 덮지 않는다
     openShare: (link, options) => ui.openShare(link, options),
     toast: (message, kind) => ui.toast(message, kind),
   });
