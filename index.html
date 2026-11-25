@@ -171,6 +171,7 @@ img { max-width: 100%; }
   }
   .tool-art { width: 44px; height: 44px; display: grid; place-items: center; color: var(--moss); }
   .tool[aria-pressed="true"] .tool-art { color: var(--accent-ink); }
+  .tool.empty .tool-art { opacity: 0.4; } /* 더 놓을 수 없는 주운 것 */
   .tool-art img, .tool-art svg { width: 44px; height: 44px; display: block; }
   .chip { width: 36px; height: 36px; border-radius: 8px; border: 2px solid var(--panel-edge); display: block; }
   .cam #place-toggle { background: var(--moss); border-color: var(--panel-edge); color: var(--on-moss); font-family: var(--font-display); font-size: 16px; padding: 0 14px; box-shadow: 0 2px 0 var(--panel-edge); }

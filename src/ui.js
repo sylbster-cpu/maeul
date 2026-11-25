@@ -71,12 +71,14 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
   const rows = {
     furniture: addGroup('가구', 'both', 'furniture'),
     top: addGroup('올려놓는 소품', 'both', 'props'),
+    // 숲에서 주운 것 (4단계, 2026-11-25 사용자 결정). 가진 만큼만 놓는다. 이름 옆에 더 놓을 수 있는 수를 적는다(setFound)
+    found: addGroup('숲에서 주운 것', 'both', 'props'),
     wall: addGroup('벽에 거는 것', 'main', 'wall'),
   };
   for (const [id, part] of Object.entries(PARTS)) {
     const b = tile(`tool-${id}`, part.label, (box) => { if (thumbs[id]) { const img = new Image(); img.src = thumbs[id]; img.alt = ''; box.appendChild(img); } });
     b.addEventListener('click', () => on.tool(id));
-    (rows[part.layer] || rows.furniture).appendChild(b);
+    (part.found ? rows.found : rows[part.layer] || rows.furniture).appendChild(b);
     toolButtons.set(id, b);
   }
 
@@ -204,6 +206,17 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
     },
     setTool(tool) {
       for (const [id, b] of toolButtons) b.setAttribute('aria-pressed', String(id === tool));
+    },
+    // 주운 것 칸: 더 놓을 수 있는 수(available)와 가진 수(owned). 0 이면 흐리게 보이지만 누를 수는 있다(누르면 왜 안 되는지 알린다)
+    setFound(available, owned) {
+      for (const [id, part] of Object.entries(PARTS)) {
+        if (!part.found) continue;
+        const b = toolButtons.get(id);
+        const n = available[part.found] || 0;
+        b.querySelector('.tool-label').textContent = `${part.label} ×${n}`;
+        b.classList.toggle('empty', n === 0);
+        b.title = `가진 것 ${owned[part.found] || 0}개 · 더 놓을 수 있는 것 ${n}개`;
+      }
     },
     // 지금 있는 곳에 맞는 보기만 보이고, 고른 것을 표시한다
     setPlace(place, state) {

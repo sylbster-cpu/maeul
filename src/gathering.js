@@ -6,6 +6,7 @@
 // 기록은 집 저장·공유 링크·Firebase 와 섞지 않고 따로 둔다. 집에 놓기는 이번에 넣지 않는다.
 // three.js 를 부르지 않는다.
 import { FOREST_DISCOVERIES, GATHER_SPOTS, discoveryForDay, discoverySiteForDay, seededRandom } from './forest.js';
+import { PARTS } from './parts.js';
 
 // 크기(cm). 같은 것이라도 크기가 달라, 더 큰 것을 찾으러 다닐 이유가 된다(2026-11-24 사용자 결정)
 export const GATHER = Object.freeze({
@@ -262,3 +263,56 @@ export function createGatherSaver(storage, key = GATHER_KEY) {
   };
 }
 
+// ---- 집에 놓기 (4단계, 2026-11-25 사용자 결정) ----
+// 가진 수는 채집 기록의 종류별 count(주운 수)다. 놓을 수 있는 수는 "가진 수 − 집에 놓인 수"로 센다(GPT 제안, 이슈 #4 글 107).
+// 놓아도 채집 기록은 줄지 않는다. 치우면 다시 놓을 수 있다. 두 저장(집, 채집 기록)을 따로 늘리고 줄이지 않는다.
+// 이 제한은 놓는 사람의 조작(history.js guard)에서만 본다. 집 규칙(state.js)에 두면 불러오기·공유 링크·친구 집 구경에서
+// 이미 놓인 것이 지워진다. 그래서 가진 것보다 많이 놓인 집(가져온 친구 집 등)은 그대로 두고, 더 놓지만 못하게 한다
+const foundKind = (part) => (typeof part === 'string' && Object.prototype.hasOwnProperty.call(PARTS, part) ? PARTS[part].found || null : null);
+const zeroCounts = () => Object.fromEntries(GATHER_ORDER.map((k) => [k, 0]));
+
+// 집 전체(마당과 방)에 놓인 주운 것의 수
+export function placedFound(house) {
+  const out = zeroCounts();
+  for (const space of Object.values(house?.spaces || {})) {
+    for (const obj of Object.values(space?.objects || {})) { const k = foundKind(obj?.part); if (k) out[k]++; }
+  }
+  return out;
+}
+// 가진 수 (지금까지 주운 수)
+export function ownedFound(gather) {
+  const out = zeroCounts();
+  for (const k of GATHER_ORDER) out[k] = gather?.log?.[k]?.count || 0;
+  return out;
+}
+// 더 놓을 수 있는 수
+export function availableFound(house, gather) {
+  const placed = placedFound(house), owned = ownedFound(gather);
+  return Object.fromEntries(GATHER_ORDER.map((k) => [k, Math.max(0, owned[k] - placed[k])]));
+}
+// 집에 보낼 명령들(한 번의 조작, 되돌리기, 다시 하기)이 가진 것보다 많이 놓게 되지 않는가
+export function checkFoundCommands(house, gather, cmds) {
+  const delta = {};
+  for (const cmd of cmds || []) {
+    if (cmd?.type === 'placeObject') {
+      const k = foundKind(cmd.part);
+      if (k) delta[k] = (delta[k] || 0) + 1;
+    } else if (cmd?.type === 'removeObject') {
+      const objects = house?.spaces?.[cmd.space]?.objects;
+      const obj = objects && Object.prototype.hasOwnProperty.call(objects, cmd.id) ? objects[cmd.id] : null;
+      const k = foundKind(obj?.part);
+      if (k) delta[k] = (delta[k] || 0) - 1;
+    }
+  }
+  const placed = placedFound(house), owned = ownedFound(gather);
+  for (const [k, d] of Object.entries(delta)) {
+    if (d <= 0 || placed[k] + d <= owned[k]) continue;
+    const label = GATHER[k].label;
+    return {
+      ok: false,
+      reason: owned[k] === 0 ? `${label}을 아직 주운 적이 없습니다. 숲에서 주워 오세요`
+        : `${label}을 더 놓으려면 숲에서 더 주워 와야 합니다 (가진 것 ${owned[k]}개, 놓인 것 ${placed[k]}개)`,
+    };
+  }
+  return { ok: true };
+}
