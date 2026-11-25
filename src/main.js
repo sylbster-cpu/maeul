@@ -79,7 +79,8 @@ async function start(saved = {}) {
   const saver = createSaver(storage);
   // 더 새로운 판에서 저장한 집이면 이 화면은 그 집의 일부만 안다. 저장뿐 아니라 온라인 게시·공유 링크·집 가져오기도 하지 않는다.
   // 빠진 배치를 밖으로 내보내거나, 가져오기로 원문을 잃지 않게 하려는 것이다(PR #43 GPT 검토). 맞바꾸기는 원문을 그대로 옮기므로 막지 않는다
-  const NEWER_HOUSE = '이 집은 더 새로운 판의 게임에서 저장되었습니다. 새로 고친 뒤 다시 해 주세요';
+  // '집'으로 시작해야 온라인 창이 이 글을 그대로 보인다(online-data.js onlineErrorText)
+  const NEWER_HOUSE = '집이 더 새로운 판의 게임에서 저장되어 있습니다. 새로 고친 뒤 다시 해 주세요';
   const newerHouse = () => { if (saver.locked) return true; try { return isNewerHouse(storage?.getItem(SAVE_KEY)); } catch { return false; } };
   const handed = guest ? null : (saved.state?.version === 2 ? saved : null);
   const loaded = guest ? null : (handed ? null : saver.load());
@@ -147,7 +148,18 @@ async function start(saved = {}) {
     thumbs: view.thumbnails(Object.keys(PARTS)),
     on: {
       share: async () => {
-        if (!guest && newerHouse()) { ui.toast(NEWER_HOUSE, 'error'); return; }
+        if (!guest && newerHouse()) {
+          ui.toast(NEWER_HOUSE, 'error');
+          // 공유 주소는 만들지 않는다. 맞바꾸기는 원문을 글자 그대로 옮기므로, 보관된 집이 있으면 그 창은 연다(PR #43 GPT 재검토)
+          if (hasPreviousHouse(storage)) {
+            ui.openShare('', {
+              title: '보관된 집과 맞바꾸기',
+              description: '이 집은 더 새로운 판의 게임에서 저장되어 공유 주소를 만들지 않습니다. 새로 고친 뒤 다시 해 주세요. 보관된 다른 집과 맞바꾸기는 할 수 있습니다.',
+              footnote: '맞바꿔도 두 집의 저장 내용은 그대로 옮겨집니다. Firebase 온라인 집과 방명록은 바뀌지 않습니다.',
+            });
+          }
+          return;
+        }
         try { ui.openShare(await makeShareLink(store.state, PUBLIC_SHARE_URL)); }
         catch (error) {
           // 공유 링크가 너무 길어도 이미 보관된 이전 집으로 돌아갈 길은 막지 않는다.
