@@ -7,6 +7,7 @@
 // three.js 를 부르지 않는다.
 import { FOREST_DISCOVERIES, GATHER_SPOTS, discoveryForDay, discoverySiteForDay, seededRandom } from './forest.js';
 import { PARTS } from './parts.js';
+import { validate as houseValidate, apply as houseApply, derive as houseDerive } from './state.js'; // 집 규칙
 
 // 크기(cm). 같은 것이라도 크기가 달라, 더 큰 것을 찾으러 다닐 이유가 된다(2026-11-24 사용자 결정)
 export const GATHER = Object.freeze({
@@ -290,33 +291,25 @@ export function availableFound(house, gather) {
   const placed = placedFound(house), owned = ownedFound(gather);
   return Object.fromEntries(GATHER_ORDER.map((k) => [k, Math.max(0, owned[k] - placed[k])]));
 }
-// 새 조작으로 보낼 명령들이 가진 것보다 많이 놓게 되지 않는가. 명령을 차례대로 적용해 보며 센다(PR #42 GPT 검토 보강):
-// 같은 것을 두 번 치우거나, 놓았다가 바로 치우는 묶음도 맞게 센다. 처음부터 가진 것보다 많이 놓인 집(가져온 친구 집 등)은
-// 그보다 늘리지만 않으면 된다. 놓기가 집 규칙에 막혀 건너뛰어지는 경우는 놓인 것으로 쳐서, 넘치는 쪽으로는 틀리지 않는다
+// 새 조작으로 보낼 명령들이 가진 것보다 많이 놓게 되지 않는가. 집의 복사본에 명령을 차례대로 집 규칙(state.js validate → apply)으로
+// 적용해 보고, 그 결과를 센다(PR #42 GPT 검토·재검토). 집 규칙에 막히는 명령은 건너뛴다. history.run 이 하는 것과 같으므로
+// 같은 것을 두 번 치우거나, 실패한 놓기와 같은 id 로 다시 놓는 묶음도 실제로 놓일 수만큼 센다.
+// 처음부터 가진 것보다 많이 놓인 집(가져온 친구 집 등)은 그보다 늘리지만 않으면 된다
 export function checkFoundCommands(house, gather, cmds) {
+  const list = Array.isArray(cmds) ? cmds : [];
+  if (!house?.spaces) return { ok: true };
+  // 주운 것을 놓거나 무엇을 치우는 명령이 없으면 셀 것이 없다(가구만 놓고 옮기는 조작은 그대로 보낸다)
+  if (!list.some((c) => c?.type === 'removeObject' || (c?.type === 'placeObject' && foundKind(c.part)))) return { ok: true };
   const owned = ownedFound(gather);
   const start = placedFound(house);
-  const count = { ...start };
-  const at = (space, id) => `${space}\u0000${id}`; // 곳과 id 를 함께 본다. 다른 곳의 같은 id 를 치우는 명령은 집 규칙이 막는다
-  const ids = new Map(); // 집에 있는 물건 → 주운 것의 종류(아니면 null)
-  for (const [name, space] of Object.entries(house?.spaces || {})) {
-    for (const [id, obj] of Object.entries(space?.objects || {})) ids.set(at(name, id), foundKind(obj?.part));
+  const trial = JSON.parse(JSON.stringify(house)); // 집 상태는 글자로 저장되는 데이터뿐이다
+  let derived = houseDerive(trial);
+  for (const cmd of list) {
+    if (!houseValidate(trial, derived, cmd).ok) continue;
+    houseApply(trial, derived, cmd);
+    derived = houseDerive(trial);
   }
-  for (const cmd of cmds || []) {
-    if (cmd?.type === 'placeObject') {
-      const key = at(cmd.space, cmd.id);
-      if (ids.has(key)) continue; // 이미 있는 id 에는 놓이지 않는다(집 규칙이 막는다)
-      const k = foundKind(cmd.part);
-      ids.set(key, k);
-      if (k) count[k]++;
-    } else if (cmd?.type === 'removeObject') {
-      const key = at(cmd.space, cmd.id);
-      if (!ids.has(key)) continue; // 없는 것을 치우면 아무 일도 없다
-      const k = ids.get(key);
-      ids.delete(key);
-      if (k) count[k]--;
-    }
-  }
+  const count = placedFound(trial);
   for (const k of GATHER_ORDER) {
     if (count[k] <= owned[k] || count[k] <= start[k]) continue;
     const label = GATHER[k].label;

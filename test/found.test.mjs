@@ -80,6 +80,23 @@ test('명령 묶음은 차례대로 적용해 보며 센다 (PR #42 GPT 검토 3
   // 치우고 놓으면 그대로 1개
   assert.ok(checkFoundCommands(store.state, g, [rm('a'), put('b', 3)]).ok);
 });
+test('집 규칙에 막히는 명령은 건너뛰고 센다: 실패한 놓기와 같은 id 로 다시 놓아도 센다 (PR #42 GPT 재검토)', () => {
+  const store = createStore(createState(), 'p1');
+  const g = gather({ pinecone: 1 });
+  const cmds = [
+    { type: 'placeObject', space: 'yard', id: 'a', part: 'chair', x: -1, y: 1, rot: 0, by: 'p1' }, // 마당 밖이라 실패한다
+    { type: 'placeObject', space: 'yard', id: 'a', part: 'found_pinecone', x: 1, y: 1, rot: 0, by: 'p1' },
+    { type: 'placeObject', space: 'yard', id: 'b', part: 'found_pinecone', x: 3, y: 1, rot: 0, by: 'p1' },
+  ];
+  assert.equal(store.can(cmds[0]).ok, false, '첫 명령은 집 규칙에 막힌다');
+  assert.equal(checkFoundCommands(store.state, g, cmds).ok, false);
+  // 실제로 보내도 하나도 놓이지 않는다
+  const history = createHistory(store, { guard: (c) => checkFoundCommands(store.state, g, c) });
+  assert.equal(history.run(cmds).ok, false);
+  assert.equal(placedFound(store.state).pinecone, 0);
+  // 놓을 자리가 막혀 실패하는 놓기는 세지 않는다(가진 수를 쓰지 않는다)
+  assert.ok(checkFoundCommands(store.state, g, [{ ...cmds[1], x: -1 }, cmds[2]]).ok);
+});
 test('가진 것보다 많이 놓인 집(가져온 친구 집 등)은 그대로 읽히고, 더 놓지만 못한다', () => {
   const store = createStore(createState(), 'p1');
   for (const [i, x] of [1, 3, 5].entries()) store.dispatch({ type: 'placeObject', space: 'yard', id: `f${i}`, part: 'found_mushroom', x, y: 1, rot: 0, by: 'p1' });
@@ -89,7 +106,8 @@ test('가진 것보다 많이 놓인 집(가져온 친구 집 등)은 그대로 
   const g = gather({ mushroom: 1 });
   assert.equal(availableFound(back.state, g).mushroom, 0);
   assert.equal(ownedFound(g).mushroom, 1);
-  assert.equal(checkFoundCommands(back.state, g, [{ type: 'placeObject', part: 'found_mushroom' }]).ok, false);
-  // 치우고 그 자리에 놓는 묶음은 늘지 않으므로 통과한다
-  assert.ok(checkFoundCommands(back.state, g, [{ type: 'removeObject', space: 'yard', id: 'f0' }, { type: 'placeObject', part: 'found_mushroom' }]).ok);
+  const more = { type: 'placeObject', space: 'yard', id: 'n1', part: 'found_mushroom', x: 7, y: 1, rot: 0, by: 'p1' };
+  assert.equal(checkFoundCommands(back.state, g, [more]).ok, false);
+  // 치우고 다른 자리에 놓는 묶음은 늘지 않으므로 통과한다
+  assert.ok(checkFoundCommands(back.state, g, [{ type: 'removeObject', space: 'yard', id: 'f0' }, more]).ok);
 });
