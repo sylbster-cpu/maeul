@@ -8,6 +8,8 @@
 // 6. 이 화면이 모르는 부품(더 새로운 판에서 놓은 것)이 든 집을 열면 원문을 남기고 저장하지 않는다 (2026-11-25, PR #42 GPT 검토 1)
 //    그 상태에서는 공유 링크도, 온라인 게시도 하지 않는다. 연결을 기다리는 사이 새 판이 저장해도 게시하지 않는다.
 //    맞바꾸기는 원문을 그대로 옮기므로 할 수 있다 (PR #43 GPT 검토·재검토)
+// 7. 저장 공간이 가득 차 새로 쓰기가 안 되어도 저장된 집을 읽어 연다(처음 배치로 시작하지 않는다) (2026-11-26 GPT 점검)
+//    같은 열쇠를 같은 크기로 덮어쓰는 저장은 가득 차도 될 수 있으므로, 저장 여부가 아니라 집의 내용을 본다
 export default async function upkeepTour(page, { out, logs }) {
   const say = (label, ok, extra = '') => logs.push(`${ok ? '통과' : '실패'}  ${label} ${extra}`);
   const g = (fn, arg) => page.evaluate(fn, arg);
@@ -209,5 +211,31 @@ export default async function upkeepTour(page, { out, logs }) {
   const previous = (() => { try { return JSON.parse(swapped.backup).previous; } catch { return null; } })();
   const sameState = (() => { try { return JSON.stringify(JSON.parse(swapped.save).state) === JSON.stringify(JSON.parse(normal).state); } catch { return false; } })();
   say('맞바꾸면 새 판의 집은 글자 그대로 보관되고, 보관했던 집이 열린다', previous === future && sameState, JSON.stringify({ kept: previous === future, sameState }));
-}
 
+  // 7. 저장 공간을 가득 채운 뒤 새로 연다
+  const roof7 = await g(() => (window.__game.store.state.house.roof === 'slate' ? 'moss' : 'slate')); // 처음 배치(terracotta)와 다른 색
+  await g((roof) => { window.__game.store.dispatch({ type: 'setExterior', slot: 'roof', value: roof }); window.__game.saveNow(); }, roof7);
+  const saved7 = await g(() => localStorage.getItem('house-lab-web:save'));
+  const filled = await g(() => {
+    let n = 0;
+    for (let size = 1 << 20; size >= 16; size >>= 1) {
+      const chunk = 'x'.repeat(size);
+      for (;;) { try { localStorage.setItem(`fill:${n}`, chunk); n++; } catch { break; } }
+    }
+    try { localStorage.setItem('fill:probe', '1'); localStorage.removeItem('fill:probe'); return { n, full: false }; } catch { return { n, full: true }; }
+  });
+  await page.reload();
+  await page.waitForFunction(() => window.__ready === true, null, { timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  const full7 = await g(() => ({
+    roof: window.__game.store.state.house.roof, objects: Object.keys(window.__game.store.state.spaces.main.objects).length,
+    saved: window.__game.saveNow(), status: document.getElementById('save-status')?.textContent || '',
+    same: localStorage.getItem('house-lab-web:save'),
+  }));
+  const savedObjects = Object.keys(JSON.parse(saved7).state.spaces.main.objects).length;
+  const keptState = (() => { try { return JSON.stringify(JSON.parse(full7.same).state) === JSON.stringify(JSON.parse(saved7).state); } catch { return false; } })();
+  say('저장 공간이 가득 차도 저장된 집을 읽어 열고, 저장된 집도 그대로다',
+    filled.full && full7.roof === roof7 && full7.objects === savedObjects && keptState,
+    JSON.stringify({ full: filled.full, roof: full7.roof, want: roof7, objects: full7.objects, savedObjects, keptState, saved: full7.saved, status: full7.status }));
+  await g(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('fill:')) localStorage.removeItem(k); });
+}

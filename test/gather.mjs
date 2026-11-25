@@ -7,6 +7,7 @@
 // 5. 새로 열어도 주운 것은 기록에 남고 숲에서 사라진 채다
 // 6. 주울 거리가 아닌 곳을 누르면 아무것도 줍지 않는다
 // 7. 3시간 뒤(다음 시간대)에는 새 6개가 놓이고, 오늘의 발견은 그대로다 (2026-11-25 사용자 결정 "같은 날 다시 놓이게")
+// 8. 저장하지 못하면 곁에 서 있어도 다시 줍지 않고, 주울 거리는 제 모습으로 돌아온다. 떠났다 오면 다시 줍는다 (2026-11-26 GPT 점검)
 export default async function gatherTour(page, { out, logs }) {
   const say = (label, ok, extra = '') => logs.push(`${ok ? '통과' : '실패'}  ${label} ${extra}`);
   const g = (fn, arg) => page.evaluate(fn, arg);
@@ -143,5 +144,34 @@ export default async function gatherTour(page, { out, logs }) {
   say('기록 창을 연 채 시간대가 바뀌면 남은 수와 다음 시각이 바로 바뀐다', later.today !== before.text && later.left === 7 && later.today.includes('7개 남았습니다'), // 새 6개 + 아직 줍지 않은 오늘의 발견
     JSON.stringify({ before: before.text.slice(-28), after: later.today.slice(-28) }));
   await page.click('#fish-close');
-}
 
+  // 8. 채집 기록을 저장하지 못하게 해 두고 주울 거리 위에 선다
+  const target = await g(() => window.__game.gathering.left.find((f) => !f.special));
+  const before8 = await g(() => ({ picks: window.__game.view.forest.state.picks, looks: window.__game.view.forest.state.looks }));
+  await g(() => {
+    const orig = Storage.prototype.setItem;
+    window.__restoreSet = () => { Storage.prototype.setItem = orig; };
+    Storage.prototype.setItem = function (key, value) {
+      if (key === 'maeul:gathering') throw new DOMException('가득 참', 'QuotaExceededError');
+      return orig.call(this, key, value);
+    };
+  });
+  await g((f) => { window.__game.character.teleport(f.x, f.z); window.__game.view.snapFocus(f.x, f.z); }, target);
+  await page.waitForTimeout(2000);
+  const failed8 = await g((id) => ({
+    picks: window.__game.view.forest.state.picks, visible: window.__game.view.forest.state.items.includes(id),
+    look: window.__game.view.forest.state.looks[id], picked: window.__game.gathering.store.state.picked.includes(id),
+    toast: document.getElementById('toast')?.textContent || '',
+  }), target.id);
+  say('저장하지 못하면 곁에 서 있어도 한 번만 줍고, 주울 거리가 남는다',
+    failed8.picks - before8.picks === 1 && failed8.visible && !failed8.picked && failed8.toast.includes('저장하지 못해'), JSON.stringify({ tries: failed8.picks - before8.picks, visible: failed8.visible, toast: failed8.toast.slice(0, 30) }));
+  say('되살아난 주울 거리는 제자리·제 크기다', JSON.stringify(failed8.look) === JSON.stringify(before8.looks[target.id]),
+    JSON.stringify({ before: before8.looks[target.id], after: failed8.look }));
+  // 저장이 다시 되면, 한 번 떠났다 돌아올 때 줍는다
+  await g(() => window.__restoreSet());
+  await g((f) => { window.__game.character.teleport(f.x + 3, f.z); }, target);
+  await page.waitForTimeout(500);
+  await g((f) => { window.__game.character.teleport(f.x, f.z); }, target);
+  const again = await page.waitForFunction((id) => window.__game.gathering.store.state.picked.includes(id), target.id, { timeout: 10000 }).then(() => true).catch(() => false);
+  say('저장이 되면 떠났다 돌아올 때 다시 줍는다', again, '');
+}

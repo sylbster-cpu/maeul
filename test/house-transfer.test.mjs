@@ -237,3 +237,22 @@ test('저장소가 없는 브라우저에서는 가져오기나 복구를 시작
   assert.equal(hasPreviousHouse(null), false);
   assert.throws(() => restorePreviousHouse(null), /저장할 수 없습니다/);
 });
+test('지금 집이 새 판의 집이면 가져오지 않는다: 보관된 집이 있어도 새 판의 원문을 잃지 않는다 (2026-11-26 GPT 점검)', () => {
+  const data = JSON.parse(serialize(house('slate')));
+  data.state.spaces.yard.objects.zz = { id: 'zz', part: 'future_thing', x: 1, y: 1, rot: 0, by: 'p1' };
+  const newer = JSON.stringify(data); // 확인 창이 떠 있는 사이 다른 탭이 저장한 새 판의 집
+  const backup = JSON.stringify({ version: 1, previous: serialize(house('moss')) });
+  const storage = fakeStorage({ [SAVE_KEY]: newer, [PRE_IMPORT_KEY]: backup });
+  for (const replaceCurrent of [true, false]) {
+    assert.throws(() => importSharedHouse(storage, house('moss'), { replaceCurrent }), /더 새로운 판/);
+    assert.equal(storage.getItem(SAVE_KEY), newer);
+    assert.equal(storage.getItem(PRE_IMPORT_KEY), backup);
+    assert.equal(storage.getItem(TRANSFER_JOURNAL_KEY), null);
+  }
+  // 판 번호가 더 큰 집도 같다
+  const later = JSON.stringify({ ...JSON.parse(serialize(house('slate'))), version: 99 });
+  const storage2 = fakeStorage({ [SAVE_KEY]: later });
+  assert.throws(() => importSharedHouse(storage2, house('moss')), /더 새로운 판/);
+  assert.equal(storage2.getItem(SAVE_KEY), later);
+  assert.equal(storage2.getItem(PRE_IMPORT_KEY), null);
+});

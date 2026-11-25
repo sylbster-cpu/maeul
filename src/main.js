@@ -29,14 +29,14 @@ import { createFishingUI, createCatchCard } from './fishing-ui.js';
 
 watchShareHash(window);
 
-// 브라우저 저장소. 막혀 있는 환경(사생활 보호 창 등)에서는 null 을 돌려준다
+// 브라우저 저장소. 읽을 수조차 없는 환경(막힌 사생활 보호 창 등)에서만 null 을 돌려준다.
+// 쓰기만 실패할 때(저장 공간이 가득 참 등)는 저장소를 그대로 쓴다. 저장된 집을 읽어야 처음 배치로 시작해
+// 온라인 게시로 덮어쓰는 일이 없다. 쓰기 실패는 저장할 때 저장 상태 줄로 알린다(2026-11-26 GPT 점검)
 function openStorage() {
-  try {
-    const storage = window.localStorage;
-    storage.setItem('house-lab-web:probe', '1');
-    storage.removeItem('house-lab-web:probe');
-    return storage;
-  } catch { return null; }
+  let storage;
+  try { storage = window.localStorage; storage.getItem('house-lab-web:probe'); } catch { return null; }
+  try { storage.setItem('house-lab-web:probe', '1'); storage.removeItem('house-lab-web:probe'); } catch { /* 읽기는 된다 */ }
+  return storage;
 }
 
 async function start(saved = {}) {

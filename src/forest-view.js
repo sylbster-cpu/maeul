@@ -240,7 +240,8 @@ export function createForestView(parent, { fx = null, calm = false } = {}) {
       const to = who || a.from;
       a.obj.position.set(a.from.x + (to.x - a.from.x) * k, 0.9 * k + 0.5 * Math.sin(Math.PI * k), a.from.z + (to.z - a.from.z) * k);
       a.obj.scale.setScalar(a.scale * (1 - 0.85 * k));
-      if (k >= 1) { anims.splice(i, 1); applyPicked(); }
+      // 끝나면 제자리·제 크기로 되돌린다. 주운 것이면 applyPicked 가 감추고, 저장하지 못해 되살아나면 원래 모습으로 보인다
+      if (k >= 1) { anims.splice(i, 1); a.obj.position.copy(a.from); a.obj.scale.setScalar(a.scale); applyPicked(); }
     }
     // 아직 남은 주울 거리 하나가 가끔 반짝인다. 찾기를 돕되 많지 않게 (1-10)
     glintT += dt;
@@ -307,6 +308,8 @@ export function createForestView(parent, { fx = null, calm = false } = {}) {
         ...counts, popping: !!pop, bubble: bubble.visible, itemY: find.children[0]?.position.y ?? 0,
         site: { x: find.position.x, z: find.position.z },
         day, slot, special: find.visible, items: items.children.filter((c) => c.visible).map((c) => c.userData.id),
+        // 주울 거리마다 높이와 크기 (저장하지 못해 되살아난 것이 제 모습인지 본다)
+        looks: Object.fromEntries(items.children.map((c) => [c.userData.id, { y: +c.position.y.toFixed(3), s: +c.scale.x.toFixed(3) }])),
         decor: { stones: decor.stones.count, tufts: decor.tufts.count, flowers: decor.flowers.count },
       };
     },
