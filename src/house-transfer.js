@@ -1,6 +1,6 @@
 // 집 공유 링크(#home=)의 배치만 브라우저에 옮긴다. Firebase 소유권/방명록은 옮기지 않는다.
 // 집과 보관본을 교환할 때는 변경 기록을 먼저 저장해 오류·중간 종료 시 원본을 보존한다.
-import { SAVE_KEY, serialize, parse } from './save.js';
+import { SAVE_KEY, serialize, parse, isNewerHouse } from './save.js';
 
 export const PRE_IMPORT_KEY = 'house-lab-web:before-import';
 export const TRANSFER_JOURNAL_KEY = 'house-lab-web:transfer-pending';
@@ -157,10 +157,16 @@ export function importSharedHouse(storage, incomingState, { replaceCurrent = fal
   if (!checked?.ok || checked.dropped) throw new Error('가져올 집 데이터가 현재 게임 규칙에 맞지 않습니다');
   const backup = readBackup(storage); // 손상됐으면 여기서 멈춘다
   const kept = backup !== null && backup.previous !== null;
+  const original = storage.getItem(SAVE_KEY);
+  // 지금 집이 이 화면이 모르는 새 판의 집이면 가져오지 않는다. 확인 창이 떠 있는 사이 다른 탭이 저장했을 수도 있으므로
+  // 쓰기 바로 앞에서 본다(2026-11-26 GPT 점검: 보관된 집이 있으면 새 판의 원문이 어디에도 남지 않았다).
+  // 확인 창을 닫은 바로 그 자리에서는 다른 탭의 저장이 아직 이 탭에 오지 않았을 수 있어, main.js 가 잠깐 쉰 뒤에 부른다(settleStorage)
+  if (original !== null && isNewerHouse(original)) {
+    throw new Error('지금 내 집이 더 새로운 판에서 저장되어 있어 가져오지 않았습니다. 새로 고친 뒤 다시 해 주세요');
+  }
   if (kept && !replaceCurrent) {
     throw new Error('보관된 다른 집이 이미 있습니다. 가져오면 지금 집이 바뀝니다. 다시 확인해 주세요');
   }
-  const original = storage.getItem(SAVE_KEY);
   const next = serialize(checked.state, { place: 'yard' });
   commitHouseChange(storage, {
     save: next,

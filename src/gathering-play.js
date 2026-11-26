@@ -20,6 +20,9 @@ export function createGathering({ character, view, ui, audio, haptics = null, st
   let { day, slot } = kstSlot(now());
   let checkT = 0;
   const pending = new Set(); // 저장하는 중인 자리 (같은 자리를 두 번 줍지 않게)
+  // 저장하지 못한 자리. 곁에 서 있는 동안 곧바로 다시 줍지 않는다(전에는 1초에 수십 번 다시 주웠다, 2026-11-26 GPT 점검).
+  // 한 번 멀어졌다 다시 다가오면 다시 줍는다
+  const failed = new Set();
 
   const pickedToday = () => pickedOn(store.state, day);
   // 지금 시간대에 놓인 것과 오늘의 발견 가운데 아직 줍지 않은 것
@@ -84,6 +87,7 @@ export function createGathering({ character, view, ui, audio, haptics = null, st
       pending.delete(f.id);
       sync();
       if (saved === false) {
+        failed.add(f.id);
         ui.toast(!saver.available ? '이 브라우저에서는 채집 기록이 저장되지 않습니다. 이번 접속 동안만 남습니다'
           : saver.newerStored() ? '더 새로운 판의 채집 기록이 있어 줍지 못했습니다. 새로 고쳐 주세요'
             : '채집 기록을 저장하지 못해 줍지 못했습니다. 저장 공간을 확인해 주세요', 'error');
@@ -117,7 +121,10 @@ export function createGathering({ character, view, ui, audio, haptics = null, st
       if (character.place !== 'yard') return;
       const p = character.pos;
       for (const f of left()) {
-        if (Math.hypot(p.x - f.x, p.z - f.z) < (f.special ? SPECIAL_RADIUS : PICK_RADIUS)) pick(f);
+        const reach = f.special ? SPECIAL_RADIUS : PICK_RADIUS;
+        const d = Math.hypot(p.x - f.x, p.z - f.z);
+        if (failed.has(f.id)) { if (d > reach + 0.5) failed.delete(f.id); continue; }
+        if (d < reach) pick(f);
       }
     },
   };
