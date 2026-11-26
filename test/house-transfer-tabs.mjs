@@ -112,6 +112,36 @@ export default async function transferTabsTour(page, { out, logs }) {
         afterImport.save === newerImport && afterImport.journal === null && importToast.includes('더 새로운 판'),
         JSON.stringify({ kept: afterImport.save === newerImport, toast: importToast.slice(0, 30) }));
 
+      // 1-2) 가져오기: 다른 탭이 같은 판으로(알려진 부품만으로) 집을 고친 경우. 판 검사로는 걸리지 않는다(2026-11-26 GPT 재검토)
+      await writer.evaluate((t) => localStorage.setItem('house-lab-web:save', t), before);
+      const keptBefore = (await houseKeys()).previous;
+      const again = new URL(link);
+      again.search = '?same-version'; // 같은 주소면 새로 열리지 않으므로 바꿔 연다
+      await page.goto(again.href);
+      await page.waitForFunction(() => window.__ready === true && document.getElementById('share-house').textContent === '집 가져오기', null, { timeout: 30000 });
+      const editedInOther = new Promise((resolve) => {
+        page.once('dialog', async (dialog) => {
+          const text = await writer.evaluate(() => {
+            const d = JSON.parse(localStorage.getItem('house-lab-web:save'));
+            d.state.house.roof = d.state.house.roof === 'moss' ? 'slate' : 'moss';
+            const t = JSON.stringify(d);
+            localStorage.setItem('house-lab-web:save', t);
+            return t;
+          });
+          await new Promise((r) => setTimeout(r, 300));
+          await dialog.accept();
+          resolve(text);
+        });
+      });
+      await page.click('#share-house');
+      const sameVersion = await editedInOther;
+      await page.waitForFunction(() => (document.getElementById('toast')?.textContent || '').includes('다른 탭에서 집이 바뀌어'), null, { timeout: 5000 }).catch(() => {});
+      const afterSame = await houseKeys();
+      const sameToast = await page.evaluate(() => document.getElementById('toast')?.textContent || '');
+      say('가져오기 확인 창 사이 다른 탭이 같은 판으로 고친 집도 덮어쓰지 않는다',
+        afterSame.save === sameVersion && afterSame.previous === keptBefore && afterSame.journal === null && sameToast.includes('다른 탭에서 집이 바뀌어'),
+        JSON.stringify({ kept: afterSame.save === sameVersion, backup: afterSame.previous === keptBefore, toast: sameToast.slice(0, 30) }));
+
       // 2) 맞바꾸기: 보통 집으로 열어 둔 탭에서 맞바꾸려 한다
       await writer.evaluate((t) => localStorage.setItem('house-lab-web:save', t), before);
       const kept = (await houseKeys()).previous;

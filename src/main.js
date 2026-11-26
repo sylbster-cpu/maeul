@@ -190,11 +190,19 @@ async function start(saved = {}) {
         const question = replaceCurrent
           ? '지금 구경하는 집을 이 브라우저의 내 집으로 가져올까요? 보관해 둔 다른 집은 그대로 남고, 지금 내 집이 이 집으로 바뀝니다. 지금 내 집은 되살릴 수 없습니다. 남기고 싶으면 취소한 뒤, 내 집의 집 공유 창에서 "보관된 다른 집과 맞바꾸기"를 먼저 하세요. Firebase 온라인 집과 방명록의 소유권은 옮겨지지 않습니다.'
           : '지금 구경하는 집을 이 브라우저의 내 집으로 가져올까요? 기존에 저장된 집은 맞바꿀 수 있도록 보관합니다. Firebase 온라인 집과 방명록의 소유권은 옮겨지지 않습니다.';
+        // 확인 창을 띄우기 직전의 집과 보관본. 이것과 비교해 창이 떠 있는 사이의 변경만 본다
+        const shown = createHouseSaveGuard(storage);
         if (!window.confirm(question)) return;
         switchingHouse = true;
         ui.setHouseTransition(true);
         await settleStorage(); // 확인 창이 떠 있던 사이 다른 탭이 쓴 것을 받은 뒤에 읽는다(위 settleStorage)
-        try { importSharedHouse(storage, sharedState, { replaceCurrent }); }
+        try {
+          // 창이 떠 있는 사이 다른 탭이 집이나 보관본을 바꿨으면 판이 같아도 가져오지 않는다. 사용자는 바뀌기 전의 집을 보고
+          // "예"를 눌렀고, 보관된 집이 있으면 바뀐 지금 집은 어디에도 남지 않는다(2026-11-26 GPT 재검토)
+          if (newerHouse()) throw new Error(NEWER_HOUSE); // 새 판의 집이면 그쪽 안내가 더 정확하다
+          if (!shown.isCurrent()) throw new Error('확인하는 사이 다른 탭에서 집이 바뀌어 가져오지 않았습니다. 새로 고친 뒤 다시 해 주세요');
+          importSharedHouse(storage, sharedState, { replaceCurrent });
+        }
         catch (error) {
           // 기록이 일부 남았다면 절대 자동 저장을 다시 켜지 않는다.
           switchingHouse = !saveGuard.isCurrent();
