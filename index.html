@@ -176,6 +176,9 @@ img { max-width: 100%; }
   .chip { width: 36px; height: 36px; border-radius: 8px; border: 2px solid var(--panel-edge); display: block; }
   .cam #place-toggle { background: var(--moss); border-color: var(--panel-edge); color: var(--on-moss); font-family: var(--font-display); font-size: 16px; padding: 0 14px; box-shadow: 0 2px 0 var(--panel-edge); }
   .tool-label { font-size: 12px; line-height: 1.15; white-space: nowrap; }
+  /* 주운 것의 남은 수(이름 아래 한 줄) */
+  .tool-count { font-size: 11px; line-height: 1.1; white-space: nowrap; color: var(--ink-soft); }
+  .tool[aria-pressed="true"] .tool-count { color: var(--accent-ink); }
 
   /* 공유 링크는 현재 화면 위에서 보여 주어 3D 화면의 위치와 도구 높이를 바꾸지 않는다 */
   .share-layer {

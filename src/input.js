@@ -3,6 +3,7 @@
 import { PARTS, LEVELS, MAX_LEVEL } from './parts.js';
 import { cellKey, clearCommands, layerOf, seatSpots } from './state.js';
 import { sampleCommands } from './sample.js';
+import { foundCounts, foundHint } from './gathering.js';
 
 const KEY_HINTS = {
   walkYard: '땅을 누르거나 WASD로 걷습니다. 집을 누르면 안으로 들어갑니다.',
@@ -47,6 +48,9 @@ export function createInput({ canvas, view, store, history, character, ui, audio
       return character.seated ? hints.seated : here() === 'yard' ? hints.walkYard : hints.walkRoom;
     }
     if (s.carry) return hints.carry;
+    // 주운 것을 골랐으면 가진 수·놓인 수·더 놓을 수 있는 수를 알린다(2026-11-26 사용자 결정 "가진 수 고쳐요")
+    const kind = PARTS[s.tool]?.found;
+    if (kind && gathering) return foundHint(kind, foundCounts(store.state, gathering.store.state)[kind]);
     return hints[toolKind()] || '';
   }
   function syncUI() {
@@ -380,8 +384,12 @@ export function createInput({ canvas, view, store, history, character, ui, audio
   // 가구의 크기(칸 수). 큰 가구일수록 놓고 치우는 소리를 낮게 낸다 (연출의 크기는 무게에 맞춘다)
   const areaOf = (part) => { const p = PARTS[part]; return p?.size ? p.size[0] * p.size[1] : p?.span || 1; };
   const pitchFor = (area) => Math.min(1.2, Math.max(0.78, 1.24 - 0.075 * area));
+  // 주운 것을 고른 채 놓거나 치우거나 되돌리면, 또는 다른 탭에서 더 주우면 안내 줄의 수를 고친다
+  const refreshFoundHint = () => { if (s.mode === 'build' && !s.carry && PARTS[s.tool]?.found) ui.setHint(hintFor()); };
+  gathering?.subscribe?.(refreshFoundHint);
   store.subscribe((cmd, meta) => {
     if (cmd.type === 'replace') { syncUI(); return; }
+    refreshFoundHint();
     // 치운 가구는 지워지기 전 모습으로 오므라들며 사라진다 (다시 그리기는 다음 화면에서 한다)
     const area = cmd.type === 'removeObject' ? view.vanish(cmd.id)
       : cmd.type === 'placeObject' ? areaOf(cmd.part)

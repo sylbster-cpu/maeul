@@ -5,7 +5,7 @@ import { createState, createStore } from '../src/state.js';
 import { createHistory } from '../src/history.js';
 import { serialize, parse } from '../src/save.js';
 import { PARTS, FOUND_PARTS } from '../src/parts.js';
-import { placedFound, ownedFound, availableFound, checkFoundCommands, GATHER_ORDER } from '../src/gathering.js';
+import { placedFound, ownedFound, availableFound, checkFoundCommands, GATHER_ORDER, foundCounts, foundShort, foundHint } from '../src/gathering.js';
 
 const gather = (counts) => ({ version: 2, day: null, picked: [], log: Object.fromEntries(Object.entries(counts).map(([k, n]) => [k, { best: 5, first: '2026-11-25', count: n }])) });
 function setup(counts) {
@@ -110,4 +110,28 @@ test('가진 것보다 많이 놓인 집(가져온 친구 집 등)은 그대로 
   assert.equal(checkFoundCommands(back.state, g, [more]).ok, false);
   // 치우고 다른 자리에 놓는 묶음은 늘지 않으므로 통과한다
   assert.ok(checkFoundCommands(back.state, g, [{ type: 'removeObject', space: 'yard', id: 'f0' }, more]).ok);
+});
+test('가진 수·놓인 수·남은 수를 세고, 버튼 줄과 안내 줄이 0 의 두 경우를 가른다 (2026-11-26 사용자 결정 "가진 수 고쳐요")', () => {
+  const { store, place } = setup({ pinecone: 3, feather: 1 });
+  assert.ok(place('found_pinecone', 1, 1).ok);
+  assert.ok(place('found_feather', 3, 1).ok);
+  const c = foundCounts(store.state, gather({ pinecone: 3, feather: 1 }));
+  assert.deepEqual(c.pinecone, { owned: 3, placed: 1, available: 2 });
+  assert.deepEqual(c.feather, { owned: 1, placed: 1, available: 0 });
+  assert.deepEqual(c.mushroom, { owned: 0, placed: 0, available: 0 });
+  // 버튼 아래 줄: 남은 수, 0 이면 "다 놓음"(가진 것을 모두 놓음)과 "아직 없음"(주운 적 없음)
+  assert.equal(foundShort(c.pinecone), '남은 2개');
+  assert.equal(foundShort(c.feather), '다 놓음');
+  assert.equal(foundShort(c.mushroom), '아직 없음');
+  // 안내 줄: 세 수를 모두 적는다
+  assert.equal(foundHint('pinecone', c.pinecone), '가진 솔방울 3개 가운데 1개를 놓았습니다. 2개 더 놓을 수 있습니다.');
+  assert.match(foundHint('feather', c.feather), /가진 새 깃털 1개를 모두 놓았습니다/);
+  assert.match(foundHint('mushroom', c.mushroom), /아직 주운 작은 버섯이 없습니다/);
+  assert.equal(foundHint('pinecone', { owned: 2, placed: 0, available: 2 }), '가진 솔방울 2개를 놓을 수 있습니다.');
+  // 가져온 친구 집처럼 가진 것보다 많이 놓였거나, 주운 적 없이 놓여 있을 때
+  assert.match(foundHint('pinecone', { owned: 1, placed: 3, available: 0 }), /놓인 솔방울 3개가 가진 1개보다 많습니다/);
+  assert.match(foundHint('pinecone', { owned: 0, placed: 2, available: 0 }), /솔방울 2개가 놓여 있지만 주운 것은 없습니다/);
+  assert.equal(foundShort({ owned: 0, placed: 2, available: 0 }), '아직 없음');
+  // 더 놓을 수 있는 수는 전과 같다
+  assert.deepEqual(Object.fromEntries(GATHER_ORDER.map((k) => [k, c[k].available])), availableFound(store.state, gather({ pinecone: 3, feather: 1 })));
 });

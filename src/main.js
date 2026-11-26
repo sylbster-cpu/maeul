@@ -3,7 +3,7 @@ import { loadAssets } from './assets.js';
 import { PARTS, HOUSE_CENTER_X, MAT_X, LEVELS, OUTDOOR } from './parts.js';
 import { inWater } from './fishing.js';
 import { todaysDiscoverySite, koreaDay, forestCue } from './forest.js';
-import { SPECIAL_ID, checkFoundCommands, availableFound, ownedFound } from './gathering.js';
+import { SPECIAL_ID, checkFoundCommands, foundCounts } from './gathering.js';
 import { createGathering } from './gathering-play.js';
 import { createState, createStore, houseRect } from './state.js';
 import { createView } from './view.js';
@@ -277,8 +277,8 @@ async function start(saved = {}) {
   });
   // 숲에서 줍기(4단계 채집). 기록은 집·낚시 기록과 따로 이 브라우저에 둔다. 친구 집을 구경하는 중에도 내 기록에 남는다
   gathering = createGathering({ character, view, ui, audio, haptics, storage: openStorage() });
-  // 꾸미기 목록의 주운 것 칸에 더 놓을 수 있는 수를 보인다. 집이 바뀌거나 더 주우면 고친다
-  const showFound = () => ui.setFound(availableFound(store.state, gathering.store.state), ownedFound(gathering.store.state));
+  // 꾸미기 목록의 주운 것 칸에 남은 수를 보인다. 집이 바뀌거나 더 주우면 고친다
+  const showFound = () => ui.setFound(foundCounts(store.state, gathering.store.state));
   store.subscribe(showFound);
   gathering.subscribe(showFound);
   showFound();
