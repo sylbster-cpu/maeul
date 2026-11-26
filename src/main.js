@@ -39,6 +39,14 @@ function openStorage() {
   return storage;
 }
 
+// 확인 창(window.confirm)이 떠 있는 동안 이 탭은 다른 탭이 저장소에 쓴 것을 받아들이지 못한다. 브라우저(크롬)는
+// 탭마다 저장소의 사본을 두고 다른 탭의 변경을 뒤늦게 전해 받는데, 확인 창이 그 일을 멈춰 세운다.
+// 그래서 창을 닫은 바로 그 자리에서 읽으면 옛 내용이 나와, 그사이 다른 탭이 저장한 새 판의 집을 덮어썼다
+// (2026-11-26 GPT 재검토, 실제 두 탭에서 재현). 가져오기와 맞바꾸기는 잠깐 쉬어 밀린 변경을 받은 뒤에 읽고 쓴다.
+// localStorage 에는 "읽은 그대로일 때만 쓰기"가 없으므로, 쉰 뒤의 아주 짧은 사이에 다른 탭이 쓰는 경우까지 막지는 못한다
+const SETTLE_MS = 150;
+const settleStorage = () => new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+
 async function start(saved = {}) {
   let assets;
   try { assets = await loadAssets(); }
@@ -174,7 +182,7 @@ async function start(saved = {}) {
         }
       },
       // 서버 없는 집 공유 링크를 열었을 때만, 확인을 받은 뒤 현재 브라우저의 집을 복사한다.
-      importHouse: () => {
+      importHouse: async () => {
         if (switchingHouse || !canImport || !sharedState) return;
         if (newerHouse()) { ui.toast(NEWER_HOUSE, 'error'); return; } // 지금 내 집이 새 판의 집이면 가져오기로 잃을 수 있다
         // 보관 칸은 하나다. 이미 보관된 집이 있으면 그 집은 두고 지금 집이 바뀐다는 것을 미리 알린다
@@ -185,6 +193,7 @@ async function start(saved = {}) {
         if (!window.confirm(question)) return;
         switchingHouse = true;
         ui.setHouseTransition(true);
+        await settleStorage(); // 확인 창이 떠 있던 사이 다른 탭이 쓴 것을 받은 뒤에 읽는다(위 settleStorage)
         try { importSharedHouse(storage, sharedState, { replaceCurrent }); }
         catch (error) {
           // 기록이 일부 남았다면 절대 자동 저장을 다시 켜지 않는다.
@@ -199,12 +208,14 @@ async function start(saved = {}) {
         catch { ui.toast('집은 저장됐습니다. 화면을 직접 새로 고쳐 주세요', 'error'); }
       },
       canRestorePrevious: () => hasPreviousHouse(storage),
-      restorePreviousHouse: () => {
+      restorePreviousHouse: async () => {
         // 같은 버튼을 연속으로 눌러도 첫 교환 뒤 옛 화면이 다시 저장하지 않게 한다.
         if (switchingHouse || !hasPreviousHouse(storage)) return;
         if (!window.confirm('현재 집을 보관하고, 보관된 다른 집과 맞바꿀까요? 두 집의 배치는 모두 유지됩니다. Firebase 온라인 집과 방명록은 바뀌지 않습니다.')) return;
         switchingHouse = true;
         ui.setHouseTransition(true);
+        // 맞바꾸기는 원문을 그대로 옮기지만, 옛 사본을 읽으면 옛 원문을 옮겨 다른 탭이 쓴 것을 잃는다(위 settleStorage)
+        await settleStorage();
         try { restorePreviousHouse(storage); }
         catch (error) {
           switchingHouse = !saveGuard.isCurrent();

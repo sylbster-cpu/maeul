@@ -159,7 +159,8 @@ export function importSharedHouse(storage, incomingState, { replaceCurrent = fal
   const kept = backup !== null && backup.previous !== null;
   const original = storage.getItem(SAVE_KEY);
   // 지금 집이 이 화면이 모르는 새 판의 집이면 가져오지 않는다. 확인 창이 떠 있는 사이 다른 탭이 저장했을 수도 있으므로
-  // 쓰기 바로 앞에서 본다(2026-11-26 GPT 점검: 보관된 집이 있으면 새 판의 원문이 어디에도 남지 않았다)
+  // 쓰기 바로 앞에서 본다(2026-11-26 GPT 점검: 보관된 집이 있으면 새 판의 원문이 어디에도 남지 않았다).
+  // 확인 창을 닫은 바로 그 자리에서는 다른 탭의 저장이 아직 이 탭에 오지 않았을 수 있어, main.js 가 잠깐 쉰 뒤에 부른다(settleStorage)
   if (original !== null && isNewerHouse(original)) {
     throw new Error('지금 내 집이 더 새로운 판에서 저장되어 있어 가져오지 않았습니다. 새로 고친 뒤 다시 해 주세요');
   }
