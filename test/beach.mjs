@@ -98,15 +98,15 @@ export default async function beachTour(page, { out, logs }) {
   });
   say('잡아 본 뒤에는 바닷가에서 오늘 바다에서 잘 잡히는 물고기를 알린다', todayHint.includes(todaySea), JSON.stringify({ todayHint, todaySea }));
 
-  // 5) 낚시 기록 창: 바다 물고기와 물 이름, 물마다 남은 수, 물마다 오늘의 물고기
+  // 5) 낚시 기록 창: 바다 물고기와 물 이름, 물마다 오늘의 물고기. 남은 종류 수는 알리지 않는다(2026-11-26 사용자 결정)
   await page.click('#fish-log');
   const panel = await g(() => ({
     rows: [...document.querySelectorAll('#fish-list li')].map((li) => li.textContent),
-    summary: document.getElementById('fish-summary').textContent,
+    text: document.getElementById('log-fish').innerText,
     today: document.getElementById('fish-today').textContent,
   }));
   say('기록 창에 바다 물고기가 바다라는 표시와 함께 나온다', panel.rows.some((r) => r.includes('망둥어') && r.includes('바다 ·')), JSON.stringify(panel.rows));
-  say('못 잡은 물고기는 물마다 수만 알린다', panel.summary.includes('연못에 4종') && panel.summary.includes('바다에 2종'), panel.summary);
+  say('못 잡은 물고기가 몇 종인지는 알리지 않는다', !/종 더|모두 잡아/.test(panel.text), panel.text);
   say('기록 창에 연못과 바다의 오늘 잘 잡히는 물고기가 모두 나온다', panel.today.startsWith('오늘 잘 잡히는 물고기는 연못에서 ') && panel.today.includes(', 바다에서 ') && panel.today.includes('한국 날짜로 날마다 바뀝니다'), panel.today);
   await page.screenshot({ path: `${out}-4-log.png` });
   await page.click('#fish-close');

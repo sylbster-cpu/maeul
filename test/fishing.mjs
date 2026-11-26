@@ -234,9 +234,9 @@ export default async function fishingTour(page, { out, logs }) {
 
   // 7) 낚시 기록 창
   await page.click('#fish-log');
-  const panel = await g(() => ({ open: !document.getElementById('fish-layer').hidden, rows: [...document.querySelectorAll('#fish-list li strong')].map((e) => e.textContent), summary: document.getElementById('fish-summary').textContent }));
+  const panel = await g(() => ({ open: !document.getElementById('fish-layer').hidden, rows: [...document.querySelectorAll('#fish-list li strong')].map((e) => e.textContent), text: document.getElementById('log-fish').innerText }));
   say('낚시 기록 창에 잡은 물고기만 보인다', panel.open && panel.rows.join() === '송사리,잉어,메기', JSON.stringify(panel));
-  say('못 잡은 물고기는 수만 알린다', panel.summary.includes('1종'), panel.summary);
+  say('못 잡은 물고기가 몇 종인지는 알리지 않는다 (2026-11-26 사용자 결정)', !/종 더|모두 잡아/.test(panel.text), panel.text);
   const today = await todayExpect();
   const todayLine = await g(() => document.getElementById('fish-today').textContent);
   say('기록 창에 오늘 잘 잡히는 물고기가 나온다', todayLine.startsWith(`오늘 잘 잡히는 물고기는 연못에서 ${today.label}, 바다에서 `) && todayLine.includes('한국 날짜로 날마다 바뀝니다'), JSON.stringify({ todayLine, today }));

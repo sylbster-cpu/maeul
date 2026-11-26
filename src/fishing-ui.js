@@ -1,6 +1,6 @@
 // 기록 창(낚시·채집 두 칸, 2026-11-24 사용자 결정)과 낚은 순간의 카드.
 // 기록 창은 잡아 보거나 주워 본 것만 보여 주고, 아직 못 본 것은 수만 알린다.
-import { FISH, FISH_ORDER, WATERS, WATER_ORDER, fishIn } from './fishing.js';
+import { FISH, FISH_ORDER, WATERS, WATER_ORDER } from './fishing.js';
 import { GATHER, GATHER_ORDER } from './gathering.js';
 
 const dayText = (day) => { const [, m, d] = day.split('-').map(Number); return `${m}월 ${d}일`; };
@@ -27,12 +27,11 @@ export function createFishingUI({ fishing, gathering = null }) {
       row.append(name, best, more);
       list.append(row);
     }
-    // 아직 잡아 보지 못한 물고기는 물마다 수만 알린다
-    const left = WATER_ORDER.map((w) => [w, fishIn(w).filter((id) => !log[id]).length]).filter(([, n]) => n > 0);
-    $('fish-summary').textContent = !caught.length
-      ? '아직 잡은 물고기가 없습니다. 마당 옆 연못이나 남쪽 바닷가의 물을 눌러 보세요.'
-      : left.length ? `아직 잡아 보지 못한 물고기가 ${left.map(([w, n]) => `${WATERS[w].label}에 ${n}종`).join(', ')} 더 있습니다.`
-        : '연못과 바다의 물고기를 모두 잡아 보았습니다.';
+    // 아직 잡아 보지 못한 물고기가 몇 종인지는 알리지 않는다. 종류가 모두 몇 가지인지 드러나기 때문이다
+    // (2026-11-26 사용자 결정 "①만 빼기". 오늘 잘 잡히는 물고기는 그대로 둔다. 못 잡은 것은 이름 대신 "아직 잡아 보지 못한 물고기")
+    const summary = $('fish-summary');
+    summary.textContent = caught.length ? '' : '아직 잡은 물고기가 없습니다. 마당 옆 연못이나 남쪽 바닷가의 물을 눌러 보세요.';
+    summary.hidden = caught.length > 0;
     $('fish-today').textContent = `오늘 잘 잡히는 물고기는 ${WATER_ORDER.map((w) => `${WATERS[w].label}에서 ${fishing.todayLabel(w)}`).join(', ')}입니다. 한국 날짜로 날마다 바뀝니다.`;
   }
   // 채집 칸 (4단계 채집 실험)
