@@ -3,7 +3,7 @@
 // 1. 오늘 숲에는 주울 거리 6개와 오늘의 발견(금빛 고리)이 있다
 // 2. 주울 거리를 누르면 그 곁으로 걸어가 줍는다. 그것만 줍고, 사라지고, 알림이 뜬다
 // 3. 기록은 웹 잠금을 거쳐 집과 다른 열쇠에 저장되고, 집 저장은 바뀌지 않는다
-// 4. 기록 창: 처음엔 낚시 칸, 채집 칸으로 바꾸면 주운 것과 오늘 남은 수가 보인다
+// 4. 기록 창: 처음엔 낚시 칸, 채집 칸으로 바꾸면 주운 것이 보인다. 남은 수·다음 시각·남은 종류 수는 알려 주지 않는다 (2026-11-26 사용자 "너무 다 가르쳐주면 재미 없어요")
 // 5. 새로 열어도 주운 것은 기록에 남고 숲에서 사라진 채다
 // 6. 주울 거리가 아닌 곳을 누르면 아무것도 줍지 않는다
 // 7. 3시간 뒤(다음 시간대)에는 새 6개가 놓이고, 오늘의 발견은 그대로다 (2026-11-25 사용자 결정 "같은 날 다시 놓이게")
@@ -95,14 +95,16 @@ export default async function gatherTour(page, { out, logs }) {
     fish: !document.getElementById('log-fish').hidden, gather: !document.getElementById('log-gather').hidden,
     rows: [...document.querySelectorAll('#gather-list li strong')].map((e) => e.textContent),
     best: document.querySelector('#gather-list li span')?.textContent || '',
-    today: document.getElementById('gather-today').textContent,
+    text: document.getElementById('log-gather').innerText,
     pressed: document.getElementById('log-tab-gather').getAttribute('aria-pressed'),
   }));
   const label = { pinecone: '솔방울', mushroom: '작은 버섯', feather: '새 깃털' }[f.kind];
   say('기록 버튼은 "기록"이고, 열면 낚시 칸이 먼저 보인다', fishTab.open && fishTab.fish && !fishTab.gather && fishTab.label === '기록', JSON.stringify(fishTab));
-  say('채집 칸에 주운 것과 가장 큰 크기, 오늘 남은 수가 보인다',
-    !gatherTab.fish && gatherTab.gather && gatherTab.pressed === 'true' && gatherTab.rows.join() === label && gatherTab.best.includes(`${f.size}cm`) && gatherTab.today.includes('6개 남았습니다'),
+  say('채집 칸에 주운 것과 가장 큰 크기가 보인다',
+    !gatherTab.fish && gatherTab.gather && gatherTab.pressed === 'true' && gatherTab.rows.join() === label && gatherTab.best.includes(`${f.size}cm`),
     JSON.stringify(gatherTab));
+  say('채집 칸은 숲에 남은 수, 다음에 놓이는 시각, 남은 종류 수를 알려 주지 않는다',
+    !/남았습니다|새로 놓이고|종 더|모두 주워|금빛 고리/.test(gatherTab.text), JSON.stringify(gatherTab.text));
   await page.screenshot({ path: `${out}-2-log.png` });
   await page.click('#fish-close');
 
@@ -130,19 +132,20 @@ export default async function gatherTour(page, { out, logs }) {
   say('주울 거리가 아닌 곳을 누르면 줍지 않는다', still === 6, JSON.stringify({ left: still, at: empty }));
 
   // 7. 3시간 뒤: 새로 놓이고, 앞 시간대에 주운 것과 상관없이 6개, 오늘의 발견은 그대로
-  // 기록 창의 채집 칸을 연 채로 시간대를 넘긴다. 남은 수와 다음 시각이 바로 고쳐져야 한다
+  // 기록 창의 채집 칸을 연 채로 시간대를 넘긴다. 창은 그대로 열려 있고 시간대 이야기는 나오지 않는다
   await page.click('#fish-log');
   await page.click('#log-tab-gather');
-  const before = await g(() => ({ slot: window.__game.gathering.slot, items: window.__game.view.forest.state.items, special: window.__game.view.forest.state.special, text: document.getElementById('gather-today').textContent }));
+  const before = await g(() => ({ slot: window.__game.gathering.slot, items: window.__game.view.forest.state.items, special: window.__game.view.forest.state.special, rows: document.querySelectorAll('#gather-list li').length }));
   await pin(T0 + 3 * 3600 * 1000);
   await page.waitForTimeout(200);
-  const later = await g(() => ({ slot: window.__game.gathering.slot, day: window.__game.gathering.day, items: window.__game.view.forest.state.items, left: window.__game.gathering.left.length, special: window.__game.view.forest.state.special, today: document.getElementById('gather-today')?.textContent || '' }));
+  const later = await g(() => ({ slot: window.__game.gathering.slot, day: window.__game.gathering.day, items: window.__game.view.forest.state.items, left: window.__game.gathering.left.length, special: window.__game.view.forest.state.special, rows: document.querySelectorAll('#gather-list li').length, text: document.getElementById('log-gather').innerText, open: !document.getElementById('fish-layer').hidden }));
   const sameDay = later.day === today.forest.day;
   say('3시간 뒤에는 새 6개가 놓이고 오늘의 발견은 그대로다',
     later.slot !== before.slot && later.items.length === 6 && later.items.every((id) => !before.items.includes(id)) && (sameDay ? later.special === before.special : later.special),
     JSON.stringify({ before: before.slot, after: later.slot, items: later.items.length, sameDay, special: later.special }));
-  say('기록 창을 연 채 시간대가 바뀌면 남은 수와 다음 시각이 바로 바뀐다', later.today !== before.text && later.left === 7 && later.today.includes('7개 남았습니다'), // 새 6개 + 아직 줍지 않은 오늘의 발견
-    JSON.stringify({ before: before.text.slice(-28), after: later.today.slice(-28) }));
+  say('기록 창을 연 채 시간대가 바뀌어도 창은 그대로이고, 남은 수나 다음 시각은 나오지 않는다',
+    later.open && later.rows === before.rows && later.left === 7 && !/남았습니다|새로 놓이고/.test(later.text), // 숲에는 새 6개 + 아직 줍지 않은 오늘의 발견
+    JSON.stringify({ rows: [before.rows, later.rows], left: later.left, text: later.text.slice(0, 60) }));
   await page.click('#fish-close');
 
   // 8. 채집 기록을 저장하지 못하게 해 두고 주울 거리 위에 선다
