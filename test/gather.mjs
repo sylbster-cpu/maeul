@@ -87,24 +87,26 @@ export default async function gatherTour(page, { out, logs }) {
     JSON.stringify({ lockable, locks: saved.locks, format: data.format, version: data.version }));
   say('줍기는 집 저장을 바꾸지 않는다', saved.house === houseBefore, '');
 
-  // 4. 수첩 (6단계에서 기록 창의 이름을 바꾸고 가진 것 칸을 더했다)
+  // 4. 수첩 (6단계에서 기록 창의 이름을 바꾸었다. 가진 것 칸은 채집 칸과 겹쳐 2026-11-27 사용자 결정으로 합쳤다)
   await page.click('#fish-log');
-  const fishTab = await g(() => ({ open: !document.getElementById('fish-layer').hidden, owned: !document.getElementById('log-owned').hidden, fish: !document.getElementById('log-fish').hidden, gather: !document.getElementById('log-gather').hidden, label: document.getElementById('fish-log').textContent,
-    ownedRows: [...document.querySelectorAll('#owned-list li')].map((li) => li.textContent) }));
+  const first = await g(() => ({ open: !document.getElementById('fish-layer').hidden, fish: !document.getElementById('log-fish').hidden, gather: !document.getElementById('log-gather').hidden, label: document.getElementById('fish-log').textContent,
+    tabs: [...document.querySelectorAll('.log-tabs button')].map((b) => b.textContent), owned: !!document.getElementById('log-tab-owned') }));
+  await page.click('#log-tab-fish');
   await page.click('#log-tab-gather');
   const gatherTab = await g(() => ({
     fish: !document.getElementById('log-fish').hidden, gather: !document.getElementById('log-gather').hidden,
     rows: [...document.querySelectorAll('#gather-list li strong')].map((e) => e.textContent),
-    best: document.querySelector('#gather-list li span')?.textContent || '',
+    row: document.querySelector('#gather-list li')?.textContent || '',
+    owned: document.querySelector('#gather-list li span')?.textContent || '',
     text: document.getElementById('log-gather').innerText,
     pressed: document.getElementById('log-tab-gather').getAttribute('aria-pressed'),
   }));
   const label = { pinecone: '솔방울', mushroom: '작은 버섯', feather: '새 깃털' }[f.kind];
-  say('수첩 버튼은 "수첩"이고, 처음 열면 가진 것 칸이 먼저 보인다', fishTab.open && fishTab.owned && !fishTab.fish && !fishTab.gather && fishTab.label === '수첩', JSON.stringify(fishTab));
-  say('가진 것 칸에 주운 것이 가진 수·놓은 수·더 놓을 수 있는 수로 나뉘어 보인다',
-    fishTab.ownedRows.length === 1 && fishTab.ownedRows[0].includes(label) && fishTab.ownedRows[0].includes('가진 것 1개') && fishTab.ownedRows[0].includes('집에 놓은 것 0개') && fishTab.ownedRows[0].includes('더 놓을 수 있는 것 1개'), JSON.stringify(fishTab.ownedRows));
-  say('채집 칸에 주운 것과 가장 큰 크기가 보인다',
-    !gatherTab.fish && gatherTab.gather && gatherTab.pressed === 'true' && gatherTab.rows.join() === label && gatherTab.best.includes(`${f.size}cm`),
+  say('수첩 버튼은 "수첩"이고, 칸은 채집·낚시 둘이며 처음 열면 채집 칸이 먼저 보인다',
+    first.open && first.gather && !first.fish && first.label === '수첩' && first.tabs.join() === '채집,낚시' && !first.owned, JSON.stringify(first));
+  say('채집 칸 한 줄에 가진 수·놓은 수·더 놓을 수 있는 수·가장 큰 크기·처음 주운 날이 함께 보인다',
+    !gatherTab.fish && gatherTab.gather && gatherTab.pressed === 'true' && gatherTab.rows.join() === label && gatherTab.owned === '가진 것 1개' &&
+    ['집에 놓은 것 0개', '더 놓을 수 있는 것 1개', `가장 큰 것 ${f.size}cm`, '처음 주운 날'].every((t) => gatherTab.row.includes(t)),
     JSON.stringify(gatherTab));
   say('채집 칸은 숲에 남은 수, 다음에 놓이는 시각, 남은 종류 수를 알려 주지 않는다',
     !/남았습니다|새로 놓이고|종 더|모두 주워|금빛 고리/.test(gatherTab.text), JSON.stringify(gatherTab.text));

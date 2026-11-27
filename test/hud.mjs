@@ -98,10 +98,10 @@ export default async function hud(page, { out, logs }) {
   say('메뉴의 소리 단추가 켜고 끈다', muted.text === '소리 꺼짐' && muted.pressed === 'false' && await g(() => document.getElementById('sound').textContent === '소리 켜짐'), JSON.stringify(muted));
   await page.click('#menu-toggle');
 
-  // 5) 수첩: 걷기에서 한 번에 연다. 처음에는 가진 것 칸
+  // 5) 수첩: 걷기에서 한 번에 연다. 처음에는 채집 칸(가진 것 칸을 합침, 2026-11-27 사용자 결정)
   await page.click('#fish-log');
-  const j1 = await g(() => ({ open: !document.getElementById('fish-layer').hidden, title: document.getElementById('fish-title').textContent, owned: !document.getElementById('log-owned').hidden, summary: document.getElementById('owned-summary').textContent }));
-  say('걷기에서 수첩을 한 번 누르면 열리고 가진 것 칸이 먼저 보인다', j1.open && j1.title === '수첩' && j1.owned && j1.summary.includes('아직 가진 것이 없습니다'), JSON.stringify(j1));
+  const j1 = await g(() => ({ open: !document.getElementById('fish-layer').hidden, title: document.getElementById('fish-title').textContent, gather: !document.getElementById('log-gather').hidden, summary: document.getElementById('gather-summary').textContent }));
+  say('걷기에서 수첩을 한 번 누르면 열리고 채집 칸이 먼저 보인다', j1.open && j1.title === '수첩' && j1.gather && j1.summary.includes('아직 주운 것이 없습니다'), JSON.stringify(j1));
   await page.click('#fish-close');
 
   // 6) 꾸미기에서도 연다. 닫으면 고른 도구와 모드가 그대로다
