@@ -96,6 +96,7 @@ export function createShelterView({ canvas, assets, initial }) {
       const piece=state.items[entry.mark]?.[entry.slot];if(piece)rings.add(ringAt(piece,highlightMat));
     }
     refreshSelection();
+    scene.updateMatrixWorld(true);
     character.stop();
     for(const fn of listeners)fn();
     const safe=freeShelterCell(state,character.pos.x,character.pos.z);

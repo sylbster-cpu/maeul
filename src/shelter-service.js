@@ -44,17 +44,40 @@ export function createShelterService({ uid, db, api }) {
     throw new Error('쉼터 변경을 확인할 수 없습니다');
   }
 
+  const newId = () => {
+    const id = api.doc(api.collection(db, 'shelters')).id;
+    if (!validShelterId(id)) throw new Error('쉼터 주소를 만들 수 없습니다');
+    return id;
+  };
+
   return {
-    uid,
-    async create() {
-      const target = api.doc(api.collection(db, 'shelters'));
-      if (!validShelterId(target.id)) throw new Error('쉼터 주소를 만들 수 없습니다');
-      const state = createShelter(uid);
-      await api.setDoc(target, data(state));
-      return { id: target.id, state };
+    uid, newId,
+    async create(id = newId()) {
+      // 만들기 응답을 잃어도 같은 주소로 다시 시도한다. 남의 쉼터를 덮어쓰지 않는다.
+      const target = ref(id);
+      return api.runTransaction(db, async tx => {
+        const snap = await tx.get(target);
+        if (snap.exists()) {
+          const state = read(snap);
+          if (state.ownerUid !== uid) throw new Error('이미 다른 사람이 만든 쉼터입니다');
+          return { id, state };
+        }
+        const state = createShelter(uid);
+        tx.set(target, data(state));
+        return { id, state };
+      });
     },
     async get(id) {
       return read(await api.getDocFromServer(ref(id)));
+    },
+    // 캐시나 아직 확정되지 않은 내 쓰기를 서버에서 저장됐다고 표시하지 않는다.
+    watch(id, onState, onStatus) {
+      return api.onSnapshot(ref(id), { includeMetadataChanges: true }, snap => {
+        if (snap.metadata.hasPendingWrites) return;
+        if (snap.metadata.fromCache) { onStatus(false); return; }
+        try { onState(read(snap)); onStatus(true); }
+        catch (error) { onStatus(false, error); }
+      }, error => onStatus(false, error));
     },
     async join(id) {
       return transact(ref(id), old => {

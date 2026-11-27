@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>마을 · 공동 쉼터 조작 체험</title>
+<title>마을 · 공동 쉼터</title>
 <style>
 :root{color-scheme:light;--ink:#354638;--muted:#65745b;--paper:#fffdf4;--edge:#d0d7be;--green:#527a55;font:15px system-ui,sans-serif}
 *{box-sizing:border-box}
@@ -33,6 +33,13 @@ canvas{display:block;position:absolute;inset:0;width:100%;height:100%;touch-acti
 #choices button{height:54px;text-align:left;padding:0 10px}
 #actions{display:flex;gap:5px;padding:6px 8px;background:#f6f7e8;border-top:1px solid var(--edge);flex:none;height:68px;align-items:stretch}
 #actions button{flex:1;min-width:44px;padding:0 4px;white-space:nowrap;font-size:14px}
+ .lobby{position:absolute;inset:0;z-index:3;overflow:auto;background:#d9e8bd;display:flex;align-items:safe center;justify-content:center;padding:16px}
+.lobby-panel{background:var(--paper);border:1px solid var(--edge);border-radius:18px;padding:16px;width:min(420px,100%);margin:auto 0}
+.lobby-panel h2{font-size:20px;margin:0 0 10px}.lobby-panel p{font-size:13px;line-height:1.55;margin:8px 0;color:var(--muted)}
+.lobby-panel button,.lobby-panel a{width:100%;min-height:44px;margin-top:8px;padding:8px;display:flex;align-items:center;justify-content:center}
+.lobby-panel a{text-decoration:none;border:1px solid var(--edge);border-radius:13px;font-weight:650}
+.invite-layer{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;background:#35463899;padding:14px}
+.invite-layer input{display:block;width:100%;min-height:44px;padding:8px;border:1px solid var(--edge);border-radius:8px;font:inherit}
 #loading{position:absolute;inset:0;display:grid;place-content:center;padding:22px;text-align:center;background:#d9e8bd;z-index:4}
 @media(max-height:360px){header{min-height:48px;padding:2px 6px}#actions{height:52px;padding:3px 6px}#notice{top:4px}#notice span{padding:3px 8px}#sheet{bottom:2px;padding:5px}#choices button{height:44px}.sheet-head{margin:0}}
 </style>
@@ -41,8 +48,8 @@ canvas{display:block;position:absolute;inset:0;width:100%;height:100%;touch-acti
 <div id="app">
   <header>
     <a class="back" href="./">마을로</a>
-    <div class="heading"><h1>숲의 작은 쉼터</h1><div class="sub">조작 체험 · 실제 서버 미연결</div></div>
-    <div id="owned">나무 0/6</div>
+    <div class="heading"><h1>숲의 작은 쉼터</h1><div class="sub" id="sub">공동 쉼터</div></div>
+    <div id="owned" hidden>나무 0/6</div>
   </header>
   <main id="stage">
     <canvas id="shelter-canvas" aria-label="8×8 공동 쉼터"></canvas>
@@ -52,10 +59,33 @@ canvas{display:block;position:absolute;inset:0;width:100%;height:100%;touch-acti
       <div class="sheet-head"><strong>쉼터 가구</strong><button id="sheet-close" type="button">닫기</button></div>
       <div id="choices"></div>
     </section>
+    <section class="lobby" id="lobby" hidden>
+      <div class="lobby-panel">
+        <h2>함께 쉬어 가는 곳</h2>
+        <p>친구들과 같은 쉼터를 꾸며 보세요. 각자 가구 6개까지 자유롭게 놓을 수 있습니다.</p>
+        <p id="lobby-status" role="status" aria-live="polite">온라인 연결을 확인합니다</p>
+        <button id="create-room" class="primary" hidden>새 쉼터 만들기</button>
+        <button id="resume-room" hidden>지난 쉼터로</button>
+        <button id="join-room" class="primary" hidden>이 쉼터에 참여</button>
+        <button id="retry-room" hidden>다시 연결</button>
+        <a href="?preview=1">혼자 조작 체험</a>
+        <p>친구에게 받은 초대 주소는 평소 쓰는 일반 브라우저에서 열어 주세요. 브라우저 정보가 지워지거나 다른 브라우저를 쓰면 내 가구의 수정 권한을 잃을 수 있습니다. 이 시험에서는 복구할 수 없습니다.</p>
+      </div>
+    </section>
+    <div class="invite-layer" id="invite-layer" hidden>
+      <div class="lobby-panel" role="dialog" aria-modal="true" aria-label="친구 초대">
+        <h2>친구 초대</h2>
+        <p>이 주소를 아는 사람이 참여할 수 있습니다. 네 자리까지이며, 공개 게시하지 마세요.</p>
+        <input id="invite-url" readonly aria-label="쉼터 초대 주소">
+        <button id="copy-invite" class="primary">주소 복사</button>
+        <p id="invite-status" role="status"></p>
+        <button id="close-invite">닫기</button>
+      </div>
+    </div>
     <div id="loading" role="status">쉼터를 불러오는 중입니다</div>
   </main>
-  <footer id="actions" aria-label="조작"></footer>
+  <footer id="actions" aria-label="조작" hidden></footer>
 </div>
-<script type="module" src="./src/shelter-preview.js"></script>
+<script type="module" src="./src/shelter-entry.js"></script>
 </body>
 </html>

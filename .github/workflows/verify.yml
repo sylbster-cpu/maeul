@@ -86,7 +86,8 @@ jobs:
           run_tour wreath 390 844 test/wreath.mjs yes
           run_tour hud 360 640 test/hud.mjs yes
           run_tour hud-build 360 640 test/hud-build.mjs yes
-          run_tour shelter-preview 360 640 test/shelter-preview.mjs yes /shelter.html
+          run_tour shelter-preview 360 640 test/shelter-preview.mjs yes /shelter.html?preview=1
+          run_tour shelter-online 360 640 test/shelter-online.mjs yes /shelter.html?preview=1
 
       - name: 브라우저 시험 로그·화면 보관
         if: always()
