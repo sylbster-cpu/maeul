@@ -291,6 +291,29 @@ export function availableFound(house, gather) {
   const placed = placedFound(house), owned = ownedFound(gather);
   return Object.fromEntries(GATHER_ORDER.map((k) => [k, Math.max(0, owned[k] - placed[k])]));
 }
+// 종류마다 가진 수·놓인 수·더 놓을 수 있는 수. 꾸미기 목록과 안내 줄이 함께 쓴다
+export function foundCounts(house, gather) {
+  const placed = placedFound(house), owned = ownedFound(gather);
+  return Object.fromEntries(GATHER_ORDER.map((k) => [k, { owned: owned[k], placed: placed[k], available: Math.max(0, owned[k] - placed[k]) }]));
+}
+// 꾸미기 목록의 버튼 아래 줄. 휴대폰에서는 마우스를 올려 보는 설명(title)이 뜨지 않으므로 버튼에 바로 적는다.
+// 0 은 "아직 주운 적 없음"과 "모두 놓음"을 가른다(PR #42 GPT 사용성 제안 1, 2026-11-26 사용자 결정 "가진 수 고쳐요")
+export function foundShort({ owned, available }) {
+  if (owned === 0) return '아직 없음';
+  return available === 0 ? '다 놓음' : `남은 ${available}개`;
+}
+// 그 버튼을 골랐을 때 안내 줄. 가진 수·놓인 수·더 놓을 수 있는 수를 모두 적는다
+export function foundHint(kind, { owned, placed, available }) {
+  const label = GATHER[kind].label;
+  if (owned === 0) {
+    return placed === 0 ? `아직 주운 ${label}이 없습니다. 숲에서 주워 오면 놓을 수 있습니다.`
+      : `이 집에 ${label} ${placed}개가 놓여 있지만 주운 것은 없습니다. 숲에서 주워 오면 더 놓을 수 있습니다.`;
+  }
+  if (placed === 0) return `가진 ${label} ${owned}개를 놓을 수 있습니다.`;
+  if (placed > owned) return `놓인 ${label} ${placed}개가 가진 ${owned}개보다 많습니다. 더 놓으려면 숲에서 더 주워 와야 합니다.`;
+  if (available === 0) return `가진 ${label} ${owned}개를 모두 놓았습니다. 놓인 것을 치우면 다시 놓을 수 있습니다.`;
+  return `가진 ${label} ${owned}개 가운데 ${placed}개를 놓았습니다. ${available}개 더 놓을 수 있습니다.`;
+}
 // 새 조작으로 보낼 명령들이 가진 것보다 많이 놓게 되지 않는가. 집의 복사본에 명령을 차례대로 집 규칙(state.js validate → apply)으로
 // 적용해 보고, 그 결과를 센다(PR #42 GPT 검토·재검토). 집 규칙에 막히는 명령은 건너뛴다. history.run 이 하는 것과 같으므로
 // 같은 것을 두 번 치우거나, 실패한 놓기와 같은 id 로 다시 놓는 묶음도 실제로 놓일 수만큼 센다.

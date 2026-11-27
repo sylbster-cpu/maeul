@@ -1,5 +1,6 @@
 // 화면 틀: 모드 전환, 가구 목록, 고르는 보기(바닥재, 벽지, 겉모습), 안내 문구. 규칙과 3D 는 다루지 않는다.
 import { PARTS, FLOORS, WALLPAPERS, ROOFS, SIDINGS, DOORS, LEVELS, MAX_LEVEL } from './parts.js';
+import { foundShort } from './gathering.js';
 
 const ICONS = {
   select: '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M17 9l19 13-9 2 6 11-5 3-6-11-6 7z" fill="currentColor"/></svg>',
@@ -78,6 +79,8 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
   for (const [id, part] of Object.entries(PARTS)) {
     const b = tile(`tool-${id}`, part.label, (box) => { if (thumbs[id]) { const img = new Image(); img.src = thumbs[id]; img.alt = ''; box.appendChild(img); } });
     b.addEventListener('click', () => on.tool(id));
+    // 주운 것은 이름 아래에 남은 수를 한 줄 더 적는다(setFound)
+    if (part.found) { const count = document.createElement('span'); count.className = 'tool-count'; b.appendChild(count); }
     (part.found ? rows.found : rows[part.layer] || rows.furniture).appendChild(b);
     toolButtons.set(id, b);
   }
@@ -208,14 +211,20 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
       for (const [id, b] of toolButtons) b.setAttribute('aria-pressed', String(id === tool));
     },
     // 주운 것 칸: 더 놓을 수 있는 수(available)와 가진 수(owned). 0 이면 흐리게 보이지만 누를 수는 있다(누르면 왜 안 되는지 알린다)
-    setFound(available, owned) {
+    // 주운 것 버튼: 이름 아래에 남은 수를 적고, 0 이면 흐리게 한다. 0 은 "아직 없음"과 "다 놓음"을 가른다.
+    // 가진 수·놓인 수는 그 버튼을 골랐을 때 안내 줄에 적는다(input.js, gathering.js foundHint).
+    // 전에는 "솔방울 ×2"(더 놓을 수 있는 수)만 보이고 가진 수는 휴대폰에서 뜨지 않는 title 에만 있었다
+    setFound(counts) {
       for (const [id, part] of Object.entries(PARTS)) {
         if (!part.found) continue;
         const b = toolButtons.get(id);
-        const n = available[part.found] || 0;
-        b.querySelector('.tool-label').textContent = `${part.label} ×${n}`;
-        b.classList.toggle('empty', n === 0);
-        b.title = `가진 것 ${owned[part.found] || 0}개 · 더 놓을 수 있는 것 ${n}개`;
+        const c = counts[part.found] || { owned: 0, placed: 0, available: 0 };
+        const short = foundShort(c);
+        b.querySelector('.tool-label').textContent = part.label;
+        b.querySelector('.tool-count').textContent = short;
+        b.classList.toggle('empty', c.available === 0);
+        b.title = `가진 것 ${c.owned}개 · 놓인 것 ${c.placed}개 · 더 놓을 수 있는 것 ${c.available}개`;
+        b.setAttribute('aria-label', `${part.label}, ${short}, 가진 것 ${c.owned}개`);
       }
     },
     // 지금 있는 곳에 맞는 보기만 보이고, 고른 것을 표시한다

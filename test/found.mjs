@@ -4,6 +4,7 @@
 // 2. 가진 만큼 마당에 놓고, 그 뒤로는 놓이지 않으며 왜 안 되는지 알린다
 // 3. 치우면 다시 놓을 수 있다. 되돌리기는 막지 않는다(이번 접속에서 있었던 상태로만 돌아감, PR #42 GPT 검토 2)
 // 4. 새로 열어도 놓인 것과 수가 그대로다. 주운 적 없는 것은 방에서도 놓이지 않는다
+// 5. 버튼 아래 줄에 남은 수를 적고 0 은 "다 놓음"과 "아직 없음"으로 가른다. 고르면 안내 줄에 가진 수·놓인 수·남은 수가 나온다 (2026-11-26 사용자 결정 "가진 수 고쳐요")
 export default async function foundTour(page, { out, logs }) {
   const say = (label, ok, extra = '') => logs.push(`${ok ? '통과' : '실패'}  ${label} ${extra}`);
   const g = (fn, arg) => page.evaluate(fn, arg);
@@ -25,7 +26,17 @@ export default async function foundTour(page, { out, logs }) {
     await tap(p.x, p.y);
     await frames(3);
   };
-  const tile = (part) => g((id) => { const b = document.getElementById(`tool-${id}`); return b ? { label: b.querySelector('.tool-label').textContent, empty: b.classList.contains('empty'), img: !!b.querySelector('img'), hidden: !!b.closest('.tool-group')?.hidden } : null; }, part);
+  const tile = (part) => g((id) => {
+    const b = document.getElementById(`tool-${id}`);
+    if (!b) return null;
+    const c = b.querySelector('.tool-count'), br = b.getBoundingClientRect(), cr = c?.getBoundingClientRect();
+    return {
+      label: b.querySelector('.tool-label').textContent, count: c?.textContent || '', empty: b.classList.contains('empty'), img: !!b.querySelector('img'), hidden: !!b.closest('.tool-group')?.hidden,
+      // 남은 수 줄이 버튼 안에 다 보이는지
+      countInside: !!cr && cr.width > 0 && cr.left >= br.left - 1 && cr.right <= br.right + 1 && cr.bottom <= br.bottom + 1,
+    };
+  }, part);
+  const hint = () => g(() => document.getElementById('hint')?.textContent || '');
   const placed = (space, part) => g(([s, p]) => Object.values(window.__game.store.state.spaces[s].objects).filter((o) => o.part === p).map((o) => ({ id: o.id, x: o.x, y: o.y })), [space, part]);
   const toast = () => g(() => document.getElementById('toast')?.textContent || '');
 
@@ -39,8 +50,12 @@ export default async function foundTour(page, { out, logs }) {
   await page.click('#mode-build');
   await page.click('#tab-props');
   const pine = await tile('found_pinecone'), feather = await tile('found_feather');
-  say('소품 탭에 숲에서 주운 것이 그림과 함께 보이고, 더 놓을 수 있는 수가 적힌다',
-    pine && !pine.hidden && pine.img && pine.label === '솔방울 ×2' && !pine.empty && feather.label === '새 깃털 ×0' && feather.empty, JSON.stringify({ pine, feather }));
+  say('소품 탭에 숲에서 주운 것이 그림과 함께 보이고, 이름 아래에 남은 수가 적힌다',
+    pine && !pine.hidden && pine.img && pine.label === '솔방울' && pine.count === '남은 2개' && !pine.empty && pine.countInside, JSON.stringify(pine));
+  say('주운 적 없는 것은 "아직 없음"으로 흐리게 보인다', feather.label === '새 깃털' && feather.count === '아직 없음' && feather.empty && feather.countInside, JSON.stringify(feather));
+  await page.click('#tool-found_feather');
+  const featherHint = await hint();
+  say('주운 적 없는 것을 고르면 안내 줄이 숲에서 주워 오라고 알린다', featherHint.includes('아직 주운 새 깃털이 없습니다'), featherHint);
 
   // 2. 마당의 빈 칸 셋을 찾는다 (집 앞 화면 안, 놓을 수 있는 곳)
   const cells = await g(() => {
@@ -61,11 +76,17 @@ export default async function foundTour(page, { out, logs }) {
     return out;
   });
   await page.click('#tool-found_pinecone');
+  const before = await hint();
+  say('고르면 안내 줄에 가진 수가 나온다', before === '가진 솔방울 2개를 놓을 수 있습니다.', before);
   await groundTap(cells[0].x + 0.5, cells[0].y + 0.5);
+  const one = await hint();
+  say('하나 놓으면 안내 줄이 가진 수·놓인 수·남은 수로 바뀐다', one === '가진 솔방울 2개 가운데 1개를 놓았습니다. 1개 더 놓을 수 있습니다.' && (await tile('found_pinecone')).count === '남은 1개', one);
   await groundTap(cells[1].x + 0.5, cells[1].y + 0.5);
   const two = await placed('yard', 'found_pinecone');
   say('가진 만큼(둘) 마당에 놓인다', two.length === 2, JSON.stringify({ cells: cells.slice(0, 2), two }));
-  say('놓으면 더 놓을 수 있는 수가 줄어든다', (await tile('found_pinecone')).label === '솔방울 ×0', (await tile('found_pinecone')).label);
+  const allDown = { tile: await tile('found_pinecone'), hint: await hint() };
+  say('가진 것을 모두 놓으면 "다 놓음"으로 흐리게 보이고, 안내 줄이 치우면 다시 놓을 수 있다고 알린다',
+    allDown.tile.count === '다 놓음' && allDown.tile.empty && allDown.hint.includes('가진 솔방울 2개를 모두 놓았습니다'), JSON.stringify(allDown));
   await page.screenshot({ path: `${out}-1-yard.png` });
   await groundTap(cells[2].x + 0.5, cells[2].y + 0.5);
   const third = await placed('yard', 'found_pinecone');
@@ -76,14 +97,16 @@ export default async function foundTour(page, { out, logs }) {
   await page.click('#tool-erase');
   await groundTap(two[0].x + 0.5, two[0].y + 0.5);
   const afterErase = await placed('yard', 'found_pinecone');
-  say('치우면 하나 줄고 다시 놓을 수 있다', afterErase.length === 1 && (await tile('found_pinecone')).label === '솔방울 ×1', JSON.stringify(afterErase));
+  say('치우면 하나 줄고 다시 놓을 수 있다', afterErase.length === 1 && (await tile('found_pinecone')).count === '남은 1개', JSON.stringify(afterErase));
   // 그사이 가진 수가 하나로 줄었다고 쳐도(예: 다른 탭에서 기록이 바뀜) 치우기를 되돌리면 그대로 돌아온다. 새로 놓기만 막힌다
   await g(() => { const s = window.__game.gathering.store; s.replace({ ...s.state, log: { pinecone: { best: 9.5, first: '2026-11-25', count: 1 } } }); });
   await page.click('#undo');
   await frames(3);
-  const restored = { n: (await placed('yard', 'found_pinecone')).length, label: (await tile('found_pinecone')).label };
-  say('가진 수가 줄었어도 되돌리기로 치운 것이 돌아온다', restored.n === 2 && restored.label === '솔방울 ×0', JSON.stringify(restored));
+  const restored = { n: (await placed('yard', 'found_pinecone')).length, count: (await tile('found_pinecone')).count };
+  say('가진 수가 줄었어도 되돌리기로 치운 것이 돌아온다', restored.n === 2 && restored.count === '다 놓음', JSON.stringify(restored));
   await page.click('#tool-found_pinecone');
+  const over = await hint();
+  say('가진 것보다 많이 놓여 있으면 안내 줄이 그렇게 알린다', over.includes('놓인 솔방울 2개가 가진 1개보다 많습니다'), over);
   await g(() => { const t = document.getElementById('toast'); if (t) t.textContent = ''; }); // 앞의 알림과 섞이지 않게
   await groundTap(cells[2].x + 0.5, cells[2].y + 0.5);
   const still = { n: (await placed('yard', 'found_pinecone')).length, toast: await toast() };
@@ -98,7 +121,7 @@ export default async function foundTour(page, { out, logs }) {
   const kept = await placed('yard', 'found_pinecone');
   await page.click('#mode-build');
   await page.click('#tab-props');
-  say('새로 열어도 놓인 것과 수가 그대로다', kept.length === 2 && (await tile('found_pinecone')).label === '솔방울 ×0', JSON.stringify({ n: kept.length, label: (await tile('found_pinecone')).label }));
+  say('새로 열어도 놓인 것과 수가 그대로다', kept.length === 2 && (await tile('found_pinecone')).count === '다 놓음', JSON.stringify({ n: kept.length, count: (await tile('found_pinecone')).count }));
   // 방에서는 주운 적 없는 버섯이 놓이지 않는다
   await page.click('#place-toggle');
   await page.waitForFunction(() => window.__game.character.place === 'main', null, { timeout: 20000 });
