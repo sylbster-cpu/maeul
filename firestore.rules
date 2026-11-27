@@ -53,10 +53,10 @@ service cloud.firestore {
     // 7단계 공동 쉼터: 작은 한 문서 안에서 회원·가구·점유표를 함께 바꾼다.
     // 초기 상태와 매 명령의 전이만 허용하므로 다른 사람의 슬롯이나 고아 점유를 만들 수 없다.
     function roomIdFits(id) {
-      return id.matches('^[A-Za-z0-9]{20});
+      return id.matches("^[A-Za-z0-9]{20}$");
     }
     function shelterUidFits(uid) {
-      return uid is string && uid.matches('^[A-Za-z0-9_-]{6,128});
+      return uid is string && uid.matches("^[A-Za-z0-9_-]{6,128}$");
     }
     function shelterKeys(m, names) {
       return m is map && m.keys().hasAll(names) && m.keys().hasOnly(names);
@@ -64,7 +64,7 @@ service cloud.firestore {
     function marks() { return ['tree', 'wind', 'star', 'moon']; }
     function slots() { return ['0', '1', '2', '3', '4', '5']; }
     function cellFits(cell) {
-      return cell is string && cell.matches('^[0-7]_[0-7])
+      return cell is string && cell.matches("^[0-7]_[0-7]$")
         && !(cell in ['3_0', '4_0', '3_1', '4_1']);
     }
     function pointer(mark, slot) { return {'mark': mark, 'slot': slot}; }

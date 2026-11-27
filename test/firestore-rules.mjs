@@ -3,9 +3,10 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { doc, setDoc, getDoc, getDocs, collection, updateDoc, deleteDoc, serverTimestamp, runTransaction } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, collection, updateDoc, deleteDoc, serverTimestamp, runTransaction, getDocFromServer } from 'firebase/firestore';
 
-import { createShelter, readShelter, apply } from '../src/shelter-state.js';
+import { createShelter, readShelter, apply, memberMark } from '../src/shelter-state.js';
+import { createShelterService } from '../src/shelter-service.js';
 
 const PROJECT = 'demo-maeul-online';
 const OWNER = 'ownerAa123456789';
@@ -84,6 +85,8 @@ try {
   next=apply(s,uid4,{type:'join',mark:'moon'}); await yes(writeRoom(db4,next),'네 번째 참여'); s=next;
   await no(writeRoom(db5,{...s,revision:s.revision+1,members:{...s.members,extra:uid5},items:{...s.items,extra:{}},
     change:{type:'join',mark:'extra',slot:'',from:'',to:''}}),'다섯 번째 표식');
+  await no(writeRoom(db5,{...s,revision:s.revision+1,members:{...s.members,moon:uid5},
+    change:{type:'join',mark:'moon',slot:'',from:'',to:''}}),'다섯 번째 사람이 기존 표식 탈취');
   next=apply(s,OWNER,put('tree','0','0_2'));
   await no(writeRoom(guest,next),'남의 슬롯에 배치');
   await no(writeRoom(owner,{...next,cells:{}}),'점유 누락');
@@ -112,18 +115,19 @@ try {
   next=apply(s,OWNER,{type:'remove',mark:'tree',slot:'0',expect:s.items.tree['0']});
   await no(writeRoom(guest,next),'남의 가구 삭제');
   await yes(writeRoom(owner,next),'내 가구 치우기'); s=next;
-  // 같은 칸을 동시에 노릴 때 트랜잭션은 최신 상태에서 다시 검증한다.
-  const contend=(db,uid,mark)=>runTransaction(db,async tx=>{
-    const now=readShelter((await tx.get(room(db))).data());
-    const n=apply(now,uid,put(mark,'0','7_7'));
-    tx.set(room(db),{...n,updatedAt:serverTimestamp()});
-    return n;
-  });
-  const outcomes=await Promise.allSettled([contend(guest,GUEST,'wind'),contend(other,OTHER,'star')]);
+  // 실제 서비스 경로를 시험한다. SDK의 자동 재시도뿐 아니라 규칙 거절 뒤 판 번호 확인도 포함한다.
+  const api = { doc, collection, setDoc, serverTimestamp, getDocFromServer, runTransaction };
+  const service = (db,uid) => createShelterService({db,uid,api});
+  const guestService = service(guest,GUEST), otherService = service(other,OTHER);
+  const outcomes=await Promise.allSettled([
+    guestService.command(roomId,put('wind','0','7_7')),
+    otherService.command(roomId,put('star','0','7_7')),
+  ]);
   assert.equal(outcomes.filter(x=>x.status==='fulfilled').length,1);
+  assert.match(outcomes.find(x=>x.status==='rejected').reason.message,/이미 가구가 있는 칸/);
   const after=await readRoom(owner);
   assert.ok(['wind','star'].includes(after.cells['7_7'].mark));
-  checks++; console.log('통과 동시 충돌: 한 사람만 배치');
+  checks++; console.log('통과 동시 충돌: 한 사람만 배치하고 진 쪽은 칸 충돌 이유를 받는다');
   await no(deleteDoc(room(owner)),'쉼터 전체 삭제');
   const emptyMark=after.cells['7_7'].mark==='wind'?'star':'wind';
   const emptyUid=emptyMark==='wind'?GUEST:OTHER, emptyDb=emptyMark==='wind'?guest:other;
@@ -133,6 +137,51 @@ try {
   next=apply(s,uid5,{type:'join',mark:emptyMark});
   await yes(writeRoom(db5,next),'빈 자리 새 친구 참여');
   assert.deepEqual(await readRoom(owner),next);
+  // 다른 칸을 동시에 고르면 둘 다 남는다. 이미 참여한 사람의 재참여는 쓰지 않는다.
+  const currentWindUid=next.members.wind, currentStarUid=next.members.star;
+  const currentWindService=service(currentWindUid===GUEST?guest:db5,currentWindUid);
+  const currentStarService=service(currentStarUid===OTHER?other:db5,currentStarUid);
+  await Promise.all([
+    currentWindService.command(roomId,put('wind','1','0_4')),
+    currentStarService.command(roomId,put('star','1','1_4')),
+  ]);
+  let now=await readRoom(owner);
+  assert.deepEqual(now.cells['0_4'],{mark:'wind',slot:'1'});
+  assert.deepEqual(now.cells['1_4'],{mark:'star',slot:'1'});
+  checks++; console.log('통과 서로 다른 칸 동시 배치: 둘 다 성공');
+  const priorRevision=now.revision;
+  assert.equal((await currentWindService.join(roomId)).revision,priorRevision);
+  checks++; console.log('통과 기존 참여자의 재접속은 쓰지 않는다');
+
+  // 두 친구가 동시에 처음 들어오는 경우 실제 서비스가 서로 다른 표식을 선택한다.
+  const secondId='ZyXwVu9876543210TsRq';
+  const secondRef=doc(owner,'shelters',secondId);
+  await setDoc(secondRef,{...createShelter(OWNER),updatedAt:serverTimestamp()});
+  await Promise.all([guestService.join(secondId),otherService.join(secondId)]);
+  now=await service(owner,OWNER).get(secondId);
+  assert.ok(memberMark(now,GUEST) && memberMark(now,OTHER));
+  assert.notEqual(memberMark(now,GUEST),memberMark(now,OTHER));
+  assert.equal(Object.keys(now.members).length,3);
+  assert.equal(now.revision,2);
+  checks++; console.log('통과 동시 참여: 서로 다른 표식');
+  // 가득 찬 문서에서도 최악 경로인 이동·회전·삭제가 허용되는지 확인한다.
+  await service(db4,uid4).join(secondId);
+  now=await service(owner,OWNER).get(secondId);
+  const byUid = {[OWNER]:owner,[GUEST]:guest,[OTHER]:other,[uid4]:db4};
+  for (const [index, mark] of Object.keys(now.members).entries()) {
+    const uid=now.members[mark], writer=service(byUid[uid],uid);
+    for(let i=0;i<6;i++) await writer.command(secondId,put(mark,String(i),i+'_'+(index+2)));
+  }
+  now=await service(owner,OWNER).get(secondId);
+  assert.equal(Object.keys(now.cells).length,24);
+  const ownService=service(owner,OWNER), old=now.items.tree['0'];
+  now=await ownService.command(secondId,{type:'move',mark:'tree',slot:'0',expect:old,piece:{...old,cell:'7_6'}});
+  now=await ownService.command(secondId,{type:'rotate',mark:'tree',slot:'0',expect:now.items.tree['0'],piece:{...now.items.tree['0'],rot:2}});
+  assert.equal(now.items.tree['0'].rot,2);
+  assert.equal(Object.keys(now.cells).length,24);
+  now=await ownService.command(secondId,{type:'remove',mark:'tree',slot:'0',expect:now.items.tree['0']});
+  assert.equal(Object.keys(now.cells).length,23);
+  checks++; console.log('통과 24개 가득 찬 쉼터 이동·회전·치우기');
   console.log('공동 쉼터 보안 규칙 시험 포함 전체 통과:',checks);
 
 } finally {
