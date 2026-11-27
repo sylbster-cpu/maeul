@@ -60,7 +60,8 @@ export function createFishingUI({ fishing, gathering = null, store = null, guest
       olist.append(row);
     }
     const summary = $('owned-summary');
-    summary.textContent = shown.length ? '숲에서 주운 것은 꾸미기의 소품 칸에서 놓고, 화환에 꽂을 수 있습니다.' : '아직 가진 것이 없습니다. 숲에서 주운 것이 여기에 모입니다.';
+    // 화환은 주운 수와 상관없이 재료를 고른다(5단계, 소모하지 않음). 그래서 여기서는 화환을 말하지 않는다(GPT 검토 PR #49)
+    summary.textContent = shown.length ? '숲에서 주운 것은 꾸미기의 소품 칸에서 놓을 수 있습니다.' : '아직 가진 것이 없습니다. 숲에서 주운 것이 여기에 모입니다.';
   }
   // 채집 칸 (4단계 채집 실험)
   function renderGather() {

@@ -38,6 +38,19 @@ test('"처음 안내 다시 보기"는 센 것을 지우고 이번 접속부터 
   assert.deepEqual(JSON.parse(storage.data.get(HINT_KEY)), { walkYard: 1 });
 });
 
+test('안내가 알려 준 것을 해 보면 이번 접속에서는 접고, 센 수는 그대로다', () => {
+  const storage = fakeStorage();
+  const memory = createHintMemory(storage);
+  assert.equal(memory.shows('walkYard'), true);
+  memory.done('walkYard');
+  assert.equal(memory.shows('walkYard'), false);
+  assert.equal(memory.counts.walkYard, 1);
+  memory.done('walkRoom'); // 아직 나오지 않은 안내를 먼저 해 보면 세지 않고 접는다
+  assert.equal(memory.shows('walkRoom'), false);
+  assert.equal(memory.counts.walkRoom, undefined);
+  assert.equal(createHintMemory(storage).shows('walkYard'), true, '다음 접속에는 다시 보인다(세 번까지)');
+});
+
 test('저장소가 없거나 깨졌거나 쓰기가 막혀도 안내는 보인다', () => {
   assert.equal(createHintMemory(null).shows('walkYard'), true);
   assert.equal(createHintMemory(fakeStorage({ [HINT_KEY]: '{깨짐' })).shows('walkYard'), true);

@@ -31,6 +31,9 @@ export function createHintMemory(storage, { limit = HINT_LIMIT } = {}) {
       }
       return thisVisit.get(key);
     },
+    // 안내가 알려 준 것을 해 보았다(눌러서 걷기·드나들기·앉기). 이번 접속에서는 그 안내를 접는다.
+    // 처음 세 번의 접속에도 첫 걸음 뒤에는 화면을 덜 가린다(GPT 검토 PR #49). 센 수는 그대로 둔다
+    done(key) { thisVisit.set(key, false); },
     // "처음 안내 다시 보기": 센 것을 모두 지운다. 이번 접속부터 다시 보인다
     reset() {
       counts = {};

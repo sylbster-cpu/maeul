@@ -47,8 +47,18 @@ export default async function hud(page, { out, logs }) {
   say('처음 접속에는 걷기 안내가 보인다', first.shown && first.text.includes('땅을 누르면'), JSON.stringify(first));
   say('걷기 안내가 나온 접속을 센다(집 저장과 따로)', counted.walkYard === 1, JSON.stringify(counted));
   const v1 = await visible();
-  logs.push(`정보  360×640 걷기 화면 높이: 쟁반까지 ${Math.round(v1.dock * 100)}%, 안내까지 ${Math.round(v1.hint * 100)}%`);
+  logs.push(`정보  360×640 처음 접속, 첫 걸음 전 걷기 화면 높이: 쟁반까지 ${Math.round(v1.dock * 100)}%, 안내까지 ${Math.round(v1.hint * 100)}% (75%에 못 미침)`);
   await page.screenshot({ path: `${out}-1-walk.png` });
+  // 땅을 눌러 한 번 걸어 보면 이번 접속에서는 걷기 안내를 접는다(GPT 검토 PR #49)
+  const step = await g((h) => window.__game.view.screenPoint(h.x - 1, h.z + 2), home);
+  await tap(step.x, step.y);
+  await frames(3);
+  const folded = await hintNow();
+  const v1b = await visible();
+  say('처음 접속에도 한 번 걸어 보면 걷기 안내를 접어 75% 이상이 보인다', !folded.shown && v1b.hint >= 0.75, JSON.stringify({ folded, v1b }));
+  await page.waitForFunction(() => !window.__game.character.walking, null, { timeout: 15000 }).catch(() => {});
+  await g((h) => { window.__game.character.teleport(h.x, h.z); window.__game.view.snapFocus(h.x, h.z); }, home);
+  await frames(3);
 
   // 3) ☰ 메뉴: 열고, 바깥(땅)을 눌러 닫는다. 그 누름으로 걷지 않는다
   await page.click('#menu-toggle');

@@ -81,7 +81,9 @@ export default async function sitTour(page, { out, logs }) {
   ok = await waitSit(false);
   w = await who();
   say('바닥을 눌러 일어나 걷기', ok && near(w.fig[1], 0) && Math.hypot(w.pos[0] - 1.5, w.pos[1] - 4.5) < 0.4, JSON.stringify(w.pos.map((n) => +n.toFixed(2))));
-  say('일어나면 안내가 돌아온다', (await hint()) === walkHint);
+  // 6단계 HUD A: 의자를 눌러 앉아 보았으므로 이번 접속에서는 방의 걷기 안내를 접는다(처음 접속의 걷기 안내는 첫 걸음까지)
+  const afterStand = await hint();
+  say('일어나면 앉기 안내가 사라지고, 해 본 걷기 안내는 다시 뜨지 않는다', walkHint.includes('의자를 누르면') && !afterStand.startsWith('앉았습니다') && afterStand === '', JSON.stringify({ walkHint, afterStand }));
 
   // 3) 앉은 의자를 다시 누르면 일어난다
   await tapSeat(2.5, 2.5);
