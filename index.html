@@ -317,15 +317,15 @@ img { max-width: 100%; }
   #online-notes-list { max-height: 180px; overflow: auto; }
   .online-more { width: 100%; margin-top: 8px; }
   #online-close { width: 100%; margin-top: 10px; }
-  /* 기록 창(낚시·채집 두 칸). 공유 창의 틀을 같이 쓴다 */
+  /* 수첩(채집·낚시 두 칸). 공유 창의 틀을 같이 쓴다 */
   .log-tabs { display: flex; gap: 8px; margin: 0 0 6px; }
   .log-tabs button { flex: 1; min-height: 44px; }
-  #owned-list, #fish-list, #gather-list { list-style: none; margin: 0 0 10px; padding: 0; }
-  #owned-list li, #fish-list li, #gather-list li { display: grid; grid-template-columns: auto 1fr; gap: 0 12px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--tile-edge); }
-  #owned-list strong, #fish-list strong, #gather-list strong { font: 400 18px/1.2 var(--font-display); }
-  #owned-list span, #fish-list span, #gather-list span { text-align: right; }
-  #owned-list small, #fish-list small, #gather-list small { grid-column: 1 / -1; color: var(--ink-soft); font-size: 12.5px; }
-  #owned-summary { color: var(--ink-soft); font-size: 13.5px; }
+  #fish-list, #gather-list { list-style: none; margin: 0 0 10px; padding: 0; }
+  #fish-list li, #gather-list li { display: grid; grid-template-columns: auto 1fr; gap: 0 12px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--tile-edge); }
+  #fish-list strong, #gather-list strong { font: 400 18px/1.2 var(--font-display); }
+  #fish-list span, #gather-list span { text-align: right; }
+  #fish-list small, #gather-list small { grid-column: 1 / -1; color: var(--ink-soft); font-size: 12.5px; }
+  #gather-summary { color: var(--ink-soft); font-size: 13.5px; }
   #fish-today, #gather-today { color: var(--ink-soft); font-size: 13.5px; }
   #fish-close { width: 100%; min-height: 44px; margin-top: 4px; }
   /* 화환 만들기 창(5단계). 고리는 SVG, 칸은 손가락으로 누르는 버튼(44px 넘게) */
@@ -443,7 +443,7 @@ img { max-width: 100%; }
         <dt>드나들기</dt><dd>집이나 현관 깔개, 또는 왼쪽 위의 있는 곳 버튼 누르기</dd>
         <dt>앉기</dt><dd>의자 누르기. 다른 곳을 누르면 일어남</dd>
         <dt>낚시</dt><dd>마당 옆 연못이나 남쪽 바닷가의 물 누르기. 찌가 완전히 잠기면 화면 누르기. 날마다 잘 잡히는 물고기가 바뀜</dd>
-        <dt>수첩</dt><dd>가진 것, 낚시 기록, 채집 기록 보기</dd>
+        <dt>수첩</dt><dd>주운 것과 채집 기록, 낚시 기록 보기</dd>
         <dt>메뉴 ☰</dt><dd>집 공유, 온라인, 화면 크기, 소리와 진동</dd>
         <dt>꾸미기</dt><dd>목록에서 골라 이어서 놓고 완료. <kbd>B</kbd> 로도 바꾸기</dd>
         <dt>가구 돌리기</dt><dd><kbd>R</kbd></dd>
@@ -563,23 +563,18 @@ img { max-width: 100%; }
     <section class="share-panel" role="dialog" aria-modal="true" aria-labelledby="fish-title">
       <h2 id="fish-title">수첩</h2>
       <div class="log-tabs" role="group" aria-label="수첩 칸">
-        <button type="button" id="log-tab-owned" aria-pressed="true">가진 것</button>
+        <button type="button" id="log-tab-gather" aria-pressed="true">채집</button>
         <button type="button" id="log-tab-fish" aria-pressed="false">낚시</button>
-        <button type="button" id="log-tab-gather" aria-pressed="false">채집</button>
       </div>
-      <div id="log-owned">
-        <ul id="owned-list"></ul>
-        <p id="owned-summary"></p>
+      <div id="log-gather">
+        <ul id="gather-list"></ul>
+        <p id="gather-summary"></p>
+        <p id="gather-today" hidden></p>
       </div>
       <div id="log-fish" hidden>
         <ul id="fish-list"></ul>
         <p id="fish-summary"></p>
         <p id="fish-today"></p>
-      </div>
-      <div id="log-gather" hidden>
-        <ul id="gather-list"></ul>
-        <p id="gather-summary"></p>
-        <p id="gather-today"></p>
       </div>
       <p>수첩은 이 브라우저에만 저장됩니다. 다른 기기나 브라우저와 이어지지 않고, 집 공유 링크에도 들어가지 않습니다.</p>
       <button type="button" id="fish-close">닫기</button>
