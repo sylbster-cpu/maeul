@@ -1,7 +1,7 @@
 // 6단계 HUD A: 위쪽 한 줄, ☰ 메뉴, 처음 몇 번만 보이는 걷기 안내, 어디서나 여는 수첩, 저장 경고 줄.
 // 흉내 낸 입력이며 실제 휴대폰 확인을 대신하지 않는다.
 //   TOUCH=1 node tools/shot.mjs / shots/hud 360 640 test/hud.mjs
-import { menuClick, openMenu } from './helpers/menu.mjs';
+import { menuClick, openMenu, uiClick } from './helpers/menu.mjs';
 
 export default async function hud(page, { out, logs }) {
   const cdp = process.env.TOUCH === '1' ? await page.context().newCDPSession(page) : null;
@@ -106,7 +106,7 @@ export default async function hud(page, { out, logs }) {
 
   // 6) 꾸미기에서도 연다. 닫으면 고른 도구와 모드가 그대로다
   await page.click('#mode-build');
-  await page.click('#tool-stool');
+  await uiClick(page, '#tool-stool');
   await page.click('#fish-log');
   const j2 = await g(() => !document.getElementById('fish-layer').hidden);
   await page.screenshot({ path: `${out}-3-journal-build.png` });

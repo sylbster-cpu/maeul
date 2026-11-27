@@ -72,7 +72,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
     ui.setMode(s.mode);
     ui.setTool(s.tool);
     ui.setHint(hintFor());
-    ui.setCarrying(!!s.carry, !!s.carry && isWreath(s.carry.part));
+    ui.setCarrying(!!s.carry, !!s.carry && isWreath(s.carry.part), s.carry?.part || null);
     ui.setPlace(here(), store.state);
   }
 

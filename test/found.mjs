@@ -5,6 +5,7 @@
 // 3. 치우면 다시 놓을 수 있다. 되돌리기는 막지 않는다(이번 접속에서 있었던 상태로만 돌아감, PR #42 GPT 검토 2)
 // 4. 새로 열어도 놓인 것과 수가 그대로다. 주운 적 없는 것은 방에서도 놓이지 않는다
 // 5. 버튼 아래 줄에 남은 수를 적고 0 은 "다 놓음"과 "아직 없음"으로 가른다. 고르면 안내 줄에 가진 수·놓인 수·남은 수가 나온다 (2026-11-26 사용자 결정 "가진 수 고쳐요")
+import { uiClick, closeCatalog } from './helpers/menu.mjs';
 export default async function foundTour(page, { out, logs }) {
   const say = (label, ok, extra = '') => logs.push(`${ok ? '통과' : '실패'}  ${label} ${extra}`);
   const g = (fn, arg) => page.evaluate(fn, arg);
@@ -48,12 +49,12 @@ export default async function foundTour(page, { out, logs }) {
 
   // 1. 꾸미기 → 소품 탭
   await page.click('#mode-build');
-  await page.click('#tab-props');
+  await uiClick(page, '#tab-props');
   const pine = await tile('found_pinecone'), feather = await tile('found_feather');
   say('소품 탭에 숲에서 주운 것이 그림과 함께 보이고, 이름 아래에 남은 수가 적힌다',
     pine && !pine.hidden && pine.img && pine.label === '솔방울' && pine.count === '남은 2개' && !pine.empty && pine.countInside, JSON.stringify(pine));
   say('주운 적 없는 것은 "아직 없음"으로 흐리게 보인다', feather.label === '새 깃털' && feather.count === '아직 없음' && feather.empty && feather.countInside, JSON.stringify(feather));
-  await page.click('#tool-found_feather');
+  await uiClick(page, '#tool-found_feather');
   const featherHint = await hint();
   say('주운 적 없는 것을 고르면 안내 줄이 숲에서 주워 오라고 알린다', featherHint.includes('아직 주운 새 깃털이 없습니다'), featherHint);
 
@@ -75,7 +76,7 @@ export default async function foundTour(page, { out, logs }) {
     }
     return out;
   });
-  await page.click('#tool-found_pinecone');
+  await uiClick(page, '#tool-found_pinecone');
   const before = await hint();
   say('고르면 안내 줄에 가진 수가 나온다', before === '가진 솔방울 2개를 놓을 수 있습니다.', before);
   await groundTap(cells[0].x + 0.5, cells[0].y + 0.5);
@@ -94,7 +95,7 @@ export default async function foundTour(page, { out, logs }) {
   say('가진 것보다 많이는 놓이지 않고 왜 안 되는지 알린다', third.length === 2 && why.includes('더 주워 와야'), why);
 
   // 3. 치우면 다시 놓을 수 있다. 되돌리기는 막지 않는다
-  await page.click('#tool-erase');
+  await uiClick(page, '#tool-erase');
   await groundTap(two[0].x + 0.5, two[0].y + 0.5);
   const afterErase = await placed('yard', 'found_pinecone');
   say('치우면 하나 줄고 다시 놓을 수 있다', afterErase.length === 1 && (await tile('found_pinecone')).count === '남은 1개', JSON.stringify(afterErase));
@@ -104,7 +105,7 @@ export default async function foundTour(page, { out, logs }) {
   await frames(3);
   const restored = { n: (await placed('yard', 'found_pinecone')).length, count: (await tile('found_pinecone')).count };
   say('가진 수가 줄었어도 되돌리기로 치운 것이 돌아온다', restored.n === 2 && restored.count === '다 놓음', JSON.stringify(restored));
-  await page.click('#tool-found_pinecone');
+  await uiClick(page, '#tool-found_pinecone');
   const over = await hint();
   say('가진 것보다 많이 놓여 있으면 안내 줄이 그렇게 알린다', over.includes('놓인 솔방울 2개가 가진 1개보다 많습니다'), over);
   await g(() => { const t = document.getElementById('toast'); if (t) t.textContent = ''; }); // 앞의 알림과 섞이지 않게
@@ -120,13 +121,14 @@ export default async function foundTour(page, { out, logs }) {
   await page.waitForTimeout(400);
   const kept = await placed('yard', 'found_pinecone');
   await page.click('#mode-build');
-  await page.click('#tab-props');
+  await uiClick(page, '#tab-props');
   say('새로 열어도 놓인 것과 수가 그대로다', kept.length === 2 && (await tile('found_pinecone')).count === '다 놓음', JSON.stringify({ n: kept.length, count: (await tile('found_pinecone')).count }));
-  // 방에서는 주운 적 없는 버섯이 놓이지 않는다
+  // 방에서는 주운 적 없는 버섯이 놓이지 않는다. 목록이 열린 채로는 위쪽 버튼을 눌러도 목록만 접히므로 먼저 접는다(6단계 HUD B)
+  await closeCatalog(page);
   await page.click('#place-toggle');
   await page.waitForFunction(() => window.__game.character.place === 'main', null, { timeout: 20000 });
   await page.waitForTimeout(500);
-  await page.click('#tab-props');
+  await uiClick(page, '#tab-props');
   const room = await g(() => {
     const { store, view } = window.__game;
     const [w, h] = [6, 6];
@@ -135,7 +137,7 @@ export default async function foundTour(page, { out, logs }) {
     }
     return null;
   });
-  await page.click('#tool-found_mushroom');
+  await uiClick(page, '#tool-found_mushroom');
   await groundTap(room.x + 0.5, room.y + 0.5);
   const mush = { n: (await placed('main', 'found_mushroom')).length, toast: await toast() };
   say('주운 적 없는 것은 방에서도 놓이지 않는다', mush.n === 0 && mush.toast.includes('아직 주운 적이 없습니다'), JSON.stringify(mush));
