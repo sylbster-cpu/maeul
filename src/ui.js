@@ -188,6 +188,8 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
   $('place-toggle').addEventListener('click', () => on.travel());
   $('share-house').addEventListener('click', () => canImport ? on.importHouse() : on.share());
   $('my-home').addEventListener('click', () => on.home());
+  $('shelter-action').hidden = guest;
+  $('shelter-action').addEventListener('click', () => on.shelter());
   // 공유 링크(#home=)에서만 복사 버튼을 제공하고 Firebase 방문 링크에서는 제공하지 않는다.
   $('share-house').hidden = guest && !canImport;
   $('share-house').textContent = canImport ? '집 가져오기' : '집 공유';
@@ -228,7 +230,7 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
   const closeOutside = () => setMenu(false, { focus: false });
   backdrop.addEventListener('pointerup', closeOutside);
   backdrop.addEventListener('click', closeOutside);
-  for (const id of ['share-house', 'online-action', 'clear-all', 'sample']) $(id).addEventListener('click', () => setMenu(false, { focus: false }));
+  for (const id of ['share-house', 'online-action', 'shelter-action', 'clear-all', 'sample']) $(id).addEventListener('click', () => setMenu(false, { focus: false }));
   $('help-toggle').addEventListener('click', () => { setMenu(false, { focus: false }); showHelp(help.hidden); });
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !menu.hidden) { event.preventDefault(); event.stopImmediatePropagation(); setMenu(false); }

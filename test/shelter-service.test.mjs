@@ -73,3 +73,16 @@ test('다른 탭이 기존 가구를 바꾼 경우 오래된 이동을 다시 �
   await assert.rejects(m.service(B).command(ID,{type:'move',mark:'wind',slot:'0',expect:old,piece:{...old,cell:'1_0'}}),/가구가 이미 바뀌었습니다/);
   assert.equal(m.calls,1); assert.equal(m.state.items.wind['0'].rot,1);
 });
+
+test('감시는 캐시/미확정 로컬 쓰기를 무시하고 서버 확인 판만 전달',()=>{
+  const s=initial(),events=[];let receive,fail,closed=false;
+  const api={doc:(_db,_collection,id)=>id,
+    onSnapshot(_ref,options,cb,onError){assert.equal(options.includeMetadataChanges,true);receive=cb;fail=onError;return()=>{closed=true;};}};
+  const service=createShelterService({uid:A,db:{},api});
+  const stop=service.watch(ID,x=>events.push(['state',x.revision]),ok=>events.push(['status',ok]));
+  const snap=(fromCache,hasPendingWrites)=>({metadata:{fromCache,hasPendingWrites},exists:()=>true,data:()=>s});
+  receive(snap(true,false));receive(snap(false,true));receive(snap(false,false));
+  fail(new Error('끊김'));stop();
+  assert.deepEqual(events,[['status',false],['state',1],['status',true],['status',false]]);
+  assert.equal(closed,true);
+});

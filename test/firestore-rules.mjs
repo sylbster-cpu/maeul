@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { doc, setDoc, getDoc, getDocs, collection, updateDoc, deleteDoc, serverTimestamp, runTransaction, getDocFromServer } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, collection, updateDoc, deleteDoc, serverTimestamp, runTransaction, getDocFromServer, onSnapshot } from 'firebase/firestore';
 
 import { createShelter, readShelter, apply, memberMark } from '../src/shelter-state.js';
 import { createShelterService } from '../src/shelter-service.js';
@@ -116,7 +116,7 @@ try {
   await no(writeRoom(guest,next),'남의 가구 삭제');
   await yes(writeRoom(owner,next),'내 가구 치우기'); s=next;
   // 실제 서비스 경로를 시험한다. SDK의 자동 재시도뿐 아니라 규칙 거절 뒤 판 번호 확인도 포함한다.
-  const api = { doc, collection, setDoc, serverTimestamp, getDocFromServer, runTransaction };
+  const api = { doc, collection, setDoc, serverTimestamp, getDocFromServer, runTransaction, onSnapshot };
   const service = (db,uid) => createShelterService({db,uid,api});
   const guestService = service(guest,GUEST), otherService = service(other,OTHER);
   const outcomes=await Promise.allSettled([
@@ -154,16 +154,20 @@ try {
   checks++; console.log('통과 기존 참여자의 재접속은 쓰지 않는다');
 
   // 두 친구가 동시에 처음 들어오는 경우 실제 서비스가 서로 다른 표식을 선택한다.
-  const secondId='ZyXwVu9876543210TsRq';
-  const secondRef=doc(owner,'shelters',secondId);
-  await setDoc(secondRef,{...createShelter(OWNER),updatedAt:serverTimestamp()});
+  const secondId=service(owner,OWNER).newId();
+  const created=await service(owner,OWNER).create(secondId);
+  assert.equal(created.id,secondId);assert.equal(created.state.ownerUid,OWNER);
+  checks++; console.log('통과 서비스로 쉼터 개설');
+  await assert.rejects(guestService.create(secondId),/다른 사람이 만든/);
+  checks++; console.log('통과 다른 UID가 같은 주소로 생성하여 덮을 수 없음');
   await Promise.all([guestService.join(secondId),otherService.join(secondId)]);
   now=await service(owner,OWNER).get(secondId);
   assert.ok(memberMark(now,GUEST) && memberMark(now,OTHER));
   assert.notEqual(memberMark(now,GUEST),memberMark(now,OTHER));
   assert.equal(Object.keys(now.members).length,3);
   assert.equal(now.revision,2);
-  checks++; console.log('통과 동시 참여: 서로 다른 표식');
+  assert.deepEqual((await service(owner,OWNER).create(secondId)).state,now);
+  checks++; console.log('통과 동시 참여와 같은 주소의 생성 재시도: 기존 회원 유지');
   // 가득 찬 문서에서도 최악 경로인 이동·회전·삭제가 허용되는지 확인한다.
   await service(db4,uid4).join(secondId);
   now=await service(owner,OWNER).get(secondId);
@@ -182,6 +186,25 @@ try {
   now=await ownService.command(secondId,{type:'remove',mark:'tree',slot:'0',expect:now.items.tree['0']});
   assert.equal(Object.keys(now.cells).length,23);
   checks++; console.log('통과 24개 가득 찬 쉼터 이동·회전·치우기');
+  // 실 에뮬레이터 감시: 읽는 친구에게 서버가 확정한 새 판이 도착한다.
+  const watchedId=service(owner,OWNER).newId();
+  await service(owner,OWNER).create(watchedId);
+  await guestService.join(watchedId);
+  let stopWatch, watchTimer;
+  try {
+    const observed=new Promise((resolve,reject)=>{
+      watchTimer=setTimeout(()=>reject(new Error('서버 감시 시험 응답 없음')),15000);
+      stopWatch=guestService.watch(watchedId,state=>{
+        if(state.items.tree['0'])resolve(state);
+      },(ok,error)=>{if(error)reject(error);});
+    });
+    // 쓰기와 감시를 함께 기다려 타임아웃도 처리한다.
+    const [observedState]=await Promise.all([
+      observed,service(owner,OWNER).command(watchedId,put('tree','0','2_2'))
+    ]);
+    assert.equal(observedState.cells['2_2'].mark,'tree');
+    checks++; console.log('통과 실제 서버 감시로 친구의 확정 배치를 읽음');
+  }finally{clearTimeout(watchTimer);stopWatch?.();}
   console.log('공동 쉼터 보안 규칙 시험 포함 전체 통과:',checks);
 
 } finally {

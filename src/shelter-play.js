@@ -11,7 +11,7 @@ const place=(m,slot,kind,cell,rot=0)=>({type:'place',mark:m,slot,piece:{kind,cel
 let state=initial,mark=memberMark(initial,uid);
 if(!mark)throw new Error('쉼터에 먼저 참여해 주세요');
 let view, session=null, mode='walk',tool=null,rot=0,selected=null,sheet=false,busy=false,connected=true;
-let rememberFrame=0;
+let rememberFrame=0,slowTimer=0;
 const canEdit=()=>!!mark&&connected&&!busy;
 const message=text=>{$('message').textContent=text;};
 const used=()=>Object.keys(state.items[mark]||{}).length;
@@ -177,6 +177,8 @@ async function start(){
     });
     if(service){
       session=createShelterSession({service,id,initial:state,onState:setState,onStatus:status=>{
+        if(status.busy&&!busy){slowTimer=setTimeout(()=>message('서버의 저장 응답을 기다리고 있습니다. 같은 조작을 다시 보내지 않습니다.'),8000);}
+        if(!status.busy){clearTimeout(slowTimer);slowTimer=0;}
         busy=status.busy;connected=status.connected;
         if(!connected&&!busy){showSheet(false);clearSelection();mode='walk';view.buildMode(false);}
         renderBar();

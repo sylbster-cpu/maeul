@@ -169,6 +169,14 @@ async function start(saved = {}) {
     guest, canImport,
     thumbs,
     on: {
+      shelter: () => {
+        if (guest || switchingHouse) return;
+        if (!saveNow()) {
+          ui.toast('내 집을 저장하지 못했습니다. 집을 보관한 뒤 쉼터로 이동해 주세요', 'error');
+          return;
+        }
+        window.location.assign('./shelter.html');
+      },
       share: async () => {
         if (!guest && newerHouse()) {
           ui.toast(lockText(), 'error');

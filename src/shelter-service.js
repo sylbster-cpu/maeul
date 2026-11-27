@@ -55,17 +55,26 @@ export function createShelterService({ uid, db, api }) {
     async create(id = newId()) {
       // 만들기 응답을 잃어도 같은 주소로 다시 시도한다. 남의 쉼터를 덮어쓰지 않는다.
       const target = ref(id);
-      return api.runTransaction(db, async tx => {
-        const snap = await tx.get(target);
-        if (snap.exists()) {
-          const state = read(snap);
-          if (state.ownerUid !== uid) throw new Error('이미 다른 사람이 만든 쉼터입니다');
-          return { id, state };
-        }
-        const state = createShelter(uid);
-        tx.set(target, data(state));
+      const existing = snap => {
+        const state = read(snap);
+        if (state.ownerUid !== uid) throw new Error('이미 다른 사람이 만든 쉼터입니다');
         return { id, state };
-      });
+      };
+      try {
+        return await api.runTransaction(db, async tx => {
+          const snap = await tx.get(target);
+          if (snap.exists()) return existing(snap);
+          const state = createShelter(uid);
+          tx.set(target, data(state));
+          return { id, state };
+        });
+      } catch (error) {
+        // 두 탭의 같은 ID 생성이 엇갈려 보안 규칙이 늦은 쓰기를 거절할 수 있다.
+        if (error?.code !== 'permission-denied') throw error;
+        const fresh = await api.getDocFromServer(target);
+        if (!fresh.exists()) throw error;
+        return existing(fresh);
+      }
     },
     async get(id) {
       return read(await api.getDocFromServer(ref(id)));

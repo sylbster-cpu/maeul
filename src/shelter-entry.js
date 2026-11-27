@@ -3,7 +3,7 @@ import { mountShelter } from './shelter-play.js';
 import { startPreview } from './shelter-preview.js';
 import { getShelterService } from './shelter-online.js';
 import { createShelterMemory, shelterRoomId, shelterLink } from './shelter-memory.js';
-import { memberMark, MARK_LABELS } from './shelter-state.js';
+import { memberMark } from './shelter-state.js';
 import { withOnlineTimeout } from './online-data.js';
 const $=id=>document.getElementById(id);
 const controls=['create-room','resume-room','join-room','retry-room'];

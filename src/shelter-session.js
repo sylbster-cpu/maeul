@@ -1,4 +1,6 @@
 import { readShelter, validate, memberMark } from './shelter-state.js';
+import { withOnlineTimeout } from './online-data.js';
+const READ_LIMIT=20000;
 
 // 화면은 이 세션이 넘기는 서버 확인 상태만 사용한다. 개인 저장과 무관하다.
 export function createShelterSession({ service, id, initial, onState = () => {}, onStatus = () => {} }) {
@@ -42,7 +44,7 @@ export function createShelterSession({ service, id, initial, onState = () => {},
         return true;
       } catch (error) {
         // 거절된 배치를 낙관적으로 표시하지 않는다. 최신 판을 읽어 다음 조작에 반영한다.
-        try { const fresh = await service.get(id); receive(fresh); status(true); }
+        try { const fresh = await withOnlineTimeout(service.get(id),READ_LIMIT); receive(fresh); status(true); }
         catch { status(false); }
         throw error;
       } finally { busy = false; flush(); notify(); }
@@ -52,7 +54,7 @@ export function createShelterSession({ service, id, initial, onState = () => {},
       busy = true; notify();
       try {
         // 다시 연결할 때 이전의 감시를 종료하고 새 감시를 시작한다.
-        const next = await service.get(id);
+        const next = await withOnlineTimeout(service.get(id),READ_LIMIT);
         receive(next); status(true);
         if (unsubscribe) { unsubscribe(); unsubscribe = null; }
         if (!closed) unsubscribe = service.watch(id, receive, status);

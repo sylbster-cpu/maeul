@@ -26,8 +26,13 @@ export default async function onlineShelter(page,{out,logs}){
   const go=async path=>{await page.goto(origin+path);await page.waitForFunction(()=>window.__ready===true);};
   const waitGame=()=>page.waitForFunction(()=>window.__shelter&&!window.__shelter.busy);
   const say=(text,value)=>{logs.push((value?'통과  ':'실패  ')+text);assert.ok(value,text);};
-  await page.evaluate(()=>localStorage.setItem('house-lab-web:save','original-house'));
-  await go('/shelter.html');
+  await go('/');
+  await page.evaluate(()=>window.__game.saveNow());
+  await page.tap('#menu-toggle');
+  await Promise.all([page.waitForURL('**/shelter.html'),page.tap('#shelter-action')]);
+  await page.waitForFunction(()=>window.__ready===true);
+  const originalHouse=await page.evaluate(()=>localStorage.getItem('house-lab-web:save'));
+  say('마을 메뉴에서 내 집을 저장하고 쉼터 진입',!!originalHouse);
   await page.locator('#create-room').waitFor({state:'visible'});
   await page.tap('#create-room');await waitGame();
   say('새 쉼터 개설 및 주소 유지',page.url().endsWith('#room='+ID));
@@ -58,6 +63,6 @@ export default async function onlineShelter(page,{out,logs}){
   say('다시 연결되면 꾸미기 가능',!(await page.locator('#build').isDisabled()));
   await page.evaluate(()=>window.__mockShelter.friendPlace());
   say('서버의 친구 배치 반영',await page.evaluate(()=>!!window.__shelter.state.items.wind['1']));
-  say('개인 집 저장 내용 유지',await page.evaluate(()=>localStorage.getItem('house-lab-web:save')==='original-house'));
+  say('개인 집 저장 내용 유지',(await page.evaluate(()=>localStorage.getItem('house-lab-web:save')))===originalHouse);
   await page.screenshot({path:out+'-rejoin.png'});
 }
