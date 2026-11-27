@@ -26,6 +26,7 @@ import { createOnlineUI } from './online-ui.js';
 import { createPondView } from './fishing-view.js';
 import { createFishing } from './fishing-play.js';
 import { createFishingUI, createCatchCard } from './fishing-ui.js';
+import { createWreathUI } from './wreath-ui.js';
 
 watchShareHash(window);
 
@@ -89,6 +90,9 @@ async function start(saved = {}) {
   // 빠진 배치를 밖으로 내보내거나, 가져오기로 원문을 잃지 않게 하려는 것이다(PR #43 GPT 검토). 맞바꾸기는 원문을 그대로 옮기므로 막지 않는다
   // '집'으로 시작해야 온라인 창이 이 글을 그대로 보인다(online-data.js onlineErrorText)
   const NEWER_HOUSE = '집이 더 새로운 판의 게임에서 저장되어 있습니다. 새로 고친 뒤 다시 해 주세요';
+  // 뺀 집의 원문을 남기지 못해 저장을 멈췄을 때(save.js createSaver 의 lockReason 'backup'). 이것도 '집'으로 시작한다
+  const HELD_HOUSE = '집의 원래 저장 내용을 따로 남기지 못해 이 화면에서는 저장하지 않습니다. 저장 공간을 비운 뒤 새로 고쳐 주세요';
+  const lockText = () => (saver.lockReason === 'backup' ? HELD_HOUSE : NEWER_HOUSE);
   const newerHouse = () => { if (saver.locked) return true; try { return isNewerHouse(storage?.getItem(SAVE_KEY)); } catch { return false; } };
   const handed = guest ? null : (saved.state?.version === 2 ? saved : null);
   const loaded = guest ? null : (handed ? null : saver.load());
@@ -151,13 +155,16 @@ async function start(saved = {}) {
     },
   };
 
+  const thumbs = view.thumbnails(Object.keys(PARTS));
+  // 화환 만들기 창(5단계). 재료 그림은 꾸미기 목록과 같은 그림을 쓴다
+  const wreathUI = createWreathUI({ thumbs });
   const ui = createUI({
     guest, canImport,
-    thumbs: view.thumbnails(Object.keys(PARTS)),
+    thumbs,
     on: {
       share: async () => {
         if (!guest && newerHouse()) {
-          ui.toast(NEWER_HOUSE, 'error');
+          ui.toast(lockText(), 'error');
           // 공유 주소는 만들지 않는다. 맞바꾸기는 원문을 글자 그대로 옮기므로, 보관된 집이 있으면 그 창은 연다(PR #43 GPT 재검토)
           if (hasPreviousHouse(storage)) {
             ui.openShare('', {
@@ -184,7 +191,7 @@ async function start(saved = {}) {
       // 서버 없는 집 공유 링크를 열었을 때만, 확인을 받은 뒤 현재 브라우저의 집을 복사한다.
       importHouse: async () => {
         if (switchingHouse || !canImport || !sharedState) return;
-        if (newerHouse()) { ui.toast(NEWER_HOUSE, 'error'); return; } // 지금 내 집이 새 판의 집이면 가져오기로 잃을 수 있다
+        if (newerHouse()) { ui.toast(lockText(), 'error'); return; } // 지금 내 집이 새 판의 집이면 가져오기로 잃을 수 있다
         // 보관 칸은 하나다. 이미 보관된 집이 있으면 그 집은 두고 지금 집이 바뀐다는 것을 미리 알린다
         const replaceCurrent = hasPreviousHouse(storage);
         const question = replaceCurrent
@@ -199,7 +206,7 @@ async function start(saved = {}) {
         try {
           // 창이 떠 있는 사이 다른 탭이 집이나 보관본을 바꿨으면 판이 같아도 가져오지 않는다. 사용자는 바뀌기 전의 집을 보고
           // "예"를 눌렀고, 보관된 집이 있으면 바뀐 지금 집은 어디에도 남지 않는다(2026-11-26 GPT 재검토)
-          if (newerHouse()) throw new Error(NEWER_HOUSE); // 새 판의 집이면 그쪽 안내가 더 정확하다
+          if (newerHouse()) throw new Error(lockText()); // 새 판의 집이면 그쪽 안내가 더 정확하다
           if (!shown.isCurrent()) throw new Error('확인하는 사이 다른 탭에서 집이 바뀌어 가져오지 않았습니다. 새로 고친 뒤 다시 해 주세요');
           importSharedHouse(storage, sharedState, { replaceCurrent });
         }
@@ -253,6 +260,7 @@ async function start(saved = {}) {
       redo: () => input.redo(),
       sample: () => input.resetToSample(),
       cancelCarry: () => input.cancelCarry(),
+      editWreath: () => input.editWreath(),
       choose: (cmd) => input.choose(cmd),
       upgrade: () => input.upgrade(),
       travel: () => travel.toggle(),
@@ -261,7 +269,7 @@ async function start(saved = {}) {
   // 온라인 기능은 설정이 없으면 버튼을 숨긴다. 로컬 집/오프라인 링크는 항상 독립적으로 작동한다.
   createOnlineUI({
     store, visitorUid: onlineGuestOwner, readOnly: guest,
-    blocked: () => (!guest && newerHouse() ? NEWER_HOUSE : null), // 새 판의 집이면 빠진 배치로 온라인 집을 덮지 않는다
+    blocked: () => (!guest && newerHouse() ? lockText() : null), // 새 판의 집이면 빠진 배치로 온라인 집을 덮지 않는다
     openShare: (link, options) => ui.openShare(link, options),
     toast: (message, kind) => ui.toast(message, kind),
   });
@@ -283,7 +291,7 @@ async function start(saved = {}) {
   gathering.subscribe(showFound);
   showFound();
   createFishingUI({ fishing, gathering });
-  input = createInput({ canvas, view, store, history, character, ui, audio, haptics, travel, fishing, gathering, readOnly: guest });
+  input = createInput({ canvas, view, store, history, character, ui, audio, haptics, travel, fishing, gathering, wreathUI, readOnly: guest });
   history.subscribe((status) => ui.setHistory(status));
   ui.setHistory(history.status());
   if (!guest && handed?.mode === 'build') input.setMode('build');
@@ -308,7 +316,7 @@ async function start(saved = {}) {
     ui.toast('다른 탭에서 집이 바뀌었습니다. 이 탭에서는 저장하지 않습니다. 다시 열어 주세요', 'error');
   }
   // 더 새로운 판에서 저장한 집을 읽었으면 이 화면에서는 저장하지 않는다(save.js createSaver 의 locked, PR #42 GPT 검토 1)
-  const newerLock = () => { clearTimeout(saveTimer); saveTimer = 0; ui.setSaveStatus('newer'); return false; };
+  const newerLock = () => { clearTimeout(saveTimer); saveTimer = 0; ui.setSaveStatus(saver.lockReason === 'backup' ? 'held' : 'newer'); return false; };
   const saveNow = () => {
     if (guest || switchingHouse) return false;
     if (!saver.available) { ui.setSaveStatus('off'); return false; }
@@ -340,12 +348,14 @@ async function start(saved = {}) {
           !saveGuard.isCurrent()) stopStaleTab();
     });
   }
-  ui.setSaveStatus(transferError ? 'conflict' : guest ? 'guest' : saver.locked ? 'newer' : (saver.available ? 'saved' : 'off'));
+  ui.setSaveStatus(transferError ? 'conflict' : guest ? 'guest' : saver.locked ? (saver.lockReason === 'backup' ? 'held' : 'newer') : (saver.available ? 'saved' : 'off'));
   if (transferError) ui.toast(transferError, 'error');
   if (shareError) ui.toast(`공유 링크 오류: ${shareError}. 내 집으로 열었습니다`, 'error');
-  if (saver.locked) ui.toast('이 집은 더 새로운 판의 게임에서 저장되었습니다. 이 화면에서는 저장하지 않으니 새로 고쳐 주세요', 'error');
+  // 뺀 것의 원문을 남겼는지에 따라 알림이 다르다. 남기지 못했으면 남겼다고 말하지 않는다(PR #48 GPT 재검토)
+  if (saver.locked && saver.lockReason === 'backup') ui.toast(`저장된 것 가운데 ${loaded.dropped}개는 지금 규칙에 맞지 않아 빼고 불러왔습니다. 원래 저장 내용을 따로 남기지 못해 이 화면에서는 저장하지 않습니다. 저장 공간을 비운 뒤 새로 고쳐 주세요`, 'error');
+  else if (saver.locked) ui.toast('이 집은 더 새로운 판의 게임에서 저장되었습니다. 이 화면에서는 저장하지 않으니 새로 고쳐 주세요', 'error');
   else if (loaded && !loaded.ok) ui.toast(`${loaded.reason}. 처음 배치로 시작합니다`, 'error');
-  else if (loaded?.dropped) ui.toast(`저장된 것 가운데 ${loaded.dropped}개는 지금 규칙에 맞지 않아 빼고 불러왔습니다`, 'error');
+  else if (loaded?.dropped) ui.toast(`저장된 것 가운데 ${loaded.dropped}개는 지금 규칙에 맞지 않아 빼고 불러왔습니다. 원래 저장 내용은 따로 남겨 두었습니다`, 'error');
   else if (fishing.loadProblem) ui.toast(fishing.loadProblem, 'error');
   else if (gathering.loadProblem) ui.toast(gathering.loadProblem, 'error');
 
@@ -410,7 +420,7 @@ async function start(saved = {}) {
 
   // 열어 둔 화면에 새 판이 도착해도 꾸민 집을 잃지 않게 한다
   window.claude?.hot?.snapshot?.(() => guest || switchingHouse ? {} : ({ state: store.state, place: character.place, pos: { ...character.pos }, mode: input.state.mode }));
-  window.__game = { store, view, character, input, history, saveNow, travel, fishing, gathering, haptics, pondWatch: () => pondView.watchPoints };
+  window.__game = { store, view, character, input, history, saveNow, travel, fishing, gathering, haptics, wreathUI, pondWatch: () => pondView.watchPoints };
   window.__ready = true;
 }
 

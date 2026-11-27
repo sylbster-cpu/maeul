@@ -1,6 +1,6 @@
 // 조작. 포인터와 키 입력을 명령으로 바꿔 store 에 보낸다.
 // 꾸미기 모드에서 놓는 것은 가구뿐이다. 바닥재, 벽지, 집의 겉모습, 집 키우기는 버튼으로 고른다.
-import { PARTS, LEVELS, MAX_LEVEL } from './parts.js';
+import { PARTS, LEVELS, MAX_LEVEL, DEFAULT_WREATH } from './parts.js';
 import { cellKey, clearCommands, layerOf, seatSpots } from './state.js';
 import { sampleCommands } from './sample.js';
 import { foundCounts, foundHint } from './gathering.js';
@@ -15,6 +15,8 @@ const KEY_HINTS = {
   top: '탁자나 수납장 위를 누르면 올려놓습니다. R로 돌립니다.',
   wallitem: '벽을 누르면 그 자리에 겁니다.',
   carry: '옮길 자리를 누릅니다. R로 돌리고 Esc로 그만둡니다.',
+  wreath: '벽을 누르면 그 자리에 겁니다. 화환 버튼을 다시 누르면 모양을 바꿉니다.',
+  carryWreath: '옮길 자리를 누릅니다. 모양 고치기 버튼으로 모양을 바꿀 수 있습니다.',
 };
 // 손가락으로 쓰는 기기에서는 키 이름 대신 버튼과 손동작으로 안내한다
 const TOUCH_HINTS = {
@@ -27,10 +29,16 @@ const TOUCH_HINTS = {
   top: '탁자나 수납장 위를 누르면 올려놓습니다. 누른 채 움직여 자리를 고를 수 있습니다.',
   wallitem: '벽을 누른 채 자리를 고르고, 떼면 걸립니다.',
   carry: '옮길 자리를 누릅니다. 돌리기와 그만두기 버튼을 쓸 수 있습니다.',
+  wreath: '벽을 누른 채 자리를 고르고, 떼면 걸립니다. 화환 버튼을 다시 누르면 모양을 바꿉니다.',
+  carryWreath: '옮길 자리를 누릅니다. 모양 고치기 버튼으로 모양을 바꿀 수 있습니다.',
 };
 
-export function createInput({ canvas, view, store, history, character, ui, audio, haptics = null, travel, fishing = null, gathering = null, readOnly = false }) {
-  const s = { mode: 'walk', tool: 'select', rot: 0, drag: null, carry: null, pointer: null, press: null, lastPlaced: null };
+export function createInput({ canvas, view, store, history, character, ui, audio, haptics = null, travel, fishing = null, gathering = null, wreathUI = null, readOnly = false }) {
+  // look: 화환 도구로 걸 모양(만들기 창에서 고른 것)
+  const s = { mode: 'walk', tool: 'select', rot: 0, drag: null, carry: null, pointer: null, press: null, lastPlaced: null, look: null };
+  const isWreath = (partId) => !!PARTS[partId]?.wreath;
+  // 놓는 명령과 미리 보기에 실을 모양. 화환이 아니면 아무것도 싣지 않는다
+  const lookFor = (partId) => (isWreath(partId) ? { look: s.look || DEFAULT_WREATH } : {});
   const keys = new Set();
   const coarse = window.matchMedia('(pointer: coarse)').matches;
   const hints = coarse ? TOUCH_HINTS : KEY_HINTS;
@@ -47,7 +55,8 @@ export function createInput({ canvas, view, store, history, character, ui, audio
       if (fish != null) return fish;
       return character.seated ? hints.seated : here() === 'yard' ? hints.walkYard : hints.walkRoom;
     }
-    if (s.carry) return hints.carry;
+    if (s.carry) return isWreath(s.carry.part) ? hints.carryWreath : hints.carry;
+    if (isWreath(s.tool)) return hints.wreath;
     // 주운 것을 골랐으면 가진 수·놓인 수·더 놓을 수 있는 수를 알린다(2026-11-26 사용자 결정 "가진 수 고쳐요")
     const kind = PARTS[s.tool]?.found;
     if (kind && gathering) return foundHint(kind, foundCounts(store.state, gathering.store.state)[kind]);
@@ -57,7 +66,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
     ui.setMode(s.mode);
     ui.setTool(s.tool);
     ui.setHint(hintFor());
-    ui.setCarrying(!!s.carry);
+    ui.setCarrying(!!s.carry, !!s.carry && isWreath(s.carry.part));
     ui.setPlace(here(), store.state);
   }
 
@@ -80,6 +89,17 @@ export function createInput({ canvas, view, store, history, character, ui, audio
   }
   function setTool(tool) {
     if (readOnly) return;
+    // 화환은 만들기 창에서 모양을 고른 뒤에 그 모양을 들고 건다. 창을 그만두면 아무것도 바뀌지 않는다
+    if (isWreath(tool) && wreathUI) {
+      cancel();
+      syncUI();
+      refresh();
+      wreathUI.open({
+        look: s.look || DEFAULT_WREATH,
+        onDone: (look) => { s.look = look; s.tool = tool; if (s.mode !== 'build') setMode('build'); syncUI(); refresh(); },
+      });
+      return;
+    }
     cancel();
     s.tool = tool;
     if (s.mode !== 'build') setMode('build');
@@ -119,7 +139,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
     if (s.mode === 'build' && s.carry && !at) {
       // 손가락을 뗀 동안에도 들고 있는 가구가 보이도록 원래 자리에 그린다
       const obj = objectsHere()[s.carry.id];
-      if (obj) view.showGhosts([{ type: 'object', part: obj.part, x: obj.x, y: obj.y, wall: obj.wall, i: obj.i, rot: s.carry.rot, tone: 'select' }]);
+      if (obj) view.showGhosts([{ type: 'object', part: obj.part, x: obj.x, y: obj.y, wall: obj.wall, i: obj.i, rot: s.carry.rot, look: obj.look, tone: 'select' }]);
       return;
     }
     if (s.mode !== 'build' || !at) { view.clearGhosts(); return; }
@@ -127,11 +147,14 @@ export function createInput({ canvas, view, store, history, character, ui, audio
     const ghosts = [];
     if (s.carry) {
       const t = targetFor(s.carry.part, s.carry.rot, at);
-      if (t) ghosts.push({ type: 'object', part: s.carry.part, ...t, valid: store.can({ type: 'moveObject', space: here(), id: s.carry.id, ...t }).ok });
+      if (t) ghosts.push({ type: 'object', part: s.carry.part, ...t, look: objectsHere()[s.carry.id]?.look, valid: store.can({ type: 'moveObject', space: here(), id: s.carry.id, ...t }).ok });
     } else if (placing()) {
       const t = targetFor(s.tool, s.rot, at);
       // 주운 것은 가진 만큼만 놓을 수 있다(history.check). 모자라면 빨갛게 보인다
-      if (t) ghosts.push({ type: 'object', part: s.tool, ...t, valid: store.can({ type: 'placeObject', space: here(), id: '-', part: s.tool, ...t }).ok && history.check([{ type: 'placeObject', space: here(), id: '-', part: s.tool, ...t }]).ok });
+      if (t) {
+        const cmd = { type: 'placeObject', space: here(), id: '-', part: s.tool, ...t, ...lookFor(s.tool) };
+        ghosts.push({ type: 'object', part: s.tool, ...t, ...lookFor(s.tool), valid: store.can(cmd).ok && history.check([cmd]).ok });
+      }
     } else if (kind === 'erase' || kind === 'select') {
       const ref = objectAt(at);
       if (ref) ghosts.push({ type: 'highlight', ref, tone: kind });
@@ -166,7 +189,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
     const t = targetFor(s.tool, s.rot, at);
     if (!t) { fail(NO_WALL); return; }
     const id = store.nextId();
-    const r = history.run([{ type: 'placeObject', space: here(), id, part: s.tool, ...t, by: store.playerId }]);
+    const r = history.run([{ type: 'placeObject', space: here(), id, part: s.tool, ...t, by: store.playerId, ...lookFor(s.tool) }]);
     if (r.ok) s.lastPlaced = id; else fail(r);
   }
   const eraseAt = (at) => { const ref = objectAt(at); if (ref) history.run([{ type: 'removeObject', space: here(), id: ref.id }]); };
@@ -414,8 +437,29 @@ export function createInput({ canvas, view, store, history, character, ui, audio
   return {
     state: s, setMode, setTool, rotate, refresh, undo, redo, syncUI,
     cancelCarry() { cancel(); syncUI(); refresh(); },
+    // 들고 있는 화환의 모양을 고친다. 화환은 제자리에 두고 만들기 창을 연다. "다 됐어요"일 때만 setLook 하나로 남긴다(되돌리기 가능)
+    editWreath() {
+      if (!s.carry || !isWreath(s.carry.part) || !wreathUI) return;
+      const id = s.carry.id;
+      const space = here();
+      const obj = objectsHere()[id];
+      cancel();
+      syncUI();
+      refresh();
+      if (!obj) return;
+      wreathUI.open({
+        look: obj.look || DEFAULT_WREATH,
+        title: '화환 고치기',
+        onDone: (look) => {
+          const r = history.run([{ type: 'setLook', space, id, look }]);
+          if (r.ok) { s.look = look; view.pop({ id }); } else if (!r.reason?.startsWith('이미 그')) fail(r);
+          syncUI();
+          refresh();
+        },
+      });
+    },
     // 곳이 바뀔 때 하던 동작을 정리한다
-    leavePlace() { cancel(); fishing?.cancel(); s.pointer = null; s.lastPlaced = null; if (toolKind() === 'wallitem') s.tool = 'select'; },
+    leavePlace() { wreathUI?.cancel(); cancel(); fishing?.cancel(); s.pointer = null; s.lastPlaced = null; if (toolKind() === 'wallitem') s.tool = 'select'; },
     // 보기에서 고르는 것들: 바닥재, 벽지, 겉모습
     choose(cmd) {
       const r = history.run([cmd]);

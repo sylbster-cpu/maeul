@@ -130,6 +130,7 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
   $('redo').addEventListener('click', () => on.redo());
   $('sample').addEventListener('click', () => on.sample());
   $('cancel-carry').addEventListener('click', () => on.cancelCarry());
+  $('wreath-edit').addEventListener('click', () => on.editWreath?.());
   $('place-toggle').addEventListener('click', () => on.travel());
   $('share-house').addEventListener('click', () => canImport ? on.importHouse() : on.share());
   $('my-home').addEventListener('click', () => on.home());
@@ -242,14 +243,16 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
       $('clear-all').textContent = place === 'yard' ? '마당 가구 치우기' : '방 가구 치우기';
     },
     setHint(text) { $('hint').textContent = text; },
-    setCarrying(on) {
+    // wreath: 들고 있는 것이 화환이면 "모양 고치기" 버튼을 보인다
+    setCarrying(on, wreath = false) {
       const was = !$('cancel-carry').hidden;
       $('cancel-carry').hidden = !on;
+      $('wreath-edit').hidden = !(on && wreath);
       if (on && !was) $('build-extras').scrollLeft = 0; // 좁은 화면에서 그만두기 버튼이 바로 보이게
     },
     setHistory({ canUndo, canRedo }) { $('undo').disabled = !canUndo; $('redo').disabled = !canRedo; },
     setSaveStatus(status) {
-      $('save-status').textContent = { saved: '자동 저장됨', pending: '저장하는 중', off: '이 브라우저에서는 저장되지 않습니다', guest: '친구 집 구경 중 · 내 집 유지', conflict: '다른 탭에서 집이 바뀌어 자동 저장 중지 · 새로고침 필요', newer: '새 판에서 저장한 집이라 자동 저장 중지 · 새로고침 필요' }[status] || '';
+      $('save-status').textContent = { saved: '자동 저장됨', pending: '저장하는 중', off: '이 브라우저에서는 저장되지 않습니다', guest: '친구 집 구경 중 · 내 집 유지', conflict: '다른 탭에서 집이 바뀌어 자동 저장 중지 · 새로고침 필요', newer: '새 판에서 저장한 집이라 자동 저장 중지 · 새로고침 필요', held: '원래 저장 내용을 남기지 못해 자동 저장 중지 · 저장 공간 확인' }[status] || '';
     },
     toast: showToast,
     openShare(link, options = {}) {

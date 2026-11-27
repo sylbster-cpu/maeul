@@ -253,6 +253,25 @@ img { max-width: 100%; }
   #fish-list small, #gather-list small { grid-column: 1 / -1; color: var(--ink-soft); font-size: 12.5px; }
   #fish-today, #gather-today { color: var(--ink-soft); font-size: 13.5px; }
   #fish-close { width: 100%; min-height: 44px; margin-top: 4px; }
+  /* 화환 만들기 창(5단계). 고리는 SVG, 칸은 손가락으로 누르는 버튼(44px 넘게) */
+  .wreath-panel { text-align: center; }
+  #wreath-hint { color: var(--ink-soft); }
+  .wreath-ring { position: relative; width: min(232px, 66vw); aspect-ratio: 1; margin: 4px auto 10px; }
+  .wreath-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #wreath-bow { fill: var(--wreath-ribbon, transparent); stroke: rgba(0, 0, 0, 0.25); stroke-width: 1; }
+  .wreath-slot {
+    position: absolute; width: 52px; height: 52px; margin: -26px 0 0 -26px; padding: 0;
+    display: grid; place-items: center; border-radius: 50%;
+    background: var(--tile); border: 2px dashed var(--tile-edge);
+  }
+  .wreath-slot.filled { border-style: solid; border-color: var(--panel-edge); }
+  .wreath-slot img { width: 40px; height: 40px; display: block; }
+  .wreath-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 0 0 8px; }
+  .wreath-row button { min-height: 48px; padding: 3px 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; font-size: 12.5px; }
+  .wreath-row img { width: 30px; height: 30px; display: block; }
+  .wreath-swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--panel-edge); display: block; }
+  .wreath-swatch.none { background: repeating-linear-gradient(45deg, var(--tile) 0 4px, var(--tile-edge) 4px 6px); }
+  #wreath-done { background: var(--moss); color: var(--on-moss); border-color: var(--panel-edge); }
   /* 낚은 순간의 카드. 안내 문구 자리에 겹쳐 뜬다(낚은 동안 안내는 쓸모가 없다). 작은 화면에서도
      물고기를 든 캐릭터를 가리지 않게 작게 둔다. 아래쪽 높이는 띄울 때 쟁반 높이에 맞춘다. 누르는 것은 막지 않는다 */
   .catch-card {
@@ -367,6 +386,7 @@ img { max-width: 100%; }
         </div>
         <div class="extras" id="build-extras" hidden>
           <button type="button" id="cancel-carry" hidden>그만두기</button>
+          <button type="button" id="wreath-edit" hidden>모양 고치기</button>
           <button type="button" id="undo" disabled title="되돌리기 (Ctrl+Z)">되돌리기</button>
           <button type="button" id="redo" disabled title="다시 하기 (Ctrl+Shift+Z)">다시 하기</button>
           <button type="button" id="rotate-part">돌리기</button>
@@ -418,6 +438,29 @@ img { max-width: 100%; }
       <p id="online-status" role="status" aria-live="polite"></p>
       <p>이 실험은 익명 계정을 사용합니다. 브라우저 정보를 지우면 온라인 집 수정 권한을 잃을 수 있습니다. 중요한 집은 기존 집 공유 링크로도 보관해 주세요.</p>
       <button type="button" id="online-close">닫기</button>
+    </section>
+  </div>
+
+  <div class="share-layer" id="wreath-layer" hidden>
+    <section class="share-panel wreath-panel" role="dialog" aria-modal="true" aria-labelledby="wreath-title">
+      <h2 id="wreath-title">화환 만들기</h2>
+      <p id="wreath-hint">재료를 고르고 고리의 칸을 누르세요.</p>
+      <div class="wreath-ring" id="wreath-ring">
+        <svg viewBox="0 0 200 200" aria-hidden="true" focusable="false">
+          <circle cx="100" cy="100" r="64" fill="none" stroke="#6b5a3a" stroke-width="16"/>
+          <circle cx="100" cy="100" r="64" fill="none" stroke="#5f8a44" stroke-width="10" stroke-dasharray="7 6"/>
+          <g id="wreath-bow" transform="translate(100 168)">
+            <ellipse cx="-13" cy="0" rx="13" ry="8"/><ellipse cx="13" cy="0" rx="13" ry="8"/>
+            <path d="M-4 4 L-12 24 L-4 21 Z M4 4 L12 24 L4 21 Z"/><circle r="6"/>
+          </g>
+        </svg>
+      </div>
+      <div class="wreath-row" id="wreath-fills" role="group" aria-label="꽂을 재료"></div>
+      <div class="wreath-row" id="wreath-ribbons" role="group" aria-label="리본"></div>
+      <div class="share-actions">
+        <button type="button" id="wreath-cancel">그만두기</button>
+        <button type="button" id="wreath-done">다 됐어요</button>
+      </div>
     </section>
   </div>
 

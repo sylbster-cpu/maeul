@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createState } from '../src/state.js';
 import { createOnlineService } from '../src/online-service.js';
 import { prepareOnlineSnapshot } from '../src/online-data.js';
+import { SAVE_VERSION } from '../src/save.js';
 
 const OWNER = 'ownerAa123456789';
 const GUEST = 'guestBb987654321';
@@ -79,7 +80,7 @@ test('정상적이지 않은 서버 집은 방문 화면에 쓰지 않는다', a
   const { api, docs } = mockApi();
   const guest = createOnlineService({ uid: GUEST, db: {}, api });
   docs.set('houses/' + OWNER, { ownerUid: OWNER, isPublic: true,
-    snapshot: prepareOnlineSnapshot(createState()).replace('"version":2', '"version":99') });
+    snapshot: prepareOnlineSnapshot(createState()).replace(`"version":${SAVE_VERSION}`, '"version":99') });
   await assert.rejects(() => guest.visit(OWNER), /형식|가구/);
 });
 
