@@ -153,10 +153,17 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
   $('zoom-in').addEventListener('click', () => on.zoom(1 / 1.2));
   $('zoom-out').addEventListener('click', () => on.zoom(1.2));
   $('rotate-part').addEventListener('click', () => on.rotate());
-  $('clear-all').addEventListener('click', () => on.clear());
+  // 가구 치우기·처음 배치로는 누르는 즉시 저장되고, 되돌리기 기록은 이번 접속에만 있어 새로 고친 뒤에는 되살릴 수 없다.
+  // 그래서 한 번 묻는다. 취소하면 아무것도 바꾸지 않는다(GPT 글 7211523731, 6단계 HUD B)
+  $('clear-all').addEventListener('click', () => {
+    const where = lastPlace === 'yard' ? '마당' : '방';
+    if (window.confirm(`${where}의 가구를 모두 치울까요? 새로 고치기 전에는 되돌리기로 되살릴 수 있습니다.`)) on.clear();
+  });
   $('undo').addEventListener('click', () => on.undo());
   $('redo').addEventListener('click', () => on.redo());
-  $('sample').addEventListener('click', () => on.sample());
+  $('sample').addEventListener('click', () => {
+    if (window.confirm('마당과 방의 가구를 모두 치우고 처음 배치로 바꿀까요? 새로 고치기 전에는 되돌리기로 돌아갈 수 있습니다.')) on.sample();
+  });
   $('cancel-carry').addEventListener('click', () => on.cancelCarry());
   $('wreath-edit').addEventListener('click', () => on.editWreath?.());
   // 꾸미기 목록(시트, 6단계 HUD B). 막대 위에 겹쳐 뜨고, 바깥을 누르면 접히기만 한다(뒤의 3D 화면에 누름이 닿지 않는다)

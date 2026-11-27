@@ -1,7 +1,7 @@
 // 6단계 HUD B: 꾸미기 하단 시트(목록), 같은 높이의 아래 막대, 이어 놓기와 완료.
 // 흉내 낸 입력이며 실제 휴대폰 확인을 대신하지 않는다.
 //   TOUCH=1 node tools/shot.mjs / shots/hud-build 360 640 test/hud-build.mjs
-import { openMenu, closeMenu } from './helpers/menu.mjs';
+import { openMenu, closeMenu, menuClick } from './helpers/menu.mjs';
 
 export default async function hudBuild(page, { out, logs }) {
   const cdp = process.env.TOUCH === '1' ? await page.context().newCDPSession(page) : null;
@@ -146,4 +146,31 @@ export default async function hudBuild(page, { out, logs }) {
   await tapEl('#mode-walk');
   const narrowWalk = await bar();
   say('320px: 꾸미기 막대가 넘치지 않고, 버튼은 44px 이상이며 걷기 막대와 높이가 같다', !narrow.overflow && narrow.minW >= 44 && narrow.h === narrowWalk.h && narrow.buttons.length === 5, JSON.stringify({ narrow, narrowWalk }));
+
+  // 11) 가구 치우기는 한 번 묻는다. 취소하면 집도 저장도 그대로다. 되돌리기 기록은 이번 접속에만 있기 때문이다(GPT 글 7211523731)
+  await page.setViewportSize({ width: 360, height: 640 });
+  await page.waitForTimeout(300);
+  await page.click('#mode-build');
+  const house = () => g(() => ({ yard: Object.keys(window.__game.store.state.spaces.yard.objects).length, saved: localStorage.getItem('house-lab-web:save') }));
+  const h0 = await house();
+  let asked = '';
+  page.once('dialog', (d) => { asked = d.message(); d.dismiss(); });
+  await menuClick(page, '#clear-all');
+  await page.waitForTimeout(300);
+  const h1 = await house();
+  say('가구 치우기는 확인을 묻고, 취소하면 집과 저장이 그대로다', asked.includes('마당의 가구를 모두 치울까요') && h1.yard === h0.yard && h1.saved === h0.saved && h0.yard > 0, JSON.stringify({ asked, before: h0.yard, after: h1.yard, same: h1.saved === h0.saved }));
+  page.once('dialog', (d) => d.accept());
+  await menuClick(page, '#clear-all');
+  await page.waitForTimeout(300);
+  const h2 = await house();
+  await page.click('#undo');
+  await page.waitForTimeout(300);
+  const h3 = await house();
+  say('확인하면 치우고, 되돌리기로 되살린다', h2.yard === 0 && h3.yard === h0.yard, JSON.stringify({ cleared: h2.yard, back: h3.yard }));
+  asked = '';
+  page.once('dialog', (d) => { asked = d.message(); d.dismiss(); });
+  await menuClick(page, '#sample');
+  await page.waitForTimeout(300);
+  const h4 = await house();
+  say('처음 배치로도 확인을 묻고, 취소하면 그대로다', asked.includes('처음 배치로 바꿀까요') && h4.yard === h3.yard, JSON.stringify({ asked, yard: h4.yard }));
 }
