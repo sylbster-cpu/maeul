@@ -52,7 +52,7 @@ function remember(){
   });
 }
 function setState(next,origin){
-  const old=ownPiece();
+  const old=ownPiece(),prev=state;
   state=next;mark=memberMark(state,uid);
   if(origin==='remote'&&selected){
     const fresh=ownPiece();
@@ -61,7 +61,12 @@ function setState(next,origin){
     }
   }
   if(!mark){showSheet(false);clearSelection();mode='walk';message('이 쉼터의 참여 정보가 바뀌었습니다. 다시 접속해 주세요');}
-  view.sync(state,{preserveWalk:origin==='remote'&&mode==='walk'});view.buildMode(mode!=='walk');renderBar();remember();
+  view.sync(state,{preserveWalk:origin==='remote'&&mode==='walk'});
+  // 보는 동안이나 숨겼다 돌아와 받은 친구의 변화도 표시한다. 내 저장 결과에 섞여 온 친구 변화도 같다.
+  // 표시하지 않은 채 아래 remember()로 본 판이 되면 그 변화는 끝내 표시되지 않는다.
+  const changed=changedFriendPieces(prev,state,uid);
+  if(changed.length)view.addHighlights(changed);
+  view.buildMode(mode!=='walk');renderBar();remember();
 }
 async function command(cmd){
   if(!canEdit())return false;

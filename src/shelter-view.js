@@ -79,7 +79,7 @@ export function createShelterView({ canvas, assets, initial }) {
   const nodes=new Map();
   function markChange(entry,piece){
     const [x,z]=piece.cell.split('_').map(Number);
-    const group=new THREE.Group();
+    const group=new THREE.Group();group.userData.key=entry.mark+'-'+entry.slot;
     const ring=new THREE.Mesh(highlightGeo,highlightMat);
     ring.rotation.x=-Math.PI/2;ring.position.set(x+0.5,0.026,z+0.5);group.add(ring);
     const node=nodes.get(entry.mark+'-'+entry.slot);
@@ -132,6 +132,12 @@ export function createShelterView({ canvas, assets, initial }) {
     highlighted=entries.slice();highlightUntil=performance.now()+7500;
     rebuildHighlights();
   }
+  // 쉼터에 있는 동안 받은 친구의 변화는 지금 보이는 표시에 더하고 시간을 다시 센다.
+  function addHighlights(entries) {
+    const keep=performance.now()<highlightUntil?highlighted:[];
+    const seen=new Set(keep.map(e=>e.mark+'-'+e.slot));
+    setHighlights([...keep,...entries.filter(e=>!seen.has(e.mark+'-'+e.slot))]);
+  }
   function resize() {
     const rect=canvas.getBoundingClientRect();
     const w=Math.max(1,rect.width),h=Math.max(1,rect.height),aspect=w/h;
@@ -179,13 +185,14 @@ export function createShelterView({ canvas, assets, initial }) {
     renderer.render(scene,camera);frame=requestAnimationFrame(draw);
   }
   frame=requestAnimationFrame(draw);
-  return { sync, hit, setHighlights, character, walkTo,
+  return { sync, hit, setHighlights, addHighlights, character, walkTo,
     select(value){selection=value;refreshSelection();},
     buildMode(value){grid.visible=value;},
     projectCell(cell){const [x,z]=cell.split('_').map(Number);return point(x+0.5,0,z+0.5);},
     projectItem(mark,slot){const node=nodes.get(mark+'-'+slot);if(!node)return null;
       const p=new THREE.Box3().setFromObject(node).getCenter(new THREE.Vector3());return point(p.x,p.y,p.z);},
     get highlighted(){return rings.children.length;},
+    get highlightedKeys(){return rings.children.map(g=>g.userData.key);},
     dispose(){cancelAnimationFrame(frame);observer.disconnect();renderer.dispose();}
   };
 }

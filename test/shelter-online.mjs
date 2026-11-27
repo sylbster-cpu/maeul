@@ -12,6 +12,7 @@ export default async function onlineShelter(page,{out,logs}){
     const save=s=>{localStorage.setItem(key,JSON.stringify(s));receiver?.(s);return s;};
     window.__mockShelter={
       friendPlace(){const s=get();return save(apply(s,B,{type:'place',mark:'wind',slot:'1',piece:{kind:'plant',cell:'5_6',rot:0}}));},
+      friendMove(cell){const s=get(),p=s.items.wind['1'];return save(apply(s,B,{type:'move',mark:'wind',slot:'1',expect:p,piece:{...p,cell}}));},
       offline(){status?.(false);},online(){status?.(true);}
     };
     export async function getShelterService(){return {
@@ -64,10 +65,25 @@ export default async function onlineShelter(page,{out,logs}){
   const received=await page.evaluate(()=>{
     window.__shelter.view.walkTo(7.5,0.5);
     window.__mockShelter.friendPlace();
-    return {piece:!!window.__shelter.state.items.wind['1'],walking:window.__shelter.view.character.walking};
+    return {piece:!!window.__shelter.state.items.wind['1'],walking:window.__shelter.view.character.walking,
+      keys:window.__shelter.view.highlightedKeys};
   });
   say('서버의 친구 배치 반영',received.piece);
   say('친구 배치가 바뀌어도 걷던 목적지로 다시 길 찾음',received.walking);
+  say('보는 중 받은 친구 배치도 표시',received.keys.includes('wind-1'));
+  // 앞의 표시가 사라진 뒤, 탭을 숨긴 사이 친구가 옮긴 것을 돌아와 받는다.
+  await page.waitForFunction(()=>window.__shelter.view.highlighted===0,null,{timeout:20000});
+  const hidden=await page.evaluate(()=>{
+    Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.__mockShelter.friendMove('6_6');
+    const before=window.__shelter.state.items.wind['1'].cell;
+    delete document.hidden;
+    document.dispatchEvent(new Event('visibilitychange'));
+    return {before,after:window.__shelter.state.items.wind['1'].cell,keys:window.__shelter.view.highlightedKeys};
+  });
+  say('숨긴 동안 받은 친구 변경은 돌아온 뒤 반영',hidden.before==='5_6'&&hidden.after==='6_6');
+  say('숨겼다 돌아와 받은 친구 변경도 표시',hidden.keys.includes('wind-1'));
   say('개인 집 저장 내용 유지',(await page.evaluate(()=>localStorage.getItem('house-lab-web:save')))===originalHouse);
   await page.screenshot({path:out+'-rejoin.png'});
 }
