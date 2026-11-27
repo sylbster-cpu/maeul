@@ -73,7 +73,8 @@ img { max-width: 100%; }
     overflow-wrap: anywhere;
     overflow: hidden;
   }
-  .app { position: relative; height: 100%; overflow: hidden; }
+  /* clip: 안쪽이 넘쳐도 스크롤되지 않게 한다(초점이 옮겨 갈 때 화면 전체가 밀려 3D 화면이 움직이지 않게) */
+  .app { position: relative; height: 100%; overflow: hidden; overflow: clip; }
   /* 방 안에서는 바탕을 어둡게 해 방만 떠 보이게 한다 */
   body[data-place="main"] { background: linear-gradient(var(--void-top), var(--void-bottom)); }
   #scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; transition: opacity 0.16s ease; }
@@ -157,8 +158,11 @@ img { max-width: 100%; }
   .help-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .help-actions button { flex: 1 1 auto; min-height: 44px; padding: 4px 10px; }
 
+  /* 조작법 판은 위쪽과 아래 막대 사이의 남는 높이 안에서만 커지고, 넘치면 판 안에서 스크롤한다.
+     전에는 판이 아래 막대를 화면 밖으로 밀었다(데스크톱 1280×800에서 4px, 1280×640에서는 막대 전체) */
   .help {
     align-self: flex-start;
+    flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box;
     width: min(270px, 100%);
     background: var(--panel); border: 2px solid var(--panel-edge); border-radius: var(--radius);
     box-shadow: 0 3px 0 var(--panel-edge);
@@ -441,7 +445,7 @@ img { max-width: 100%; }
         <dt>낚시</dt><dd>마당 옆 연못이나 남쪽 바닷가의 물 누르기. 찌가 완전히 잠기면 화면 누르기. 날마다 잘 잡히는 물고기가 바뀜</dd>
         <dt>수첩</dt><dd>가진 것, 낚시 기록, 채집 기록 보기</dd>
         <dt>메뉴 ☰</dt><dd>집 공유, 온라인, 화면 크기, 소리와 진동</dd>
-        <dt>꾸미기</dt><dd>꾸미기를 누르면 목록이 열림. 고른 것을 이어서 놓고, 다 되면 완료. 목록은 고른 것 버튼으로 다시 열기. <kbd>B</kbd> 로도 바꾸기</dd>
+        <dt>꾸미기</dt><dd>목록에서 골라 이어서 놓고 완료. <kbd>B</kbd> 로도 바꾸기</dd>
         <dt>가구 돌리기</dt><dd><kbd>R</kbd></dd>
         <dt>카메라</dt><dd>↶ ↷ 버튼이나 <kbd>Q</kbd> <kbd>E</kbd> 로 돌리고, 두 손가락이나 휠로 확대</dd>
         <dt>그만두기</dt><dd><kbd>Esc</kbd> 또는 오른쪽 버튼</dd>

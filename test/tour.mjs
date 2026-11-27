@@ -22,6 +22,19 @@ export default async function tour(page, { out, logs }) {
   const reload = async () => { await page.reload(); await page.waitForFunction(() => window.__ready === true); await page.waitForTimeout(300); };
 
   await page.waitForTimeout(400);
+  // 0) 데스크톱에서는 조작법 판이 처음부터 열려 있다. 판이 길어도 아래 막대를 화면 밖으로 밀지 않고, 화면 전체가 넘치지 않는다.
+  // 전에는 1280×800에서 4px 넘쳤고, 시험이 버튼을 화면 안으로 끌어올 때 3D 화면이 밀려 CI 의 앉기 시험이 실패했다(PR #50)
+  const fit = async () => g(() => {
+    const app = document.querySelector('.app'), dock = document.querySelector('.dock').getBoundingClientRect(), help = document.getElementById('help');
+    return { H: innerHeight, over: app.scrollHeight - app.clientHeight, dockBottom: Math.round(dock.bottom), help: !help.hidden };
+  });
+  const fits = [await fit()];
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await page.waitForTimeout(300);
+  fits.push(await fit());
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.waitForTimeout(300);
+  say('조작법 판이 열려 있어도 화면이 넘치지 않고 아래 막대가 화면 안에 있다(1280×800, 1280×600)', fits.every((f) => f.help && f.over === 0 && f.dockBottom <= f.H), JSON.stringify(fits));
   logs.push('처음: ' + await info());
 
   // 1) 집을 눌러 걸어 들어간다
