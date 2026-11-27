@@ -6,7 +6,7 @@
 // 플레이어가 놓는 것은 물건이며, 놓을 곳(space)은 마당 'yard' 와 방 'main' 이다.
 // 물건은 놓이는 자리에 따라 네 가지다: 바닥의 가구, 그 아래의 러그, 가구 위의 소품, 벽에 거는 것.
 
-import { PARTS, LEVELS, MAX_LEVEL, YARD, HOUSE_CENTER_X, HOUSE_BACK_Z, MAT_X, WINDOW_X, FLOORS, WALLPAPERS, ROOFS, SIDINGS, DOORS } from './parts.js';
+import { PARTS, LEVELS, MAX_LEVEL, YARD, HOUSE_CENTER_X, HOUSE_BACK_Z, MAT_X, WINDOW_X, FLOORS, WALLPAPERS, ROOFS, SIDINGS, DOORS, WREATH_SLOTS, WREATH_FILLS, WREATH_RIBBONS } from './parts.js';
 
 export const cellKey = (x, y) => `${x},${y}`;
 export const SPACES = ['yard', 'main'];
@@ -216,6 +216,20 @@ function checkObjectFits(state, derived, space, obj, ignoreId) {
   return ok;
 }
 
+// 화환의 모양이 맞는지. 칸은 꼭 6개, 칸마다 주운 것의 종류 또는 null, 리본은 정한 색 또는 null. 다른 열쇠가 있으면 틀린 것이다
+// (더 새로운 판에서 만든 모양일 수 있으므로, 읽을 때는 빼지 않고 저장을 멈춘다. save.js)
+export function validLook(look) {
+  if (!look || typeof look !== 'object' || Array.isArray(look)) return false;
+  const keys = Object.keys(look);
+  if (keys.length !== 2 || !hasOwn(look, 'slots') || !hasOwn(look, 'ribbon')) return false;
+  if (!Array.isArray(look.slots) || look.slots.length !== WREATH_SLOTS) return false;
+  if (!look.slots.every((k) => k === null || (typeof k === 'string' && WREATH_FILLS.includes(k)))) return false;
+  return look.ribbon === null || (typeof look.ribbon === 'string' && hasOwn(WREATH_RIBBONS, look.ribbon));
+}
+const copyLook = (look) => ({ slots: [...look.slots], ribbon: look.ribbon });
+const sameLook = (a, b) => !!a && !!b && a.ribbon === b.ribbon && a.slots.every((k, i) => k === b.slots[i]);
+const isWreath = (partId) => hasOwn(PARTS, partId) && !!PARTS[partId].wreath;
+
 // 명령에서 자리를 나타내는 값만 뽑는다 (벽에 거는 것은 벽과 칸 번호, 나머지는 칸과 방향)
 const spot = (partId, src) => (layerOf(partId) === 'wall' ? { wall: src.wall, i: src.i } : { x: src.x, y: src.y, rot: src.rot });
 
@@ -225,7 +239,16 @@ export function validate(state, derived, cmd) {
       if (!SPACES.includes(cmd.space)) return no('놓을 곳이 잘못되었습니다');
       if (!validId(cmd.id)) return no('물건 ID 가 잘못되었습니다');
       for (const space of SPACES) if (hasOwn(state.spaces[space].objects, cmd.id)) return no('같은 ID 가 이미 있습니다');
+      // 화환은 모양을 함께 놓는다. 다른 물건은 모양을 갖지 않는다
+      if (isWreath(cmd.part) ? !validLook(cmd.look) : cmd.look !== undefined) return no('화환의 모양이 잘못되었습니다');
       return checkObjectFits(state, derived, cmd.space, cmd, null);
+    }
+    case 'setLook': {
+      const obj = objectAt(state, cmd.space, cmd.id);
+      if (!obj) return no('물건이 없습니다');
+      if (!isWreath(obj.part)) return no('모양을 바꿀 수 없는 물건입니다');
+      if (!validLook(cmd.look)) return no('화환의 모양이 잘못되었습니다');
+      return sameLook(obj.look, cmd.look) ? no('이미 그 모양입니다') : ok;
     }
     case 'moveObject': {
       const obj = objectAt(state, cmd.space, cmd.id);
@@ -280,9 +303,11 @@ export function apply(state, derived, cmd) {
     case 'placeObject': {
       const obj = { id: cmd.id, part: cmd.part, ...spot(cmd.part, cmd), by: cmd.by };
       if (layerOf(cmd.part) === 'top') obj.on = supportAt(state, derived, cmd.space, cmd.x, cmd.y);
+      if (isWreath(cmd.part)) obj.look = copyLook(cmd.look);
       state.spaces[cmd.space].objects[cmd.id] = obj;
       break;
     }
+    case 'setLook': state.spaces[cmd.space].objects[cmd.id].look = copyLook(cmd.look); break;
     case 'moveObject': {
       const objects = state.spaces[cmd.space].objects;
       const obj = objects[cmd.id];
@@ -308,7 +333,8 @@ export function apply(state, derived, cmd) {
   }
 }
 
-const placeCommand = (space, o) => ({ type: 'placeObject', space, id: o.id, part: o.part, ...spot(o.part, o), by: o.by });
+// 치운 것을 되살리는 명령. 화환은 모양도 함께 되살린다(GPT 검토, 전에는 자리와 종류만 옮겼다)
+const placeCommand = (space, o) => ({ type: 'placeObject', space, id: o.id, part: o.part, ...spot(o.part, o), by: o.by, ...(o.look ? { look: copyLook(o.look) } : {}) });
 
 // 명령을 적용하기 직전의 상태를 보고, 그 명령을 되돌리는 명령들을 만든다
 export function inverseOf(state, derived, cmd) {
@@ -324,6 +350,8 @@ export function inverseOf(state, derived, cmd) {
       const children = Object.values(objects).filter((c) => c.on === cmd.id);
       return [placeCommand(cmd.space, objects[cmd.id]), ...children.map((c) => placeCommand(cmd.space, c))];
     }
+    case 'setLook':
+      return [{ type: 'setLook', space: cmd.space, id: cmd.id, look: copyLook(state.spaces[cmd.space].objects[cmd.id].look) }];
     case 'setFinish':
       return [{ type: 'setFinish', space: 'main', slot: cmd.slot, value: state.spaces.main[cmd.slot] }];
     case 'setExterior':

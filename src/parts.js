@@ -76,6 +76,9 @@ export const PARTS = {
   frame_small: { label: '작은 액자', span: 1, hang: 2.1, model: 'furniture/pictureframe_small_A', layer: 'wall' },
   shelf: { label: '선반', span: 2, hang: 1.75, model: 'furniture/shelf_B_large_decorated', layer: 'wall' },
   shelf_small: { label: '작은 선반', span: 1, hang: 1.75, model: 'furniture/shelf_B_small_decorated', layer: 'wall' },
+  // 화환 (5단계 작은 만들기, 2026-11-26 사용자 결정). 고리의 칸마다 무엇을 꽂을지 골라 만든다(물건마다 look, 아래 WREATH_*).
+  // 모델 파일 대신 코드로 그린다(wreath-model.js)
+  wreath: { label: '화환', span: 1, hang: 1.9, layer: 'wall', wreath: true },
   // 숲에서 주운 것 (4단계 채집, 2026-11-25 사용자 결정 "집에 놓기"). 바닥 한 칸에 놓는다. 모델 파일 대신 코드로 그린다(found-model.js).
   // found 는 채집 기록의 종류, bounds 는 모델이 없을 때 쓰는 걷기 충돌 크기(모델 단위).
   // 가진 수만큼만 놓을 수 있다. 그 제한은 집 규칙(state.js)이 아니라 놓는 사람의 조작(history.js guard, gathering.js)에서 본다.
@@ -87,6 +90,19 @@ export const PARTS = {
 export const EXTRA_MODELS = [];
 // 주운 것의 종류 → 놓는 부품
 export const FOUND_PARTS = Object.freeze(Object.fromEntries(Object.entries(PARTS).filter(([, p]) => p.found).map(([id, p]) => [p.found, id])));
+
+// 화환의 모양(물건의 look): { slots: [칸 6개, 칸마다 주운 것의 종류 또는 null], ribbon: 리본 색 또는 null }.
+// 재료는 소모하지 않고 처음부터 마음껏 쓴다(5단계 첫 실험, GPT 제안). 검사는 state.js validLook 이 한다
+export const WREATH_SLOTS = 6;
+export const WREATH_FILLS = Object.freeze(Object.keys(FOUND_PARTS)); // 솔방울, 작은 버섯, 새 깃털
+export const WREATH_RIBBONS = Object.freeze({
+  red: Object.freeze({ label: '빨강', color: '#c9472f' }),
+  yellow: Object.freeze({ label: '노랑', color: '#f0bf3a' }),
+  blue: Object.freeze({ label: '파랑', color: '#3f7fc8' }),
+  white: Object.freeze({ label: '하양', color: '#f4f1e6' }),
+});
+// 처음 여는 만들기 창과 목록 그림에 쓰는 모양
+export const DEFAULT_WREATH = Object.freeze({ slots: Object.freeze(['pinecone', null, 'feather', null, 'mushroom', null]), ribbon: 'red' });
 
 // 방 바닥재
 export const FLOORS = {

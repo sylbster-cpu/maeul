@@ -26,6 +26,7 @@ import { createOnlineUI } from './online-ui.js';
 import { createPondView } from './fishing-view.js';
 import { createFishing } from './fishing-play.js';
 import { createFishingUI, createCatchCard } from './fishing-ui.js';
+import { createWreathUI } from './wreath-ui.js';
 
 watchShareHash(window);
 
@@ -151,9 +152,12 @@ async function start(saved = {}) {
     },
   };
 
+  const thumbs = view.thumbnails(Object.keys(PARTS));
+  // 화환 만들기 창(5단계). 재료 그림은 꾸미기 목록과 같은 그림을 쓴다
+  const wreathUI = createWreathUI({ thumbs });
   const ui = createUI({
     guest, canImport,
-    thumbs: view.thumbnails(Object.keys(PARTS)),
+    thumbs,
     on: {
       share: async () => {
         if (!guest && newerHouse()) {
@@ -253,6 +257,7 @@ async function start(saved = {}) {
       redo: () => input.redo(),
       sample: () => input.resetToSample(),
       cancelCarry: () => input.cancelCarry(),
+      editWreath: () => input.editWreath(),
       choose: (cmd) => input.choose(cmd),
       upgrade: () => input.upgrade(),
       travel: () => travel.toggle(),
@@ -283,7 +288,7 @@ async function start(saved = {}) {
   gathering.subscribe(showFound);
   showFound();
   createFishingUI({ fishing, gathering });
-  input = createInput({ canvas, view, store, history, character, ui, audio, haptics, travel, fishing, gathering, readOnly: guest });
+  input = createInput({ canvas, view, store, history, character, ui, audio, haptics, travel, fishing, gathering, wreathUI, readOnly: guest });
   history.subscribe((status) => ui.setHistory(status));
   ui.setHistory(history.status());
   if (!guest && handed?.mode === 'build') input.setMode('build');
@@ -410,7 +415,7 @@ async function start(saved = {}) {
 
   // 열어 둔 화면에 새 판이 도착해도 꾸민 집을 잃지 않게 한다
   window.claude?.hot?.snapshot?.(() => guest || switchingHouse ? {} : ({ state: store.state, place: character.place, pos: { ...character.pos }, mode: input.state.mode }));
-  window.__game = { store, view, character, input, history, saveNow, travel, fishing, gathering, haptics, pondWatch: () => pondView.watchPoints };
+  window.__game = { store, view, character, input, history, saveNow, travel, fishing, gathering, haptics, wreathUI, pondWatch: () => pondView.watchPoints };
   window.__ready = true;
 }
 

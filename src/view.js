@@ -5,6 +5,7 @@ import { createFx, wobble, squash } from './fx.js';
 import { createBeachView } from './beach-view.js';
 import { createForestView } from './forest-view.js';
 import { buildFound } from './found-model.js';
+import { buildWreath } from './wreath-model.js';
 import { PARTS, WALL_HEIGHT, YARD, TREES, HOUSE_CENTER_X, MAT_X, WINDOW_X, LEVELS, FLOORS, WALLPAPERS, ROOFS, SIDINGS, DOORS } from './parts.js';
 import { footprint, layerOf, houseRect, cellKey } from './state.js';
 
@@ -377,9 +378,16 @@ export function createView({ canvas, assets, store }) {
   }
 
   // ---- 가구 ----
-  function makeObject(partId) {
+  function makeObject(partId, look) {
     const part = PARTS[partId];
     const group = new THREE.Group();
+    if (part.wreath) {
+      // 화환: 물건마다 다른 모양(look)으로 코드로 그린다(wreath-model.js). 목록 그림에는 처음 모양을 쓴다
+      const node = buildWreath(look || undefined);
+      node.traverse((o) => { if (o.geometry) temp(o.geometry); if (o.material) temp(o.material); });
+      group.add(node);
+      return group;
+    }
     if (part.found) {
       // 숲에서 주운 것: 코드로 그린 모양(found-model.js)을 집 칸에 맞게 키운다. 다시 그릴 때 버리도록 표시한다
       const node = buildFound(part.found);
@@ -523,7 +531,7 @@ export function createView({ canvas, assets, store }) {
     for (const obj of Object.values(store.state.spaces[place].objects)) {
       if (obj.id === hiddenObject || obj.on === hiddenObject) continue; // 들고 있는 가구와 그 위의 소품
       if (layerOf(obj.part) === 'wall' && front.has(obj.wall)) continue; // 낮춘 벽에 건 것은 그리지 않는다
-      const node = makeObject(obj.part);
+      const node = makeObject(obj.part, obj.look);
       node.userData.ref = { type: 'object', id: obj.id };
       placeObjectNode(node, obj);
       group.add(node);
@@ -541,8 +549,13 @@ export function createView({ canvas, assets, store }) {
     for (const item of items) {
       const mat = ghostMats[item.tone || (item.valid ? 'ok' : 'bad')];
       if (item.type === 'object') {
-        const node = makeObject(item.part);
-        node.traverse((o) => { if (o.isMesh) { if (o.material?.userData.temp) o.material.dispose(); o.material = mat; o.castShadow = false; o.receiveShadow = false; } }); // 주운 것의 재질은 버린다
+        const node = makeObject(item.part, item.look);
+        node.traverse((o) => {
+          if (!o.isMesh) return;
+          if (o.material?.userData.temp) o.material.dispose(); // 주운 것·화환의 재질은 버린다
+          if (o.userData.pickOnly) { o.visible = false; return; } // 화환의 누름 판정 원판은 미리 보기에 그리지 않는다
+          o.material = mat; o.castShadow = false; o.receiveShadow = false;
+        });
         placeObjectNode(node, item);
         ghostGroup.add(node);
         // 차지하는 칸도 바닥에 표시한다

@@ -9,15 +9,20 @@
 // 그래서 부품을 PARTS 에서 없앨 때는 SAVE_VERSION 을 올리고 MIGRATIONS 에서 지워야 한다. 그냥 빼면 그 부품이 든 집은 저장되지 않는다.
 
 import { PARTS, LEVELS } from './parts.js';
-import { createState, createStore, SPACES, layerOf, hasOwn } from './state.js';
+import { createState, createStore, SPACES, layerOf, hasOwn, validLook } from './state.js';
 
 export const SAVE_KEY = 'house-lab-web:save';
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 // 저장 형식을 바꾸면 SAVE_VERSION 을 올리고 여기에 변환 함수를 더한다.
 // MIGRATIONS[2] 는 버전 2 자료를 버전 3 으로 바꾸는 함수다.
 // 버전 1 (벽을 직접 긋던 판) 은 집의 구조가 달라 바꿀 수 없다.
-const MIGRATIONS = {};
+const MIGRATIONS = {
+  // 2 → 3 (2026-11-27, 5단계 화환): 물건에 모양(look)이 생겼다. 2판의 집에는 화환이 없으므로 바꿀 것이 없다
+  2: (data) => data,
+};
+// 화환인데 모양이 맞지 않는 물건. 더 새로운 판(새 재료나 새 리본)에서 만든 것일 수 있어, 빼고 쓰지 않고 그 집 위에 쓰기를 멈춘다(GPT 검토)
+const badWreath = (o) => !!o && hasOwn(PARTS, o.part) && !!PARTS[o.part].wreath && !validLook(o.look);
 
 export function serialize(state, extra = {}) {
   return JSON.stringify({ format: 'house-lab', version: SAVE_VERSION, savedAt: new Date().toISOString(), ...extra, state });
@@ -60,13 +65,15 @@ export function parse(text) {
   for (const space of SPACES) {
     const known = [];
     for (const o of Object.values(src.spaces?.[space]?.objects || {})) {
+      if (badWreath(o)) { dropped++; unknown++; continue; } // 모르는 부품처럼 다룬다: createSaver 가 원문을 남기고 저장을 멈춘다
       if (o && hasOwn(PARTS, o.part)) known.push(o); else { dropped++; if (o && typeof o.part === 'string') unknown++; }
     }
     // 소품은 받치는 가구가 놓인 뒤에 놓는다
     known.sort((a, b) => (layerOf(a.part) === 'top') - (layerOf(b.part) === 'top'));
     for (const o of known) {
       const where = layerOf(o.part) === 'wall' ? { wall: o.wall, i: o.i } : { x: o.x, y: o.y, rot: o.rot };
-      put({ type: 'placeObject', space, id: String(o.id), part: o.part, ...where, by: o.by });
+      // 화환은 모양도 함께 다시 세운다(GPT 검토: 전에는 자리와 종류만 옮겨 모양이 사라질 뻔했다)
+      put({ type: 'placeObject', space, id: String(o.id), part: o.part, ...where, by: o.by, ...(PARTS[o.part].wreath ? { look: o.look } : {}) });
     }
   }
 
@@ -75,7 +82,7 @@ export function parse(text) {
   return { ok: true, state: store.state, pos, place, dropped, unknown, savedAt: data.savedAt || null };
 }
 
-// 저장된 글자가 이 화면보다 새로운 판의 집인지 (판 번호가 크거나, 모르는 부품이 있거나). 그런 집 위에는 쓰지 않는다
+// 저장된 글자가 이 화면보다 새로운 판의 집인지 (판 번호가 크거나, 모르는 부품이나 모르는 화환 모양이 있거나). 그런 집 위에는 쓰지 않는다
 export function isNewerHouse(text) {
   let data;
   try { data = JSON.parse(text); } catch { return false; }
@@ -84,6 +91,7 @@ export function isNewerHouse(text) {
   for (const space of SPACES) {
     for (const o of Object.values(data.state?.spaces?.[space]?.objects || {})) {
       if (o && typeof o.part === 'string' && !hasOwn(PARTS, o.part)) return true;
+      if (badWreath(o)) return true;
     }
   }
   return false;
