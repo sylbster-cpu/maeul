@@ -5,7 +5,7 @@
 // 3. 치우면 다시 놓을 수 있다. 되돌리기는 막지 않는다(이번 접속에서 있었던 상태로만 돌아감, PR #42 GPT 검토 2)
 // 4. 새로 열어도 놓인 것과 수가 그대로다. 주운 적 없는 것은 방에서도 놓이지 않는다
 // 5. 버튼 아래 줄에 남은 수를 적고 0 은 "다 놓음"과 "아직 없음"으로 가른다. 고르면 안내 줄에 가진 수·놓인 수·남은 수가 나온다 (2026-11-26 사용자 결정 "가진 수 고쳐요")
-import { uiClick } from './helpers/menu.mjs';
+import { uiClick, closeCatalog } from './helpers/menu.mjs';
 export default async function foundTour(page, { out, logs }) {
   const say = (label, ok, extra = '') => logs.push(`${ok ? '통과' : '실패'}  ${label} ${extra}`);
   const g = (fn, arg) => page.evaluate(fn, arg);
@@ -123,7 +123,8 @@ export default async function foundTour(page, { out, logs }) {
   await page.click('#mode-build');
   await uiClick(page, '#tab-props');
   say('새로 열어도 놓인 것과 수가 그대로다', kept.length === 2 && (await tile('found_pinecone')).count === '다 놓음', JSON.stringify({ n: kept.length, count: (await tile('found_pinecone')).count }));
-  // 방에서는 주운 적 없는 버섯이 놓이지 않는다
+  // 방에서는 주운 적 없는 버섯이 놓이지 않는다. 목록이 열린 채로는 위쪽 버튼을 눌러도 목록만 접히므로 먼저 접는다(6단계 HUD B)
+  await closeCatalog(page);
   await page.click('#place-toggle');
   await page.waitForFunction(() => window.__game.character.place === 'main', null, { timeout: 20000 });
   await page.waitForTimeout(500);

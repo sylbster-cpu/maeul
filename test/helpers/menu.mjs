@@ -32,3 +32,7 @@ export async function uiClick(page, selector, tap = (sel) => page.click(sel)) {
   if (IN_SHEET.test(selector) && !(await page.locator(selector).isVisible())) await openCatalog(page, tap);
   await tap(selector);
 }
+// 꾸미기 목록이 열려 있으면 고른 것 버튼을 눌러 접는다. 열린 채로는 바깥(위쪽 버튼 포함)을 누르면 접히기만 한다
+export async function closeCatalog(page, tap = (sel) => page.click(sel)) {
+  if (await page.locator('#sheet').isVisible()) await tap('#open-catalog');
+}
