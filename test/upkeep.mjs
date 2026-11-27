@@ -11,6 +11,7 @@
 // 7. 저장 공간이 가득 차 새로 쓰기가 안 되어도 저장된 집을 읽어 연다(처음 배치로 시작하지 않는다) (2026-11-26 GPT 점검)
 //    같은 열쇠를 같은 크기로 덮어쓰는 저장은 가득 차도 될 수 있으므로, 저장 여부가 아니라 집의 내용을 본다
 // 8. 자리가 틀린 가구를 빼고 읽어야 하는데 저장 공간이 가득 차 원문을 따로 남기지 못하면, 저장하지 않고 남겼다고 말하지 않는다 (2026-11-27 PR #48 GPT 재검토)
+import { menuClick, menuVisible } from './helpers/menu.mjs';
 export default async function upkeepTour(page, { out, logs }) {
   const say = (label, ok, extra = '') => logs.push(`${ok ? '통과' : '실패'}  ${label} ${extra}`);
   const g = (fn, arg) => page.evaluate(fn, arg);
@@ -57,7 +58,7 @@ export default async function upkeepTour(page, { out, logs }) {
 
   // 1. Firebase 모듈을 막는다 (Claude 미리 보기 주소에서 일어나는 일)
   await page.route('https://www.gstatic.com/firebasejs/**', (route) => route.abort());
-  await page.click('#online-action');
+  await menuClick(page, '#online-action');
   const blocked = await page.waitForFunction(() => document.getElementById('online-state').dataset.state === 'blocked', null, { timeout: 25000 })
     .then(() => true).catch(() => false);
   const stateText = await g(() => document.getElementById('online-state').textContent);
@@ -160,7 +161,7 @@ export default async function upkeepTour(page, { out, logs }) {
     return JSON.stringify(data);
   })();
   // 6-가. 게시를 누를 때는 보통 집이었는데, 연결을 기다리는 사이 다른 탭의 새 판이 저장하면 게시하지 않는다 (PR #43 GPT 재검토)
-  await page.click('#online-action');
+  await menuClick(page, '#online-action');
   await page.waitForTimeout(300);
   await g(() => { globalThis.__gate = new Promise((done) => { globalThis.__open = done; }); });
   await page.click('#online-publish');
@@ -182,12 +183,12 @@ export default async function upkeepTour(page, { out, logs }) {
   say('새 판의 부품이 든 집을 열면 원문을 남기고 저장하지 않는다', lock.saved === false && lock.status.includes('새 판') && lock.toast.includes('새로 고쳐') && stored.same === future && stored.kept === future,
     JSON.stringify({ status: lock.status, saved: lock.saved, same: stored.same === future, kept: stored.kept === future }));
   // 공유 링크: 빠진 배치로 만들지 않고 새로 고치라고 알린다 (보관된 집이 없으면 창도 열지 않는다)
-  await page.click('#share-house');
+  await menuClick(page, '#share-house');
   await page.waitForTimeout(300);
   const shared = await g(() => ({ open: !document.getElementById('share-layer').hidden, link: document.getElementById('share-link').value, toast: document.getElementById('toast')?.textContent || '' }));
   say('그 상태에서는 공유 링크를 만들지 않는다', !shared.open && !shared.link && shared.toast.includes('새로 고친 뒤'), JSON.stringify(shared));
   // 온라인 게시: 서버의 내 집을 빠진 배치로 덮지 않는다
-  await page.click('#online-action');
+  await menuClick(page, '#online-action');
   await page.waitForTimeout(300);
   await page.click('#online-publish');
   await page.waitForTimeout(500);
@@ -198,7 +199,7 @@ export default async function upkeepTour(page, { out, logs }) {
   say('그 뒤에도 저장된 원문은 그대로다', untouched === future, '');
   // 6-다. 맞바꾸기는 원문을 그대로 옮기므로 그 상태에서도 할 수 있다 (PR #43 GPT 재검토: 공유 창에서만 갈 수 있다)
   await g((text) => localStorage.setItem('house-lab-web:before-import', JSON.stringify({ version: 1, previous: text })), normal);
-  await page.click('#share-house');
+  await menuClick(page, '#share-house');
   await page.waitForTimeout(300);
   const swap = await g(() => ({
     open: !document.getElementById('share-layer').hidden, link: document.getElementById('share-link').value,

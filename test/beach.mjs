@@ -100,6 +100,7 @@ export default async function beachTour(page, { out, logs }) {
 
   // 5) 낚시 기록 창: 바다 물고기와 물 이름, 물마다 오늘의 물고기. 남은 종류 수는 알리지 않는다(2026-11-26 사용자 결정)
   await page.click('#fish-log');
+  await page.click('#log-tab-fish');
   const panel = await g(() => ({
     rows: [...document.querySelectorAll('#fish-list li')].map((li) => li.textContent),
     text: document.getElementById('log-fish').innerText,

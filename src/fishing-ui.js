@@ -1,11 +1,14 @@
-// 기록 창(낚시·채집 두 칸, 2026-11-24 사용자 결정)과 낚은 순간의 카드.
-// 기록 창은 잡아 보거나 주워 본 것만 보여 주고, 아직 못 본 것은 수만 알린다.
+// 수첩(가진 것·낚시·채집 세 칸)과 낚은 순간의 카드.
+// 낚시·채집 칸은 2026-11-24 사용자 결정의 기록 창이다. 6단계(2026-11-27 사용자 결정)에서 수첩으로 이름을 바꾸고
+// 가진 것 칸을 더했으며, 걷기와 꾸미기 어디서나 한 번에 연다. 잡아 보거나 주워 본 것만 보여 준다.
 import { FISH, FISH_ORDER, WATERS, WATER_ORDER } from './fishing.js';
-import { GATHER, GATHER_ORDER } from './gathering.js';
+import { GATHER, GATHER_ORDER, foundCounts } from './gathering.js';
 
 const dayText = (day) => { const [, m, d] = day.split('-').map(Number); return `${m}월 ${d}일`; };
 
-export function createFishingUI({ fishing, gathering = null }) {
+// store: 집 상태(가진 것 칸이 놓인 수를 센다). guest: 친구 집을 구경하는 중이면 그 집에 놓인 수는 세지 않는다.
+// toast: 낚시하는 동안 수첩을 누르면 왜 안 되는지 알린다
+export function createFishingUI({ fishing, gathering = null, store = null, guest = false, toast = () => {} }) {
   const $ = (id) => document.getElementById(id);
   const layer = $('fish-layer');
   const list = $('fish-list');
@@ -33,6 +36,31 @@ export function createFishingUI({ fishing, gathering = null }) {
     summary.textContent = caught.length ? '' : '아직 잡은 물고기가 없습니다. 마당 옆 연못이나 남쪽 바닷가의 물을 눌러 보세요.';
     summary.hidden = caught.length > 0;
     $('fish-today').textContent = `오늘 잘 잡히는 물고기는 ${WATER_ORDER.map((w) => `${WATERS[w].label}에서 ${fishing.todayLabel(w)}`).join(', ')}입니다. 한국 날짜로 날마다 바뀝니다.`;
+  }
+  // 가진 것 칸 (6단계). 숲에서 주운 것마다 가진 수, 집에 놓은 수, 더 놓을 수 있는 수를 나눠 적는다.
+  // 주워 본 것(또는 집에 놓여 있는 것)만 적는다. 아직 모르는 종류는 드러내지 않는다(2026-11-26 사용자 결정과 같다)
+  function renderOwned() {
+    const olist = $('owned-list');
+    olist.replaceChildren();
+    const counts = gathering && store ? foundCounts(store.state, gathering.store.state) : {};
+    const shown = GATHER_ORDER.filter((id) => counts[id] && (counts[id].owned > 0 || (!guest && counts[id].placed > 0)));
+    for (const id of shown) {
+      const c = counts[id];
+      const unit = GATHER[id].unit;
+      const row = document.createElement('li');
+      row.dataset.kind = id;
+      const name = document.createElement('strong');
+      name.textContent = GATHER[id].label;
+      const owned = document.createElement('span');
+      owned.textContent = `가진 것 ${c.owned}${unit}`;
+      const more = document.createElement('small');
+      more.textContent = guest ? '친구 집을 구경하는 동안에는 내 집에 놓은 수를 세지 않습니다'
+        : `집에 놓은 것 ${c.placed}${unit} · 더 놓을 수 있는 것 ${c.available}${unit}`;
+      row.append(name, owned, more);
+      olist.append(row);
+    }
+    const summary = $('owned-summary');
+    summary.textContent = shown.length ? '숲에서 주운 것은 꾸미기의 소품 칸에서 놓고, 화환에 꽂을 수 있습니다.' : '아직 가진 것이 없습니다. 숲에서 주운 것이 여기에 모입니다.';
   }
   // 채집 칸 (4단계 채집 실험)
   function renderGather() {
@@ -62,18 +90,28 @@ export function createFishingUI({ fishing, gathering = null }) {
     $('gather-today').textContent = '';
     $('gather-today').hidden = true;
   }
-  let tab = 'fish';
+  // 처음에는 가진 것 칸을 열고, 그 뒤로는 마지막에 본 칸을 연다(이 접속 동안)
+  const TABS = ['owned', 'fish', 'gather'];
+  let tab = 'owned';
   function showTab(next) {
     tab = next;
-    $('log-tab-fish').setAttribute('aria-pressed', String(tab === 'fish'));
-    $('log-tab-gather').setAttribute('aria-pressed', String(tab === 'gather'));
-    $('log-fish').hidden = tab !== 'fish';
-    $('log-gather').hidden = tab !== 'gather';
-    if (tab === 'gather') renderGather(); else render();
+    for (const name of TABS) {
+      $(`log-tab-${name}`).setAttribute('aria-pressed', String(tab === name));
+      $(`log-${name}`).hidden = tab !== name;
+    }
+    if (tab === 'gather') renderGather(); else if (tab === 'owned') renderOwned(); else render();
   }
-  $('log-tab-fish').addEventListener('click', () => showTab('fish'));
-  $('log-tab-gather').addEventListener('click', () => showTab('gather'));
-  function open() { render(); renderGather(); layer.hidden = false; $('fish-close').focus(); }
+  for (const name of TABS) $(`log-tab-${name}`).addEventListener('click', () => showTab(name));
+  // 낚시하는 동안(물가로 걸어가는 때부터 결과를 보일 때까지)에는 열지 않는다. 열면 찌를 못 보고 놓친다.
+  // 버튼은 없애지 않고 흐리게 둔 채, 누르면 왜 안 되는지 알린다(GPT 글 7210344502). 수첩을 닫아도 낚시는 그대로다
+  const busy = () => fishing.phase !== 'idle';
+  function sync() { button.setAttribute('aria-disabled', String(busy())); }
+  function open() {
+    if (busy()) { toast('낚시가 끝나면 수첩을 열 수 있습니다'); return; }
+    render(); renderGather(); renderOwned(); showTab(tab);
+    layer.hidden = false;
+    $('fish-close').focus();
+  }
   function close() { layer.hidden = true; button.focus(); }
   button.addEventListener('click', open);
   $('fish-close').addEventListener('click', close);
@@ -83,8 +121,10 @@ export function createFishingUI({ fishing, gathering = null }) {
   });
   // 창을 연 채 다른 탭에서 낚아도 바로 보이게 한다
   fishing.store.subscribe(() => { if (!layer.hidden) render(); });
-  gathering?.subscribe(() => { if (!layer.hidden) renderGather(); }); // 주웠을 때, 그리고 3시간마다 새로 놓일 때
-  return { open, close, showTab };
+  gathering?.subscribe(() => { if (!layer.hidden) { renderGather(); renderOwned(); } }); // 주웠을 때, 그리고 3시간마다 새로 놓일 때
+  store?.subscribe(() => { if (!layer.hidden) renderOwned(); });
+  sync();
+  return { open, close, showTab, sync, get tab() { return tab; }, get isOpen() { return !layer.hidden; } };
 }
 
 // 낚은 순간 화면 가운데에 크게 뜨는 카드. 누르는 것을 막지 않는다

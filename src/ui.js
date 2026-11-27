@@ -145,11 +145,40 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
     $('sound').textContent = muted ? '소리 꺼짐' : '소리 켜짐';
   });
   const help = $('help');
-  $('help-toggle').addEventListener('click', () => {
-    help.hidden = !help.hidden;
-    $('help-toggle').setAttribute('aria-expanded', String(!help.hidden));
+  const showHelp = (open) => {
+    help.hidden = !open;
+    $('help-toggle').setAttribute('aria-expanded', String(open));
+  };
+  if (window.matchMedia('(max-width: 720px)').matches) showHelp(false);
+  $('help-close').addEventListener('click', () => { showHelp(false); $('menu-toggle').focus(); });
+  // 숨긴 걷기 안내를 다시 보이게 한다(src/hint-memory.js)
+  $('hints-again').addEventListener('click', () => { on.resetHints?.(); showHelp(false); showToast('처음 안내를 다시 보여 드립니다'); });
+
+  // ☰ 메뉴 (6단계 HUD A). 화면 위에 겹쳐 띄우고, 바깥을 누르면 닫히기만 한다(뒤의 땅을 누른 것으로 치지 않는다).
+  // 창을 여는 항목(공유·온라인·조작법)은 메뉴를 닫고, 화면 크기와 소리는 이어서 누를 수 있게 열어 둔다
+  const menu = $('menu');
+  const menuToggle = $('menu-toggle');
+  const backdrop = $('menu-backdrop');
+  function setMenu(open, { focus = true } = {}) {
+    if (open === !menu.hidden) return;
+    menu.hidden = !open;
+    backdrop.hidden = !open;
+    menuToggle.setAttribute('aria-expanded', String(open));
+    if (!focus) return;
+    if (open) [...menu.querySelectorAll('button')].find((b) => !b.hidden)?.focus();
+    else menuToggle.focus();
+  }
+  menuToggle.addEventListener('click', () => setMenu(menu.hidden));
+  // 바깥 누름은 덮개가 받는다. 누름이 끝날 때까지 덮개를 두어 뒤의 3D 화면에 누름이 닿지 않게 한다
+  // (손가락 누름은 누른 곳이 끝까지 받는다. 마우스 누름은 click 으로도 닫는다)
+  const closeOutside = () => setMenu(false, { focus: false });
+  backdrop.addEventListener('pointerup', closeOutside);
+  backdrop.addEventListener('click', closeOutside);
+  for (const id of ['share-house', 'online-action']) $(id).addEventListener('click', () => setMenu(false, { focus: false }));
+  $('help-toggle').addEventListener('click', () => { setMenu(false, { focus: false }); showHelp(help.hidden); });
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !menu.hidden) { event.preventDefault(); event.stopImmediatePropagation(); setMenu(false); }
   });
-  if (window.matchMedia('(max-width: 720px)').matches) { help.hidden = true; $('help-toggle').setAttribute('aria-expanded', 'false'); }
 
   // 도구 쟁반이 가리는 높이를 알려 화면 중심을 맞춘다
   const bottom = document.querySelector('.bottom');
@@ -170,7 +199,7 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
 
   const shareLayer = $('share-layer');
   const shareLink = $('share-link');
-  const closeShare = () => { shareLayer.hidden = true; $('share-house').focus(); };
+  const closeShare = () => { shareLayer.hidden = true; ($('share-house').offsetParent ? $('share-house') : menuToggle).focus(); };
   $('share-close').addEventListener('click', closeShare);
   $('share-restore-previous').addEventListener('click', () => on.restorePreviousHouse());
   shareLayer.addEventListener('click', (event) => { if (event.target === shareLayer) closeShare(); });
@@ -205,7 +234,6 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
       tools.hidden = mode !== 'build';
       $('tabs').hidden = mode !== 'build';
       $('build-extras').hidden = mode !== 'build';
-      $('walk-extras').hidden = mode !== 'walk';
       document.body.dataset.mode = mode;
     },
     setTool(tool) {
@@ -238,11 +266,16 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
       upgradeButton.disabled = level >= MAX_LEVEL;
       upgradeButton.querySelector('.tool-label').textContent = level >= MAX_LEVEL ? '다 키웠음' : '집 키우기';
       upgradeButton.title = level >= MAX_LEVEL ? '가장 큰 집입니다' : `${LEVELS[level + 1].label}으로 키웁니다`;
-      $('place-toggle').textContent = place === 'yard' ? '집 안으로' : '밖으로';
-      $('place-name').textContent = place === 'yard' ? '마당' : `${LEVELS[level].label}의 방`;
+      // 있는 곳 버튼: 윗줄은 지금 있는 곳, 아랫줄은 누르면 갈 곳
+      const now = place === 'yard' ? '마당' : `${LEVELS[level].label}의 방`;
+      const go = place === 'yard' ? '집 안으로' : '밖으로';
+      $('place-name').textContent = now;
+      $('place-go').textContent = `${go} ›`;
+      $('place-toggle').setAttribute('aria-label', `${go} 가기. 지금 ${now}`);
       $('clear-all').textContent = place === 'yard' ? '마당 가구 치우기' : '방 가구 치우기';
     },
-    setHint(text) { $('hint').textContent = text; },
+    // 빈 글이면 안내를 감춘다(처음 몇 번만 보이는 걷기 안내, input.js). 안내는 쟁반 위에 겹쳐 떠서 감춰도 3D 화면이 움직이지 않는다
+    setHint(text) { $('hint').textContent = text; $('hint').hidden = !text; },
     // wreath: 들고 있는 것이 화환이면 "모양 고치기" 버튼을 보인다
     setCarrying(on, wreath = false) {
       const was = !$('cancel-carry').hidden;
@@ -251,8 +284,16 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
       if (on && !was) $('build-extras').scrollLeft = 0; // 좁은 화면에서 그만두기 버튼이 바로 보이게
     },
     setHistory({ canUndo, canRedo }) { $('undo').disabled = !canUndo; $('redo').disabled = !canRedo; },
+    // 위쪽 줄에는 짧은 글(save-chip)을, 전체 문구는 save-status 에 둔다. 저장이 멈춘 상태(warn)는 전체 문구를
+    // 둘째 줄에 숨김 없이 보인다. 잠깐 뜨는 알림이나 메뉴 속으로 대신하지 않는다(GPT 글 7210344502)
     setSaveStatus(status) {
-      $('save-status').textContent = { saved: '자동 저장됨', pending: '저장하는 중', off: '이 브라우저에서는 저장되지 않습니다', guest: '친구 집 구경 중 · 내 집 유지', conflict: '다른 탭에서 집이 바뀌어 자동 저장 중지 · 새로고침 필요', newer: '새 판에서 저장한 집이라 자동 저장 중지 · 새로고침 필요', held: '원래 저장 내용을 남기지 못해 자동 저장 중지 · 저장 공간 확인' }[status] || '';
+      const full = { saved: '자동 저장됨', pending: '저장하는 중', off: '이 브라우저에서는 저장되지 않습니다', guest: '친구 집 구경 중 · 내 집 유지', conflict: '다른 탭에서 집이 바뀌어 자동 저장 중지 · 새로고침 필요', newer: '새 판에서 저장한 집이라 자동 저장 중지 · 새로고침 필요', held: '원래 저장 내용을 남기지 못해 자동 저장 중지 · 저장 공간 확인' }[status] || '';
+      const short = { saved: '저장됨', pending: '저장 중', guest: '구경 중', off: '저장 안 됨', conflict: '저장 멈춤', newer: '저장 멈춤', held: '저장 멈춤' }[status] || '';
+      const kind = ['off', 'conflict', 'newer', 'held'].includes(status) ? 'warn' : 'ok';
+      $('save-status').textContent = full;
+      $('save-status').dataset.kind = kind;
+      $('save-chip').textContent = short;
+      $('save-chip').dataset.kind = kind;
     },
     toast: showToast,
     openShare(link, options = {}) {

@@ -33,7 +33,7 @@ const TOUCH_HINTS = {
   carryWreath: '옮길 자리를 누릅니다. 모양 고치기 버튼으로 모양을 바꿀 수 있습니다.',
 };
 
-export function createInput({ canvas, view, store, history, character, ui, audio, haptics = null, travel, fishing = null, gathering = null, wreathUI = null, readOnly = false }) {
+export function createInput({ canvas, view, store, history, character, ui, audio, haptics = null, travel, fishing = null, gathering = null, wreathUI = null, hintMemory = null, readOnly = false }) {
   // look: 화환 도구로 걸 모양(만들기 창에서 고른 것)
   const s = { mode: 'walk', tool: 'select', rot: 0, drag: null, carry: null, pointer: null, press: null, lastPlaced: null, look: null };
   const isWreath = (partId) => !!PARTS[partId]?.wreath;
@@ -49,11 +49,15 @@ export function createInput({ canvas, view, store, history, character, ui, audio
   const kindOfPart = (partId) => ({ wall: 'wallitem', top: 'top' }[layerOf(partId)] || 'object');
   const toolKind = () => (PARTS[s.tool] ? kindOfPart(s.tool) : s.tool);
   const placing = () => ['object', 'top', 'wallitem'].includes(toolKind());
+  // 걷기·드나들기·앉기 안내는 처음 몇 번의 접속에만 보인다(6단계 HUD A, src/hint-memory.js).
+  // 낚시·꾸미기·주운 것의 수처럼 그때그때 필요한 안내는 늘 보인다
+  const LEARNED = new Set(['walkYard', 'walkRoom', 'seated']);
   function hintFor() {
     if (s.mode === 'walk') {
       const fish = fishing?.hint();
       if (fish != null) return fish;
-      return character.seated ? hints.seated : here() === 'yard' ? hints.walkYard : hints.walkRoom;
+      const key = character.seated ? 'seated' : here() === 'yard' ? 'walkYard' : 'walkRoom';
+      return !hintMemory || !LEARNED.has(key) || hintMemory.shows(key) ? hints[key] : '';
     }
     if (s.carry) return isWreath(s.carry.part) ? hints.carryWreath : hints.carry;
     if (isWreath(s.tool)) return hints.wreath;

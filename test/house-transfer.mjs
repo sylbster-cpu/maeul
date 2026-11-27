@@ -1,5 +1,6 @@
 // 집 공유 링크를 다른 브라우저의 내 집으로 안전하게 복원하고 이전 집으로 되돌린다.
 // 실제 Firebase에 연결하거나 온라인 집·방명록을 고치지 않는다.
+import { menuClick, menuVisible } from './helpers/menu.mjs';
 export default async function transferTour(page, { out, logs }) {
   const say = (name, ok, details = '') => logs.push(`${ok ? '통과' : '실패'}  ${name} ${details}`);
   const ready = () => page.waitForFunction(() => window.__ready === true, null, { timeout: 30000 });
@@ -27,13 +28,13 @@ export default async function transferTour(page, { out, logs }) {
   await Promise.all([page.waitForEvent('load'), page.evaluate((hash) => { location.hash = hash; }, new URL(link).hash)]);
   await ready();
   say('공유 집은 먼저 읽기 전용으로 열린다',
-    await page.locator('#mode-build').isHidden() && await page.locator('#share-house').isVisible());
+    await page.locator('#mode-build').isHidden() && await menuVisible(page, '#share-house'));
   say('공유 집에 집 가져오기 버튼이 나타난다',
     (await page.locator('#share-house').textContent()).includes('집 가져오기'));
   const oldSave = await save();
   say('구경하기만 할 때 기존 저장 집은 그대로다', (await roof()) === 'moss' && oldSave !== null);
 
-  await Promise.all([page.waitForEvent('load'), page.locator('#share-house').click()]);
+  await Promise.all([page.waitForEvent('load'), menuClick(page, '#share-house')]);
   await ready();
   const imported = await save(), oldBackup = await backup();
   const data = JSON.parse(imported);
@@ -44,7 +45,7 @@ export default async function transferTour(page, { out, logs }) {
   say('Firebase 익명 사용자나 온라인 집 관련 저장은 변경되지 않는다',
     await page.evaluate(() => localStorage.getItem('firebase:test-owner-key') === 'untouched'));
 
-  await page.locator('#share-house').click();
+  await menuClick(page, '#share-house');
   await page.waitForFunction(() => !document.getElementById('share-layer').hidden);
   say('내 집 공유 창에 되돌리기 버튼이 나타난다', await page.locator('#share-restore-previous').isVisible());
   await Promise.all([page.waitForEvent('load'), page.locator('#share-restore-previous').click()]);
@@ -52,13 +53,13 @@ export default async function transferTour(page, { out, logs }) {
   say('이전 집으로 되돌리면 원래 외관이 복구된다', (await roof()) === 'slate');
   say('맞바꾸면 원래 집은 되돌아오고 가져왔던 집은 백업으로 남는다',
     (await save()) === oldSave && JSON.parse(await backup()).previous === imported);
-  say('맞바꾼 뒤에도 복구 버튼은 남아 있다', await page.locator('#share-house').isVisible());
+  say('맞바꾼 뒤에도 복구 버튼은 남아 있다', await menuVisible(page, '#share-house'));
   say('맞바꾼 뒤 온라인 사용자 관련 저장은 그대로다',
     await page.evaluate(() => localStorage.getItem('firebase:test-owner-key') === 'untouched'));
   await page.screenshot({ path: `${out}-restored.png` });
 
   // 이전에 Claude가 재현한 0.4초 간격의 두 번 누르기 문제를 방지한다.
-  await page.locator('#share-house').click();
+  await menuClick(page, '#share-house');
   await page.waitForFunction(() => !document.getElementById('share-layer').hidden);
   const previous = await save();
   await Promise.all([
@@ -90,7 +91,7 @@ export default async function transferTour(page, { out, logs }) {
   });
   await Promise.all([page.waitForEvent('load'), page.evaluate((hash) => { location.hash = hash; }, new URL(link3).hash)]);
   await ready();
-  await Promise.all([page.waitForEvent('load'), page.locator('#share-house').click()]);
+  await Promise.all([page.waitForEvent('load'), menuClick(page, '#share-house')]);
   await ready();
   say('보관된 집이 있어도 새 링크의 집을 가져올 수 있다',
     (await roof()) === 'terracotta' && JSON.parse(await save()).state.house.roof === 'terracotta', lastDialog.slice(0, 60));
