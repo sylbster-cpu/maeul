@@ -97,13 +97,34 @@ export function isNewerHouse(text) {
   return false;
 }
 
+// 일부를 빼고 읽은 집의 원문을 남겨 두는 곳. 서로 다른 원문을 차례로 쌓는다(JSON 배열). 같은 원문은 한 번만 둔다.
+// 이 PR 첫 판은 원문 글자 하나만 두었으므로 그것도 읽는다. 남겼거나 이미 있으면 true, 쓰지 못하면 false
+export function keepDropped(storage, key, text) {
+  const k = `${key}:dropped`;
+  try {
+    let list = [];
+    const raw = storage.getItem(k);
+    if (raw !== null) {
+      let v = null;
+      try { v = JSON.parse(raw); } catch { v = null; }
+      list = Array.isArray(v) && v.every((x) => typeof x === 'string') ? v : [raw];
+    }
+    if (list.includes(text)) return true;
+    storage.setItem(k, JSON.stringify([...list, text]));
+    return true;
+  } catch { return false; }
+}
+
 // 저장소 하나에 읽고 쓴다. 저장소가 없거나 막혀 있으면 조용히 실패한다.
 // 더 새로운 판의 집을 읽었으면 locked 가 되어 저장하지 않는다(위 머리글). 쓰기 직전에도 저장소의 글자를 한 번 더 본다
 export function createSaver(storage, key = SAVE_KEY) {
   let locked = false;
+  // 왜 저장을 멈췄는지: 'newer'(더 새로운 판의 집, 새로 고치면 풀림) 또는 'backup'(뺀 집의 원문을 남기지 못함, 공간을 비우고 새로 고치면 풀림)
+  let lockReason = null;
   return {
     available: !!storage,
     get locked() { return locked; },
+    get lockReason() { return lockReason; },
     load() {
       if (!storage) return null;
       let text = null;
@@ -113,15 +134,19 @@ export function createSaver(storage, key = SAVE_KEY) {
       // 읽지 못한 내용은 지우지 않고 옆에 남겨 둔다
       if (!result.ok) { try { storage.setItem(`${key}:broken`, text); } catch { /* 남기지 못해도 계속한다 */ } }
       // 일부를 빼고 읽었으면(자리가 틀린 가구·화환, 겹친 ID 등) 원문을 옆에 남긴다. 다음 저장이 뺀 채로 원문 위에 쓰기 때문이다.
-      // 새 판의 집과 달리 새로 고쳐도 풀리지 않으므로 저장은 멈추지 않는다. 처음 남긴 원문을 덮어쓰지 않는다
-      // (2026-11-27 PR #48 GPT 검토: 모양은 맞고 벽 위치가 틀린 화환이 저장 뒤 사라질 수 있었다. 다른 가구도 전부터 같았다)
+      // 새 판의 집과 달리 새로 고쳐도 풀리지 않으므로, 남기는 데 성공하면 저장은 이어 간다. 남기지 못했으면(저장 공간 부족 등)
+      // 이 화면에서는 저장하지 않는다. 공간을 비우고 새로 고치면 다시 남기고 이어 간다
+      // (2026-11-27 PR #48 GPT 검토·재검토: 벽 위치가 틀린 화환이 저장 뒤 사라질 수 있었고, 남기지 못해도 저장이 이어지거나
+      // 앞서 남긴 다른 원문이 있으면 새 원문을 남기지 않았다. 다른 가구도 전부터 같았다)
       // 모르는 부품이 든 새 판의 집은 아래에서 :newer 에 남기므로 여기서 또 남기지 않는다(같은 글 두 벌)
       if (result.ok && result.dropped > 0 && !(result.unknown > 0)) {
-        try { if (storage.getItem(`${key}:dropped`) === null) storage.setItem(`${key}:dropped`, text); } catch { /* 남기지 못해도 계속한다 */ }
+        result.keptDropped = keepDropped(storage, key, text);
+        if (!result.keptDropped) { locked = true; lockReason = 'backup'; }
       }
       // 더 새로운 판의 집: 원문을 옆에 남기고 이 화면에서는 저장하지 않는다
       if (result.newer || (result.ok && result.unknown > 0)) {
         locked = true;
+        lockReason = 'newer';
         try { storage.setItem(`${key}:newer`, text); } catch { /* 남기지 못해도 저장은 막는다 */ }
       }
       return result;
@@ -130,7 +155,7 @@ export function createSaver(storage, key = SAVE_KEY) {
       if (!storage || locked) return false;
       try {
         const now = storage.getItem(key);
-        if (now !== null && isNewerHouse(now)) { locked = true; return false; } // 그사이 새 판이 저장했다
+        if (now !== null && isNewerHouse(now)) { locked = true; lockReason = 'newer'; return false; } // 그사이 새 판이 저장했다
         storage.setItem(key, serialize(state, extra));
         return true;
       } catch { return false; }

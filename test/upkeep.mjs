@@ -10,6 +10,7 @@
 //    맞바꾸기는 원문을 그대로 옮기므로 할 수 있다 (PR #43 GPT 검토·재검토)
 // 7. 저장 공간이 가득 차 새로 쓰기가 안 되어도 저장된 집을 읽어 연다(처음 배치로 시작하지 않는다) (2026-11-26 GPT 점검)
 //    같은 열쇠를 같은 크기로 덮어쓰는 저장은 가득 차도 될 수 있으므로, 저장 여부가 아니라 집의 내용을 본다
+// 8. 자리가 틀린 가구를 빼고 읽어야 하는데 저장 공간이 가득 차 원문을 따로 남기지 못하면, 저장하지 않고 남겼다고 말하지 않는다 (2026-11-27 PR #48 GPT 재검토)
 export default async function upkeepTour(page, { out, logs }) {
   const say = (label, ok, extra = '') => logs.push(`${ok ? '통과' : '실패'}  ${label} ${extra}`);
   const g = (fn, arg) => page.evaluate(fn, arg);
@@ -239,4 +240,43 @@ export default async function upkeepTour(page, { out, logs }) {
     filled.full && full7.roof === roof7 && full7.objects === savedObjects && keptState,
     JSON.stringify({ full: filled.full, roof: full7.roof, want: roof7, objects: full7.objects, savedObjects, keptState, saved: full7.saved, status: full7.status }));
   await g(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('fill:')) localStorage.removeItem(k); });
+
+  // 8. 마당의 의자 하나를 판 밖(x 999)으로 옮긴 원문을 저장해 두고, 저장 공간을 가득 채운 뒤 새로 연다
+  const damaged8 = await g(() => {
+    const d = JSON.parse(localStorage.getItem('house-lab-web:save'));
+    const objs = d.state.spaces.yard.objects;
+    const id = Object.keys(objs).find((k) => objs[k].part === 'chair' || objs[k].part === 'stool') || Object.keys(objs)[0];
+    objs[id].x = 999;
+    const text = JSON.stringify(d);
+    localStorage.setItem('house-lab-web:save', text);
+    localStorage.removeItem('house-lab-web:save:dropped');
+    return text;
+  });
+  const filled8 = await g(() => {
+    let n = 0;
+    for (let size = 1 << 20; size >= 1; size >>= 1) {
+      const chunk = 'x'.repeat(size);
+      for (;;) { try { localStorage.setItem(`fill:${n}`, chunk); n++; } catch { break; } }
+    }
+    try { localStorage.setItem('fill:probe', '1'); localStorage.removeItem('fill:probe'); return false; } catch { return true; }
+  });
+  await page.reload();
+  await page.waitForFunction(() => window.__ready === true, null, { timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  const held8 = await g(() => ({
+    toast: document.getElementById('toast')?.textContent || '', status: document.getElementById('save-status')?.textContent || '',
+    saved: window.__game.saveNow(), same: localStorage.getItem('house-lab-web:save'), backup: localStorage.getItem('house-lab-web:save:dropped'),
+  }));
+  say('원문을 따로 남기지 못하면 저장하지 않고, 남겼다고 말하지 않는다',
+    filled8 && held8.toast.includes('남기지 못해') && !held8.toast.includes('남겨 두었습니다') && held8.status.includes('저장 공간') && held8.saved === false && held8.same === damaged8 && held8.backup === null,
+    JSON.stringify({ full: filled8, toast: held8.toast.slice(0, 60), status: held8.status, saved: held8.saved, same: held8.same === damaged8, backup: held8.backup }));
+  // 공간을 비우고 새로 열면 원문을 남기고 저장을 이어 간다
+  await g(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('fill:')) localStorage.removeItem(k); });
+  await page.reload();
+  await page.waitForFunction(() => window.__ready === true, null, { timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  const freed8 = await g(() => ({ toast: document.getElementById('toast')?.textContent || '', saved: window.__game.saveNow(), backup: JSON.parse(localStorage.getItem('house-lab-web:save:dropped') || 'null') }));
+  say('공간을 비우고 새로 열면 원문을 남기고 저장을 이어 간다',
+    freed8.toast.includes('남겨 두었습니다') && freed8.saved === true && Array.isArray(freed8.backup) && freed8.backup[0] === damaged8,
+    JSON.stringify({ toast: freed8.toast.slice(0, 60), saved: freed8.saved, kept: Array.isArray(freed8.backup) && freed8.backup[0] === damaged8 }));
 }

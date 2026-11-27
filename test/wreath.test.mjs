@@ -145,29 +145,83 @@ test('공유 링크와 온라인 집에도 모양이 그대로 간다', async ()
   assert.deepEqual(visited.spaces.main.objects[id].look, LOOK);
 });
 
-test('모양은 맞고 자리가 틀린 화환을 빼고 읽으면 원문을 옆에 남긴다. 저장은 이어 가되 남긴 원문은 덮어쓰지 않는다 (PR #48 GPT 검토)', () => {
+// 자리가 틀린 화환 하나와 겹친 ID 하나가 든 원문을 만든다 (모양은 맞다)
+function damaged(mark = 999) {
   const { store, history } = setup();
   const { id } = hang(history, store);
   const two = hang(history, store, OTHER, 3).id;
   const data = JSON.parse(serialize(store.state));
-  data.state.spaces.main.objects[id].i = 999; // 벽 밖
-  data.state.spaces.yard.objects[two] = { ...data.state.spaces.main.objects[two] }; // 겹친 ID 도 같다
-  const text = JSON.stringify(data);
+  data.state.spaces.main.objects[id].i = mark; // 벽 밖
+  data.state.spaces.yard.objects[two] = { ...data.state.spaces.main.objects[two] }; // 겹친 ID
+  return JSON.stringify(data);
+}
+// setItem 을 고를 수 있게 막는 가짜 저장소
+function memStorage(init = {}, refuse = () => false) {
+  const mem = new Map(Object.entries(init));
+  return {
+    mem,
+    getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => { if (refuse(k, v)) throw new DOMException('가득 참', 'QuotaExceededError'); mem.set(k, String(v)); },
+    removeItem: (k) => mem.delete(k),
+  };
+}
+const kept = (st) => JSON.parse(st.mem.get(`${SAVE_KEY}:dropped`));
+
+test('자리가 틀린 화환을 빼고 읽으면 원문을 옆에 남기고, 남겼으면 저장은 이어 간다 (PR #48 GPT 검토)', () => {
+  const text = damaged();
   const r = parse(text);
   assert.ok(r.ok && r.dropped === 2 && r.unknown === 0, JSON.stringify({ dropped: r.dropped, unknown: r.unknown }));
   assert.equal(isNewerHouse(text), false, '새 판의 집은 아니다');
-  const mem = new Map([[SAVE_KEY, text]]);
-  const storage = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) };
-  const saver = createSaver(storage);
+  const st = memStorage({ [SAVE_KEY]: text });
+  const saver = createSaver(st);
   const loaded = saver.load();
-  assert.equal(mem.get(`${SAVE_KEY}:dropped`), text, '원문을 옆에 남긴다');
-  assert.equal(saver.locked, false, '새로 고쳐도 풀리지 않으므로 저장은 멈추지 않는다');
+  assert.equal(loaded.keptDropped, true);
+  assert.deepEqual(kept(st), [text], '원문을 옆에 남긴다');
+  assert.equal(saver.locked, false, '남겼으면 저장은 멈추지 않는다(새로 고쳐도 풀리지 않는 손상이므로)');
   assert.ok(saver.save(loaded.state), '뺀 채로 저장은 된다');
-  assert.notEqual(mem.get(SAVE_KEY), text);
-  // 다시 불러와 또 빼더라도 처음 남긴 원문은 그대로다
-  const again = JSON.parse(mem.get(SAVE_KEY));
-  again.state.spaces.main.objects[two].i = 999;
-  mem.set(SAVE_KEY, JSON.stringify(again));
-  createSaver(storage).load();
-  assert.equal(mem.get(`${SAVE_KEY}:dropped`), text, '처음 남긴 원문을 덮어쓰지 않는다');
+  assert.deepEqual(kept(st), [text], '저장해도 남긴 원문은 그대로다');
+  createSaver(st).load(); // 같은 원문을 다시 읽어도 두 벌 남기지 않는다(이미 저장되어 빠진 것이 없다)
+  assert.equal(kept(st).length, 1);
+});
+
+test('남기지 못하면(저장 공간 부족) 저장을 멈추고, 원문 위에 짧은 집을 쓰지 않는다 (PR #48 GPT 재검토 a)', () => {
+  const text = damaged();
+  const st = memStorage({ [SAVE_KEY]: text }, (k) => k.endsWith(':dropped')); // 원문 복사만 실패한다
+  const saver = createSaver(st);
+  const loaded = saver.load();
+  assert.equal(loaded.keptDropped, false, '남겼다고 하지 않는다');
+  assert.equal(saver.locked, true);
+  assert.equal(saver.lockReason, 'backup');
+  assert.equal(saver.save(loaded.state), false, '뺀 집을 저장하지 않는다');
+  assert.equal(st.mem.get(SAVE_KEY), text, '원문은 그대로다');
+  // 공간을 비우고 새로 열면 남기고 이어 간다
+  const st2 = memStorage(Object.fromEntries(st.mem));
+  const again = createSaver(st2);
+  const back = again.load();
+  assert.ok(back.keptDropped && !again.locked, JSON.stringify({ kept: back.keptDropped, locked: again.locked }));
+  assert.deepEqual(kept(st2), [text]);
+});
+
+test('앞서 남긴 다른 원문이 있으면 새 원문을 더해 쌓는다. 첫 판의 글자 하나도 읽는다 (PR #48 GPT 재검토 b)', () => {
+  const a = damaged(999);
+  const b = damaged(777); // 다른 손상
+  assert.notEqual(a, b);
+  // 첫 판은 원문 글자 하나를 그대로 두었다
+  const st = memStorage({ [SAVE_KEY]: b, [`${SAVE_KEY}:dropped`]: a });
+  const saver = createSaver(st);
+  const loaded = saver.load();
+  assert.ok(loaded.keptDropped && !saver.locked);
+  assert.deepEqual(kept(st), [a, b], '앞의 원문을 남긴 채 새 원문을 더한다');
+  // 쌓인 목록이 있을 때 또 다른 손상
+  const c = damaged(555);
+  st.mem.set(SAVE_KEY, c);
+  createSaver(st).load();
+  assert.deepEqual(kept(st), [a, b, c]);
+  // 더하기가 실패하면 저장을 멈춘다
+  const d = damaged(333);
+  const full = memStorage({ ...Object.fromEntries(st.mem), [SAVE_KEY]: d }, (k) => k.endsWith(':dropped'));
+  const held = createSaver(full);
+  held.load();
+  assert.equal(held.locked, true);
+  assert.deepEqual(JSON.parse(full.mem.get(`${SAVE_KEY}:dropped`)), [a, b, c], '앞서 남긴 것은 그대로다');
 });
