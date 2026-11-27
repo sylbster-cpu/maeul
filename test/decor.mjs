@@ -1,4 +1,5 @@
 // 소품과 벽걸이 확인 (마우스)
+import { uiClick } from './helpers/menu.mjs';
 export default async function decor(page, { out, logs }) {
   const shot = (name) => page.screenshot({ path: `${out}-${name}.png` });
   const at = (x, z) => page.evaluate(([a, b]) => window.__game.view.screenPoint(a, b), [x, z]);
@@ -20,8 +21,8 @@ export default async function decor(page, { out, logs }) {
 
   await page.keyboard.press('KeyB');
   // 1) 소품 탭: 탁자 위에 탁상 스탠드
-  await page.click('#tab-props');
-  await page.click('#tool-table_lamp');
+  await uiClick(page, '#tab-props');
+  await uiClick(page, '#tool-table_lamp');
   await click(3.5, 2.5);
   const lamp = (await byPart('table_lamp'))[0];
   say('탁자 위에 소품 놓기', !!lamp, await obj(lamp));
@@ -32,8 +33,8 @@ export default async function decor(page, { out, logs }) {
   const table = (await byPart('table'))[0];
   const books = (await byPart('books'))[0];
   logs.push('옮기기 전 탁자 ' + await obj(table) + ' 책 ' + await obj(books) + ' 스탠드 ' + await obj(lamp));
-  await page.click('#tab-furniture');
-  await page.click('#tool-select');
+  await uiClick(page, '#tab-furniture');
+  await uiClick(page, '#tool-select');
   // 탁자의 빈 모서리 칸을 눌러 집는다 (소품이 없는 칸)
   await click(3.5, 3.6);
   const carrying = await g(() => window.__game.input.state.carry?.part);
@@ -48,8 +49,8 @@ export default async function decor(page, { out, logs }) {
   say('되돌리면 소품도 제자리', (await obj(books)).includes('"books",4,3,0'), await obj(books));
 
   // 3) 벽걸이: 서쪽 벽과 북쪽 벽
-  await page.click('#tab-wall');
-  await page.click('#tool-frame_medium');
+  await uiClick(page, '#tab-wall');
+  await uiClick(page, '#tool-frame_medium');
   const wallPoint = (x, y, z) => g(([a, b, c]) => {
     const { view } = window.__game; const T = view.camera.constructor; // 세계 좌표를 화면으로
     const v = new view.scene.position.constructor(a, b, c).project(view.camera);
@@ -71,14 +72,14 @@ export default async function decor(page, { out, logs }) {
   say('북쪽 벽에 액자 걸기', (await byPart('frame_medium')).length === 2);
 
   // 4) 벽걸이 옮기기와 치우기
-  await page.click('#tool-select');
+  await uiClick(page, '#tool-select');
   p = await wallPoint(0, 2.05, 1.5);
   await page.mouse.click(p.x, p.y);
   say('벽에 건 것 집기', (await g(() => window.__game.input.state.carry?.part)) === 'frame_medium');
   p = await wallPoint(0, 2, 5.5);
   await page.mouse.click(p.x, p.y);
   say('다른 벽 칸으로 옮기기', (await obj(fm)) === '["frame_medium","W",5]', await obj(fm));
-  await page.click('#tool-erase');
+  await uiClick(page, '#tool-erase');
   p = await wallPoint(0, 2.05, 5.5);
   await page.mouse.click(p.x, p.y);
   say('벽에 건 것 치우기', (await obj(fm)) === null);
@@ -89,7 +90,7 @@ export default async function decor(page, { out, logs }) {
   await page.keyboard.press('KeyE');
   await page.waitForTimeout(700);
   await shot('4-rotated');
-  await page.click('#tool-shelf_small');
+  await uiClick(page, '#tool-shelf_small');
   const walls = await g(() => { const v = window.__game.view; const r = document.getElementById('scene').getBoundingClientRect(); const hits = new Set(); for (let x = r.left + 20; x < r.right; x += 40) for (let y = r.top + 20; y < r.bottom - 220; y += 40) { const h = v.wallPoint(x, y, 1); if (h) hits.add(h.wall); } return [...hits].sort().join(''); });
   logs.push('돌린 뒤 가리킬 수 있는 벽: ' + walls);
   await page.keyboard.press('KeyQ');

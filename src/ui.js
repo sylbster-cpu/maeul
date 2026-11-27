@@ -29,6 +29,29 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
 
   let tab = 'furniture'; // 'furniture'(가구) 또는 'style'(방 꾸밈, 집 겉모습)
   let lastPlace = 'yard';
+  // 아래 막대가 보일 버튼을 정하는 상태 (6단계 HUD B)
+  let mode = 'walk', tool = 'select', carrying = false, carryWreath = false, carryPart = null, hintText = '', sheetOpen = false;
+  // 걷기 [꾸미기][수첩], 꾸미기 [고른 것▴][돌리기][되돌리기][수첩][완료], 옮기는 중 [그만두기][돌리기][모양 고치기][되돌리기][완료].
+  // 돌리기는 바닥·올려놓는 것을 고르거나 들고 있을 때만 보인다(벽에 거는 것은 돌리지 않는다). 방문자는 [수첩][내 집으로]
+  function renderBar() {
+    const build = mode === 'build';
+    const held = PARTS[carrying ? carryPart : tool];
+    $('mode-build').hidden = guest || build;
+    $('mode-walk').hidden = !build;
+    $('open-catalog').hidden = !build || carrying;
+    $('cancel-carry').hidden = !build || !carrying;
+    $('wreath-edit').hidden = !build || !carryWreath;
+    $('rotate-part').hidden = !build || !held || held.layer === 'wall';
+    $('undo').hidden = !build;
+    $('fish-log').hidden = build && carrying;
+    $('menu-build').hidden = !build;
+  }
+  function renderHint() {
+    const el = $('hint');
+    const show = !!hintText && !sheetOpen;
+    el.textContent = show ? hintText : '';
+    el.hidden = !show;
+  }
   function addGroup(title, where, groupTab = 'furniture') {
     const group = document.createElement('div');
     group.className = 'tool-group';
@@ -64,7 +87,7 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
   const toolRow = addGroup('도구', 'both', 'common'); // 꾸밈 탭을 뺀 모든 탭에 보인다
   for (const [id, label] of [['select', '옮기기'], ['erase', '치우기']]) {
     const b = tile(`tool-${id}`, label, (box) => { box.innerHTML = ICONS[id]; });
-    b.addEventListener('click', () => on.tool(id));
+    b.addEventListener('click', () => { on.tool(id); setSheet(false); });
     toolRow.appendChild(b);
     toolButtons.set(id, b);
   }
@@ -78,7 +101,8 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
   };
   for (const [id, part] of Object.entries(PARTS)) {
     const b = tile(`tool-${id}`, part.label, (box) => { if (thumbs[id]) { const img = new Image(); img.src = thumbs[id]; img.alt = ''; box.appendChild(img); } });
-    b.addEventListener('click', () => on.tool(id));
+    // 고르면 목록을 접고 놓을 차례가 된다(이어서 여러 개 놓을 수 있다). 화환은 만들기 창이 먼저 뜬다
+    b.addEventListener('click', () => { on.tool(id); setSheet(false); });
     // 주운 것은 이름 아래에 남은 수를 한 줄 더 적는다(setFound)
     if (part.found) { const count = document.createElement('span'); count.className = 'tool-count'; b.appendChild(count); }
     (part.found ? rows.found : rows[part.layer] || rows.furniture).appendChild(b);
@@ -118,8 +142,10 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
   }
   for (const name of TABS) $(`tab-${name}`).addEventListener('click', () => { tab = name; showGroups(); tools.scrollLeft = 0; });
 
+  // 완료(#mode-walk)는 꾸미기를 끝내고 걷기로 돌아간다. 꾸미기(#mode-build)는 꾸미기로 들어가며 목록을 연다
   $('mode-walk').addEventListener('click', () => on.mode('walk'));
-  $('mode-build').addEventListener('click', () => on.mode('build'));
+  $('mode-build').addEventListener('click', () => { on.mode('build'); if (mode === 'build') setSheet(true); });
+  $('open-catalog').addEventListener('click', () => setSheet(!sheetOpen));
   $('cam-left').addEventListener('click', () => on.camera(-1));
   $('cam-right').addEventListener('click', () => on.camera(1));
   $('zoom-in').addEventListener('click', () => on.zoom(1 / 1.2));
@@ -131,6 +157,25 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
   $('sample').addEventListener('click', () => on.sample());
   $('cancel-carry').addEventListener('click', () => on.cancelCarry());
   $('wreath-edit').addEventListener('click', () => on.editWreath?.());
+  // 꾸미기 목록(시트, 6단계 HUD B). 막대 위에 겹쳐 뜨고, 바깥을 누르면 접히기만 한다(뒤의 3D 화면에 누름이 닿지 않는다)
+  const sheet = $('sheet');
+  const sheetBackdrop = $('sheet-backdrop');
+  function setSheet(open) {
+    if (open && mode !== 'build') return;
+    if (open === sheetOpen) return;
+    sheetOpen = open;
+    sheet.hidden = !open;
+    sheetBackdrop.hidden = !open;
+    $('open-catalog').setAttribute('aria-expanded', String(open));
+    if (open) tools.scrollLeft = 0;
+    renderHint();
+  }
+  const closeSheet = () => setSheet(false);
+  sheetBackdrop.addEventListener('pointerup', closeSheet);
+  sheetBackdrop.addEventListener('click', closeSheet);
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && sheetOpen) { event.preventDefault(); event.stopImmediatePropagation(); setSheet(false); $('open-catalog').focus(); }
+  });
   $('place-toggle').addEventListener('click', () => on.travel());
   $('share-house').addEventListener('click', () => canImport ? on.importHouse() : on.share());
   $('my-home').addEventListener('click', () => on.home());
@@ -174,7 +219,7 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
   const closeOutside = () => setMenu(false, { focus: false });
   backdrop.addEventListener('pointerup', closeOutside);
   backdrop.addEventListener('click', closeOutside);
-  for (const id of ['share-house', 'online-action']) $(id).addEventListener('click', () => setMenu(false, { focus: false }));
+  for (const id of ['share-house', 'online-action', 'clear-all', 'sample']) $(id).addEventListener('click', () => setMenu(false, { focus: false }));
   $('help-toggle').addEventListener('click', () => { setMenu(false, { focus: false }); showHelp(help.hidden); });
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !menu.hidden) { event.preventDefault(); event.stopImmediatePropagation(); setMenu(false); }
@@ -228,16 +273,26 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
   });
 
   return {
-    setMode(mode) {
-      $('mode-walk').setAttribute('aria-pressed', String(mode === 'walk'));
-      $('mode-build').setAttribute('aria-pressed', String(mode === 'build'));
-      tools.hidden = mode !== 'build';
-      $('tabs').hidden = mode !== 'build';
-      $('build-extras').hidden = mode !== 'build';
+    setMode(next) {
+      mode = next;
+      if (mode !== 'build') setSheet(false);
       document.body.dataset.mode = mode;
+      renderBar();
     },
-    setTool(tool) {
+    setTool(next) {
+      // 도구가 바뀌면(목록에서 고름, 화환 만들기를 마침, 키보드 등) 목록을 접고 놓을 차례가 된다
+      if (next !== tool && sheetOpen) setSheet(false);
+      tool = next;
       for (const [id, b] of toolButtons) b.setAttribute('aria-pressed', String(id === tool));
+      // 고른 것 버튼: 그 도구나 가구의 그림과 이름
+      const art = $('catalog-art');
+      art.replaceChildren();
+      if (ICONS[tool]) art.innerHTML = ICONS[tool];
+      else if (thumbs[tool]) { const img = new Image(); img.src = thumbs[tool]; img.alt = ''; art.appendChild(img); }
+      const name = PARTS[tool]?.label || { select: '옮기기', erase: '치우기' }[tool] || '';
+      $('catalog-label').textContent = name;
+      $('open-catalog').setAttribute('aria-label', `목록 열기. 지금 고른 것: ${name}`);
+      renderBar();
     },
     // 주운 것 칸: 더 놓을 수 있는 수(available)와 가진 수(owned). 0 이면 흐리게 보이지만 누를 수는 있다(누르면 왜 안 되는지 알린다)
     // 주운 것 버튼: 이름 아래에 남은 수를 적고, 0 이면 흐리게 한다. 0 은 "아직 없음"과 "다 놓음"을 가른다.
@@ -274,15 +329,17 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
       $('place-toggle').setAttribute('aria-label', `${go} 가기. 지금 ${now}`);
       $('clear-all').textContent = place === 'yard' ? '마당 가구 치우기' : '방 가구 치우기';
     },
-    // 빈 글이면 안내를 감춘다(처음 몇 번만 보이는 걷기 안내, input.js). 안내는 쟁반 위에 겹쳐 떠서 감춰도 3D 화면이 움직이지 않는다
-    setHint(text) { $('hint').textContent = text; $('hint').hidden = !text; },
-    // wreath: 들고 있는 것이 화환이면 "모양 고치기" 버튼을 보인다
-    setCarrying(on, wreath = false) {
-      const was = !$('cancel-carry').hidden;
-      $('cancel-carry').hidden = !on;
-      $('wreath-edit').hidden = !(on && wreath);
-      if (on && !was) $('build-extras').scrollLeft = 0; // 좁은 화면에서 그만두기 버튼이 바로 보이게
+    // 빈 글이면 안내를 감춘다(처음 몇 번만 보이는 걷기 안내, input.js). 안내는 막대 위에 겹쳐 떠서 감춰도 3D 화면이 움직이지 않는다.
+    // 꾸미기 목록이 열려 있는 동안에는 감춘다(목록 위에 고른 도구의 안내가 뜨면 헷갈린다)
+    setHint(text) { hintText = text; renderHint(); },
+    // 옮기는 중인지. wreath: 들고 있는 것이 화환이면 "모양 고치기" 버튼을 보인다. part: 들고 있는 것(벽에 거는 것은 돌리지 않는다)
+    setCarrying(on, wreath = false, part = null) {
+      carrying = on;
+      carryWreath = on && wreath;
+      carryPart = on ? part : null;
+      renderBar();
     },
+    get sheetOpen() { return sheetOpen; }, // 자동 시험이 읽는다
     setHistory({ canUndo, canRedo }) { $('undo').disabled = !canUndo; $('redo').disabled = !canRedo; },
     // 위쪽 줄에는 짧은 글(save-chip)을, 전체 문구는 save-status 에 둔다. 저장이 멈춘 상태(warn)는 전체 문구를
     // 둘째 줄에 숨김 없이 보인다. 잠깐 뜨는 알림이나 메뉴 속으로 대신하지 않는다(GPT 글 7210344502)

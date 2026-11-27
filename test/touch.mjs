@@ -1,4 +1,5 @@
 // 휴대폰 터치 조작 확인. 실행: TOUCH=1 node tools/shot.mjs / <출력> 390 844 test/touch.mjs
+import { uiClick } from './helpers/menu.mjs';
 export default async function touchTour(page, { out, logs }) {
   const cdp = await page.context().newCDPSession(page);
   const at = (x, z) => page.evaluate(([a, b]) => window.__game.view.screenPoint(a, b), [x, z]);
@@ -6,12 +7,14 @@ export default async function touchTour(page, { out, logs }) {
   const touch = (type, list) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts(list) });
   const tapXY = async (p) => { await touch('touchStart', [p]); await touch('touchEnd', []); await page.waitForTimeout(70); };
   const tap = async (x, z) => tapXY(await at(x, z));
-  const tapEl = async (sel) => {
+  const tapRaw = async (sel) => {
     await page.evaluate((s) => document.querySelector(s).scrollIntoView({ block: 'nearest', inline: 'center' }), sel);
     await page.waitForTimeout(40);
     const b = await page.locator(sel).boundingBox();
     await tapXY({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
   };
+  // 꾸미기 목록 안의 버튼이면 목록이 닫혀 있을 때 손가락으로 연 뒤에 누른다(6단계 HUD B)
+  const tapEl = (sel) => uiClick(page, sel, tapRaw);
   const swipe = async (a, b, steps = 6) => {
     const p = await at(...a), q = await at(...b);
     await touch('touchStart', [p]);

@@ -6,6 +6,7 @@
 // 4. 새로 열어도 모양이 그대로다(저장 3판)
 // 5. 걸린 화환을 집으면 "모양 고치기"가 나온다. 고치면 setLook 하나로 남고 되돌리기가 된다. 그만두면 그대로다
 // 6. 360×640 에서도 만들기 창이 화면 안에 들어오고, 칸이 44px 넘는다
+import { uiClick } from './helpers/menu.mjs';
 export default async function wreathTour(page, { out, logs }) {
   const say = (label, ok, extra = '') => logs.push(`${ok ? '통과' : '실패'}  ${label} ${extra}`);
   const g = (fn, arg) => page.evaluate(fn, arg);
@@ -35,7 +36,7 @@ export default async function wreathTour(page, { out, logs }) {
   };
   const wreaths = () => g(() => Object.values(window.__game.store.state.spaces.main.objects).filter((o) => o.part === 'wreath').map((o) => ({ id: o.id, wall: o.wall, i: o.i, look: o.look })));
   const composer = () => g(() => ({ open: window.__game.wreathUI.isOpen, look: window.__game.wreathUI.look, title: document.getElementById('wreath-title').textContent }));
-  const click = (sel) => page.click(sel);
+  const click = (sel) => uiClick(page, sel); // 꾸미기 목록 안의 버튼은 목록을 연 뒤에 누른다(6단계 HUD B)
 
   // 1. 방으로 들어가 꾸미기 → 벽걸이
   await click('#place-toggle');
