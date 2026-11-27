@@ -63,7 +63,11 @@ export function createShelterView({ canvas, assets, initial }) {
   const objects=new THREE.Group();scene.add(objects);
   const rings=new THREE.Group();scene.add(rings);
   const ringGeo=new THREE.RingGeometry(0.36,0.43,32);
-  const highlightMat=new THREE.MeshBasicMaterial({color:0xffedb2,transparent:true,opacity:0.52,depthWrite:false,side:THREE.DoubleSide});
+  // 새로 놓인 물건은 바닥의 넓은 고리와 위쪽의 작은 빛으로 잠깐 알아볼 수 있게 한다.
+  const highlightGeo=new THREE.RingGeometry(0.44,0.58,32);
+  const glintGeo=new THREE.OctahedronGeometry(0.13,0);
+  const highlightMat=new THREE.MeshBasicMaterial({color:0xffcf78,transparent:true,opacity:0.78,depthWrite:false,side:THREE.DoubleSide});
+  const glintMat=new THREE.MeshBasicMaterial({color:0xffe2a2,transparent:true,opacity:0.92,depthWrite:false});
   const selectedMat=new THREE.MeshBasicMaterial({color:0xfff8da,transparent:true,opacity:0.9,depthWrite:false,side:THREE.DoubleSide});
   const selectedRing=new THREE.Mesh(ringGeo,selectedMat);selectedRing.rotation.x=-Math.PI/2;selectedRing.visible=false;scene.add(selectedRing);
   let projection=shelterProjection(initial),current=initial;
@@ -71,18 +75,39 @@ export function createShelterView({ canvas, assets, initial }) {
   const collisionStore={get state(){return projection.state;},get derived(){return projection.derived;},
     subscribe(fn){listeners.add(fn);return ()=>listeners.delete(fn);}};
   const character=createCharacter({view:{scene},store:collisionStore,assets,start:{x:3.5,z:0.5},place:'main'});
-  let highlighted=[],highlightUntil=0,selection=null;
+  let highlighted=[],highlightUntil=0,selection=null,walkTarget=null;
   const nodes=new Map();
-  function ringAt(piece,material){
+  function markChange(entry,piece){
     const [x,z]=piece.cell.split('_').map(Number);
-    const n=new THREE.Mesh(ringGeo,material);n.rotation.x=-Math.PI/2;n.position.set(x+0.5,0.024,z+0.5);return n;
+    const group=new THREE.Group();
+    const ring=new THREE.Mesh(highlightGeo,highlightMat);
+    ring.rotation.x=-Math.PI/2;ring.position.set(x+0.5,0.026,z+0.5);group.add(ring);
+    const node=nodes.get(entry.mark+'-'+entry.slot);
+    const top=node?new THREE.Box3().setFromObject(node).max.y:0.7;
+    const glint=new THREE.Mesh(glintGeo,glintMat);
+    glint.position.set(x+0.5,top+0.24,z+0.5);
+    glint.userData.baseY=glint.position.y;group.add(glint);
+    return group;
+  }
+  function rebuildHighlights(){
+    rings.clear();
+    if(performance.now()>=highlightUntil)return;
+    for(const entry of highlighted){
+      const piece=current.items[entry.mark]?.[entry.slot];
+      if(piece)rings.add(markChange(entry,piece));
+    }
+  }
+  function walkTo(x,z){
+    walkTarget={x,z};
+    return character.goTo(x,z);
   }
   function refreshSelection(){
     const p=selection&&current.items[selection.mark]?.[selection.slot];
     selectedRing.visible=!!p;
     if(p){const [x,z]=p.cell.split('_').map(Number);selectedRing.position.set(x+0.5,0.027,z+0.5);}
   }
-  function sync(state) {
+  function sync(state,{preserveWalk=false}={}) {
+    const target=preserveWalk&&character.walking?walkTarget:null;
     current=state;projection=shelterProjection(state);
     objects.clear();rings.clear();nodes.clear();
     for(const [mark,slots] of Object.entries(state.items))for(const [slot,p] of Object.entries(slots)){
@@ -92,21 +117,20 @@ export function createShelterView({ canvas, assets, initial }) {
       group.position.set(x+0.5,0,z+0.5);group.rotation.y=p.rot*Math.PI/2;group.userData={mark,slot};
       group.add(model);objects.add(group);nodes.set(mark+'-'+slot,group);
     }
-    if(performance.now()<highlightUntil)for(const entry of highlighted){
-      const piece=state.items[entry.mark]?.[entry.slot];if(piece)rings.add(ringAt(piece,highlightMat));
-    }
     refreshSelection();
     scene.updateMatrixWorld(true);
+    rebuildHighlights();
     character.stop();
     for(const fn of listeners)fn();
     const safe=freeShelterCell(state,character.pos.x,character.pos.z);
     if(safe)character.teleport(...safe);
+    // 서버에서 친구가 바꾼 물건을 받아도 지금 가던 빈 자리까지 다시 길을 찾는다.
+    if(target)walkTo(target.x,target.z);
+    else walkTarget=null;
   }
   function setHighlights(entries) {
-    highlighted=entries.slice();highlightUntil=performance.now()+5500;rings.clear();
-    for(const entry of highlighted){
-      const piece=current.items[entry.mark]?.[entry.slot];if(piece)rings.add(ringAt(piece,highlightMat));
-    }
+    highlighted=entries.slice();highlightUntil=performance.now()+7500;
+    rebuildHighlights();
   }
   function resize() {
     const rect=canvas.getBoundingClientRect();
@@ -114,7 +138,7 @@ export function createShelterView({ canvas, assets, initial }) {
     renderer.setSize(w,h,false);
     const halfW=Math.max(6.35,5.5*aspect),halfH=halfW/aspect;
     Object.assign(camera,{left:-halfW,right:halfW,top:halfH,bottom:-halfH});
-    camera.position.set(4+13,13,4-16);camera.lookAt(4,0.6,4);camera.updateProjectionMatrix();camera.updateMatrixWorld();
+    camera.position.set(4+13,19,4-16);camera.lookAt(4,0.6,4);camera.updateProjectionMatrix();camera.updateMatrixWorld();
   }
   const observer=new ResizeObserver(resize);observer.observe(canvas);
   resize();sync(initial);
@@ -138,15 +162,24 @@ export function createShelterView({ canvas, assets, initial }) {
   function draw(now){
     const dt=Math.min(0.04,Math.max(0,(now-last)/1000));last=now;
     character.update(dt,null);
+    if(!character.walking)walkTarget=null;
     if(rings.children.length){
       const remaining=highlightUntil-now;
       if(remaining<=0)rings.clear();
-      else highlightMat.opacity=(calm?0.5:0.48+0.09*Math.sin(now/380))*Math.min(1,remaining/1300);
+      else {
+        const fade=Math.min(1,remaining/1800);
+        highlightMat.opacity=(calm?0.78:0.75+0.07*Math.sin(now/500))*fade;
+        glintMat.opacity=0.92*fade;
+        if(!calm)for(const group of rings.children){
+          const glint=group.children[1];
+          glint.position.y=glint.userData.baseY+Math.sin(now/550)*0.035;
+        }
+      }
     }
     renderer.render(scene,camera);frame=requestAnimationFrame(draw);
   }
   frame=requestAnimationFrame(draw);
-  return { sync, hit, setHighlights, character,
+  return { sync, hit, setHighlights, character, walkTo,
     select(value){selection=value;refreshSelection();},
     buildMode(value){grid.visible=value;},
     projectCell(cell){const [x,z]=cell.split('_').map(Number);return point(x+0.5,0,z+0.5);},

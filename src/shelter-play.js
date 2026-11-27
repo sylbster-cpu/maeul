@@ -61,7 +61,7 @@ function setState(next,origin){
     }
   }
   if(!mark){showSheet(false);clearSelection();mode='walk';message('이 쉼터의 참여 정보가 바뀌었습니다. 다시 접속해 주세요');}
-  view.sync(state);view.buildMode(mode!=='walk');renderBar();remember();
+  view.sync(state,{preserveWalk:origin==='remote'&&mode==='walk'});view.buildMode(mode!=='walk');renderBar();remember();
 }
 async function command(cmd){
   if(!canEdit())return false;
@@ -132,7 +132,7 @@ async function handleHit(hit){
       const p=state.items[hit.item.mark]?.[hit.item.slot];if(!p)return;
       message(MARK_LABELS[hit.item.mark]+'의 '+label(p.kind));
     }else if(cell){
-      const [x,z]=cell.split('_').map(Number);view.character.goTo(x+0.5,z+0.5);message('빈 곳을 누르면 걸어갑니다');
+      const [x,z]=cell.split('_').map(Number);view.walkTo(x+0.5,z+0.5);message('빈 곳을 누르면 걸어갑니다');
     }
     return;
   }
@@ -140,8 +140,12 @@ async function handleHit(hit){
   if(mode==='move'){
     const p=ownPiece();if(!p){finish();return;}
     if(hit.item||!validCell(cell)||state.cells[cell]){message('옮길 수 있는 빈 칸을 골라 주세요');return;}
+    const [x,z]=cell.split('_').map(Number);
+    if(Math.floor(view.character.pos.x)===x&&Math.floor(view.character.pos.z)===z){
+      message('내가 서 있는 칸에는 놓을 수 없습니다');return;
+    }
     if(await command({type:'move',mark,slot:selected.slot,expect:p,piece:{...p,cell}})){
-      setMode('edit');message('내 가구를 옮겼습니다');
+      if(selected&&canEdit())setMode('edit');message('내 가구를 옮겼습니다');
     }
     return;
   }

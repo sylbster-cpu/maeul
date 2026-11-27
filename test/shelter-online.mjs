@@ -61,8 +61,13 @@ export default async function onlineShelter(page,{out,logs}){
   say('연결이 끊기면 꾸미기 차단',await page.locator('#build').isDisabled());
   await page.evaluate(()=>window.__mockShelter.online());
   say('다시 연결되면 꾸미기 가능',!(await page.locator('#build').isDisabled()));
-  await page.evaluate(()=>window.__mockShelter.friendPlace());
-  say('서버의 친구 배치 반영',await page.evaluate(()=>!!window.__shelter.state.items.wind['1']));
+  const received=await page.evaluate(()=>{
+    window.__shelter.view.walkTo(7.5,0.5);
+    window.__mockShelter.friendPlace();
+    return {piece:!!window.__shelter.state.items.wind['1'],walking:window.__shelter.view.character.walking};
+  });
+  say('서버의 친구 배치 반영',received.piece);
+  say('친구 배치가 바뀌어도 걷던 목적지로 다시 길 찾음',received.walking);
   say('개인 집 저장 내용 유지',(await page.evaluate(()=>localStorage.getItem('house-lab-web:save')))===originalHouse);
   await page.screenshot({path:out+'-rejoin.png'});
 }

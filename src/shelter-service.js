@@ -1,5 +1,5 @@
 // 공동 쉼터만 읽고 쓴다. 개인 집과 방명록의 문서·저장소를 참조하지 않는다.
-import { createShelter, readShelter, validShelterId, memberMark, MARKS, apply } from './shelter-state.js';
+import { createShelter, readShelter, validShelterId, memberMark, MARKS, apply, cloneShelterData } from './shelter-state.js';
 
 // 동시에 쓰는 친구 때문에 판 번호가 바뀌었을 때만 바깥에서 최대 세 번 시도한다.
 // Firestore SDK가 일반적으로 재시도하는 ABORTED와 달리, 규칙에서 거절된 permission-denied는
@@ -99,7 +99,7 @@ export function createShelterService({ uid, db, api }) {
     async command(id, cmd) {
       // 호출한 화면의 명령이 대기 중에 변하지 않도록 복사한다.
       // 쓰기 성공 전에는 화면 상태를 확정하지 않는다.
-      const original = structuredClone(cmd);
+      const original = cloneShelterData(cmd);
       return transact(ref(id), old => apply(old, uid, original));
     },
   };

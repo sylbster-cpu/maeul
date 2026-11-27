@@ -1,5 +1,5 @@
 // 실제 서버를 사용하지 않는 독립 조작 체험. 기존 집 저장을 건드리지 않는지 확인한다.
-// TOUCH=1 node tools/shot.mjs /shelter.html shots/shelter-preview 360 640 test/shelter-preview.mjs
+// TOUCH=1 node tools/shot.mjs /shelter.html?preview=1 shots/shelter-preview 360 640 test/shelter-preview.mjs
 import assert from 'node:assert/strict';
 export default async function shelterPreview(page,{out,logs}){
   const g=fn=>page.evaluate(fn);
@@ -13,7 +13,11 @@ export default async function shelterPreview(page,{out,logs}){
     assert.ok(p);await page.touchscreen.tap(p.x,p.y);
   };
   const read=()=>g(()=>({mode:window.__shelterPreview.mode,state:window.__shelterPreview.state,sheet:window.__shelterPreview.sheet}));
-  const before=await g(()=>({keys:Object.keys(localStorage),width:document.documentElement.scrollWidth,height:document.documentElement.scrollHeight,stage:document.getElementById('stage').getBoundingClientRect().height}));
+  const before=await g(()=>{
+    localStorage.setItem('house-lab-web:save','test-house');
+    localStorage.setItem('house-lab-web:fishing','test-fishing');
+    localStorage.setItem('maeul:gathering','test-gathering');
+    return {saved:Object.entries(localStorage).sort(),width:document.documentElement.scrollWidth,height:document.documentElement.scrollHeight,stage:document.getElementById('stage').getBoundingClientRect().height};});
   say('한 화면, 걷는 장면 75% 이상',before.width<=360&&before.height<=640&&before.stage/640>=0.75,JSON.stringify(before));
   const initial=await read();say('친구 가구와 내 빈 슬롯이 보인다',Object.keys(initial.state.items.wind).length===3&&Object.keys(initial.state.items.tree).length===0);
   await page.screenshot({path:out+'-1-walk.png'});
@@ -43,7 +47,7 @@ export default async function shelterPreview(page,{out,logs}){
   await page.waitForTimeout(1600);
   const pos=await g(()=>({...window.__shelterPreview.view.character.pos}));
   say('캐릭터가 빈 칸으로 이동',Math.hypot(pos.x-4.5,pos.z-1.5)<0.3,JSON.stringify(pos));
-  const after=await g(()=>Object.keys(localStorage));
-  say('집과 채집·낚시를 포함한 브라우저 저장 미변경',JSON.stringify(after)===JSON.stringify(before.keys));
+  const after=await g(()=>Object.entries(localStorage).sort());
+  say('기존 집과 채집·낚시 저장의 키와 값 모두 미변경',JSON.stringify(after)===JSON.stringify(before.saved));
   await page.screenshot({path:out+'-3-complete.png'});
 }

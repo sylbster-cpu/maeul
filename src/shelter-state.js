@@ -5,6 +5,9 @@ export const MARK_LABELS = Object.freeze({ tree: '나무', wind: '바람', star:
 export const SLOTS = Object.freeze(['0', '1', '2', '3', '4', '5']);
 export const SHELTER_KINDS = Object.freeze(['stool', 'side_table', 'plant', 'lamp']);
 export const ENTRANCE = Object.freeze(['3_0', '4_0', '3_1', '4_1']);
+// 오래된 모바일 브라우저에서도 순수 데이터 복사를 할 수 있도록 structuredClone에 기대지 않는다.
+export const cloneShelterData = value => Array.isArray(value) ? value.map(cloneShelterData)
+  : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([k,v])=>[k,cloneShelterData(v)])) : value;
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 const map = (v) => !!v && typeof v === 'object' && !Array.isArray(v) &&
   (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null);
@@ -61,7 +64,7 @@ export function readShelter(data) {
   } else if (!slotFits(c.slot) ||
       (c.type === 'place' ? c.from !== '' : !validCell(c.from)) ||
       (c.type === 'remove' ? c.to !== '' : !validCell(c.to))) bad();
-  return structuredClone(s);
+  return cloneShelterData(s);
 }
 
 // 명령에는 현재 본 가구(expect)가 들어간다. 다른 탭이 바꾼 가구를 오래된 명령으로 덮지 않는다.
@@ -100,7 +103,7 @@ export function validate(state, uid, cmd) {
 export function apply(state, uid, cmd) {
   const check = validate(state, uid, cmd);
   if (!check.ok) throw new Error(check.reason);
-  const next = structuredClone(state);
+  const next = cloneShelterData(state);
   const { type, mark, slot } = cmd;
   if (type === 'join') {
     next.members[mark] = uid;
