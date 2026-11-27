@@ -31,13 +31,15 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
   let lastPlace = 'yard';
   // 아래 막대가 보일 버튼을 정하는 상태 (6단계 HUD B)
   let mode = 'walk', tool = 'select', carrying = false, carryWreath = false, carryPart = null, hintText = '', sheetOpen = false;
-  // 걷기 [꾸미기][수첩], 꾸미기 [고른 것▴][돌리기][되돌리기][수첩][완료], 옮기는 중 [그만두기][돌리기][모양 고치기][되돌리기][완료].
-  // 돌리기는 바닥·올려놓는 것을 고르거나 들고 있을 때만 보인다(벽에 거는 것은 돌리지 않는다). 방문자는 [수첩][내 집으로]
+  // 걷기 [꾸미기][수첩], 꾸미기 [고른 것▴][돌리기][되돌리기][수첩][완료], 옮기는 중 [그만두기][돌리기][모양 고치기][되돌리기].
+  // 돌리기는 바닥·올려놓는 것을 고르거나 들고 있을 때만 보인다(벽에 거는 것은 돌리지 않는다). 방문자는 [수첩][내 집으로].
+  // 옮기는 중에는 완료를 감춘다. 들고 있을 때의 완료가 옮기기를 마치는 것인지 꾸미기를 끝내는 것인지 헷갈리기 때문이다
+  // (GPT 글 7211434874). 옮길 자리를 누르거나 그만두기(제자리로)를 누른 뒤에 완료가 돌아온다
   function renderBar() {
     const build = mode === 'build';
     const held = PARTS[carrying ? carryPart : tool];
     $('mode-build').hidden = guest || build;
-    $('mode-walk').hidden = !build;
+    $('mode-walk').hidden = !build || carrying;
     $('open-catalog').hidden = !build || carrying;
     $('cancel-carry').hidden = !build || !carrying;
     $('wreath-edit').hidden = !build || !carryWreath;

@@ -117,6 +117,9 @@ export default async function wreathTour(page, { out, logs }) {
   await frames(3);
   const picked = await g(() => ({ carry: window.__game.input.state.carry?.part, edit: !document.getElementById('wreath-edit').hidden, hint: document.getElementById('hint').textContent }));
   say('걸린 화환을 누르면 집어 들고 "모양 고치기"가 나온다(옮기기는 그대로)', picked.carry === 'wreath' && picked.edit && picked.hint.includes('모양 고치기'), JSON.stringify(picked));
+  // 6단계 HUD B: 화환은 벽에 거는 것이라 돌리기가 없다. 옮기는 중이라 완료·수첩·고른 것 버튼은 감춘다(GPT 글 7211434874)
+  const wreathBar = await g(() => [...document.querySelectorAll('.dock .bar-btn')].filter((b) => !b.hidden).map((b) => b.id).join());
+  say('화환을 들고 있을 때 막대는 [그만두기][모양 고치기][되돌리기] 한 줄이다', wreathBar === 'cancel-carry,wreath-edit,undo', wreathBar);
   await click('#wreath-edit');
   const editing = await composer();
   const putBack = await g(() => ({ carry: window.__game.input.state.carry, edit: !document.getElementById('wreath-edit').hidden }));

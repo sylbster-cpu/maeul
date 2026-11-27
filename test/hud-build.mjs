@@ -113,16 +113,21 @@ export default async function hudBuild(page, { out, logs }) {
   // 8) 옮기기: 놓은 스툴을 집으면 막대가 [그만두기][돌리기][되돌리기][완료] 로 바뀐다(수첩과 고른 것은 감춘다)
   await page.click('#mode-build');
   await tapEl('#tool-select');
+  const pSelect = await spot();
   const placed = await g(() => Object.values(window.__game.store.state.spaces.yard.objects).find((o) => o.part === 'stool' && o.y === 15));
   const at = await g((o) => window.__game.view.screenPoint(o.x + 0.5, o.y + 0.5), placed);
   await tap(at.x, at.y);
   await frames(4);
   const carryBar = await bar();
   const carrying = await g(() => window.__game.input.state.carry?.part);
-  say('놓인 것을 집으면 막대가 [그만두기][돌리기][되돌리기][완료] 로 바뀐다', carrying === 'stool' && carryBar.buttons.join() === 'cancel-carry,rotate-part,undo,mode-walk' && carryBar.h === walkBar.h, JSON.stringify({ carrying, carryBar }));
+  const pCarry = await spot();
+  // 들고 있을 때는 완료를 감춘다(옮기기를 마치는 것인지 꾸미기를 끝내는 것인지 헷갈리지 않게, GPT 글 7211434874)
+  say('놓인 것을 집으면 막대가 [그만두기][돌리기][되돌리기] 로 바뀐다(완료는 감춤)', carrying === 'stool' && carryBar.buttons.join() === 'cancel-carry,rotate-part,undo' && carryBar.h === walkBar.h, JSON.stringify({ carrying, carryBar }));
+  say('옮기기를 고르거나 집어 들어도 같은 지점이 2px 넘게 움직이지 않는다', drift(p0, pSelect) <= 2 && drift(p0, pCarry) <= 2, JSON.stringify({ p0, pSelect, pCarry }));
   await page.screenshot({ path: `${out}-4-carry.png` });
   await tapEl('#cancel-carry');
-  say('그만두기를 누르면 옮기기를 그만두고 고른 것 버튼이 돌아온다', !(await g(() => window.__game.input.state.carry)) && (await bar()).buttons.includes('open-catalog'));
+  const back = await g((o) => { const n = window.__game.store.state.spaces.yard.objects[o.id]; return n && { x: n.x, y: n.y, rot: n.rot }; }, placed);
+  say('그만두기를 누르면 들고 있던 것은 제자리에 남고, 고른 것 버튼과 완료가 돌아온다', !(await g(() => window.__game.input.state.carry)) && back && back.x === placed.x && back.y === placed.y && back.rot === placed.rot && (await bar()).buttons.join() === 'open-catalog,undo,fish-log,mode-walk', JSON.stringify({ back, bar: (await bar()).buttons }));
 
   // 9) Esc 로 목록을 접는다
   await tapEl('#open-catalog');
