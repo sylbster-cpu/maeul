@@ -49,5 +49,121 @@ service cloud.firestore {
         allow delete: if isOwner(ownerUid);
       }
     }
+
+    // 7단계 공동 쉼터: 작은 한 문서 안에서 회원·가구·점유표를 함께 바꾼다.
+    // 초기 상태와 매 명령의 전이만 허용하므로 다른 사람의 슬롯이나 고아 점유를 만들 수 없다.
+    function roomIdFits(id) {
+      return id.matches("^[A-Za-z0-9]{20}$");
+    }
+    function shelterUidFits(uid) {
+      return uid is string && uid.matches("^[A-Za-z0-9_-]{6,128}$");
+    }
+    function shelterKeys(m, names) {
+      return m is map && m.keys().hasAll(names) && m.keys().hasOnly(names);
+    }
+    function marks() { return ['tree', 'wind', 'star', 'moon']; }
+    function slots() { return ['0', '1', '2', '3', '4', '5']; }
+    function cellFits(cell) {
+      return cell is string && cell.matches("^[0-7]_[0-7]$")
+        && !(cell in ['3_0', '4_0', '3_1', '4_1']);
+    }
+    function pointer(mark, slot) { return {'mark': mark, 'slot': slot}; }
+    function pieceFits(p, cell) {
+      return shelterKeys(p, ['kind','cell','rot'])
+        && p.kind in ['stool','side_table','plant','lamp']
+        && cellFits(cell) && p.cell == cell
+        && p.rot is int && p.rot >= 0 && p.rot < 4;
+    }
+    function changeFits(c) {
+      return shelterKeys(c, ['type','mark','slot','from','to'])
+        && c.mark in marks()
+        && c.type in ['create','join','leave','place','move','rotate','remove']
+        && c.slot is string && c.from is string && c.to is string;
+    }
+    function shelterBase(d) {
+      return shelterKeys(d, ['version','ownerUid','members','items','cells','revision','change','updatedAt'])
+        && d.version is int && d.version == 1 && shelterUidFits(d.ownerUid)
+        && d.members is map && d.members.keys().hasOnly(marks())
+        && d.items is map && d.items.keys().hasOnly(marks())
+        && d.cells is map
+        && d.revision is int && d.revision >= 0
+        && changeFits(d.change) && d.updatedAt is timestamp && d.updatedAt == request.time;
+    }
+    function noCells(c) { return c.slot == '' && c.from == '' && c.to == ''; }
+    function shelterCreate(d) {
+      return shelterBase(d) && d.ownerUid == request.auth.uid && d.revision == 0
+        && d.members == {'tree': request.auth.uid} && d.items == {'tree': {}}
+        && d.cells == {}
+        && d.change == {'type':'create','mark':'tree','slot':'','from':'','to':''};
+    }
+    function shelterJoin(b, a, c) {
+      return c.type == 'join' && noCells(c)
+        && !(request.auth.uid in b.members.values()) && !(c.mark in b.members)
+        && a.members.diff(b.members).affectedKeys().hasOnly([c.mark])
+        && a.members[c.mark] == request.auth.uid
+        && a.items.diff(b.items).affectedKeys().hasOnly([c.mark])
+        && a.items[c.mark] == {} && a.cells == b.cells;
+    }
+    function shelterLeave(b, a, c) {
+      return c.type == 'leave' && noCells(c)
+        && request.auth.uid != b.ownerUid && b.members[c.mark] == request.auth.uid
+        && b.items[c.mark] == {}
+        && a.members.diff(b.members).affectedKeys().hasOnly([c.mark]) && !(c.mark in a.members)
+        && a.items.diff(b.items).affectedKeys().hasOnly([c.mark]) && !(c.mark in a.items)
+        && a.cells == b.cells;
+    }
+    function shelterPlace(b, a, c) {
+      return c.type == 'place' && c.from == ''
+        && !(c.slot in b.items[c.mark]) && !(c.to in b.cells)
+        && pieceFits(a.items[c.mark][c.slot], c.to)
+        && a.cells.diff(b.cells).affectedKeys().hasOnly([c.to])
+        && a.cells[c.to] == pointer(c.mark, c.slot);
+    }
+    function oldPieceMatches(b, c) {
+      return cellFits(c.from) && b.items[c.mark][c.slot].cell == c.from
+        && b.cells[c.from] == pointer(c.mark, c.slot);
+    }
+    function shelterRemove(b, a, c) {
+      return c.type == 'remove' && c.to == '' && oldPieceMatches(b, c)
+        && !(c.slot in a.items[c.mark]) && !(c.from in a.cells)
+        && a.cells.diff(b.cells).affectedKeys().hasOnly([c.from]);
+    }
+    function shelterMove(b, a, c) {
+      return c.type == 'move' && oldPieceMatches(b, c) && c.to != c.from && !(c.to in b.cells)
+        && pieceFits(a.items[c.mark][c.slot], c.to)
+        && a.items[c.mark][c.slot].kind == b.items[c.mark][c.slot].kind
+        && a.cells.diff(b.cells).affectedKeys().hasOnly([c.from,c.to])
+        && !(c.from in a.cells) && a.cells[c.to] == pointer(c.mark, c.slot);
+    }
+    function shelterRotate(b, a, c) {
+      return c.type == 'rotate' && oldPieceMatches(b, c) && c.to == c.from
+        && pieceFits(a.items[c.mark][c.slot], c.to)
+        && a.items[c.mark][c.slot].kind == b.items[c.mark][c.slot].kind
+        && a.items[c.mark][c.slot].rot != b.items[c.mark][c.slot].rot && a.cells == b.cells;
+    }
+    function shelterEdit(b, a, c) {
+      return c.type in ['place','remove','move','rotate'] && c.slot in slots()
+        && b.members[c.mark] == request.auth.uid && a.members == b.members
+        && a.items.diff(b.items).affectedKeys().hasOnly([c.mark])
+        && a.items[c.mark] is map && a.items[c.mark].keys().hasOnly(slots())
+        && a.items[c.mark].diff(b.items[c.mark]).affectedKeys().hasOnly([c.slot])
+        && (shelterPlace(b, a, c) || shelterRemove(b, a, c)
+          || shelterMove(b, a, c) || shelterRotate(b, a, c));
+    }
+    function shelterUpdate(b, a) {
+      return shelterBase(a) && a.ownerUid == b.ownerUid && a.revision == b.revision + 1
+        && (shelterJoin(b, a, a.change) || shelterLeave(b, a, a.change) || shelterEdit(b, a, a.change));
+    }
+
+    match /shelters/{roomId} {
+      // 주소를 아는 인증 사용자만 단건 읽기/참여. 전체 쉼터 검색은 금지한다.
+      allow get: if signedIn() && roomIdFits(roomId);
+      allow list: if false;
+      allow create: if signedIn() && roomIdFits(roomId) && shelterUidFits(request.auth.uid)
+        && shelterCreate(request.resource.data);
+      allow update: if signedIn() && roomIdFits(roomId) && shelterUidFits(request.auth.uid)
+        && shelterUpdate(resource.data, request.resource.data);
+      allow delete: if false;
+    }
   }
 }

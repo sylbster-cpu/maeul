@@ -53,12 +53,12 @@ jobs:
           set -euo pipefail
           mkdir -p shots
           run_tour() {
-            local label="$1" width="$2" height="$3" script="$4" touch="$5"
+            local label="$1" width="$2" height="$3" script="$4" touch="$5" url="${6:-/}"
             echo "=== ${label} ==="
             if [ "$touch" = "yes" ]; then
-              TOUCH=1 timeout 210 node tools/shot.mjs / "shots/${label}" "$width" "$height" "$script" | tee "shots/${label}.log"
+              TOUCH=1 timeout 210 node tools/shot.mjs "$url" "shots/${label}" "$width" "$height" "$script" | tee "shots/${label}.log"
             else
-              timeout 210 node tools/shot.mjs / "shots/${label}" "$width" "$height" "$script" | tee "shots/${label}.log"
+              timeout 210 node tools/shot.mjs "$url" "shots/${label}" "$width" "$height" "$script" | tee "shots/${label}.log"
             fi
             if grep -E '^실패  |^\[pageerror\]|^\[shot\] __ready' "shots/${label}.log"; then
               echo "브라우저 시험 실패: ${label}"
@@ -86,6 +86,8 @@ jobs:
           run_tour wreath 390 844 test/wreath.mjs yes
           run_tour hud 360 640 test/hud.mjs yes
           run_tour hud-build 360 640 test/hud-build.mjs yes
+          run_tour shelter-preview 360 640 test/shelter-preview.mjs yes /shelter.html?preview=1
+          run_tour shelter-online 360 640 test/shelter-online.mjs yes /shelter.html?preview=1
 
       - name: 브라우저 시험 로그·화면 보관
         if: always()
