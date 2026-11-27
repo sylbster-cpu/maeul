@@ -58,7 +58,8 @@ export function createOnlineUI({ store, visitorUid = null, readOnly = false, blo
   function hide() {
     stateRun++;
     layer.hidden = true;
-    button.focus();
+    // 온라인 버튼은 ☰ 메뉴 안에 있다. 메뉴가 닫혀 있으면 메뉴 버튼으로 돌아간다(6단계 HUD A)
+    (button.offsetParent ? button : $('menu-toggle'))?.focus();
   }
   // 닫기는 서버 응답을 기다리는 중에도 된다. 그때는 기다리던 요청의 결과를 버린다
   function close() {

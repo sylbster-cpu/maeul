@@ -33,7 +33,7 @@ const TOUCH_HINTS = {
   carryWreath: '옮길 자리를 누릅니다. 모양 고치기 버튼으로 모양을 바꿀 수 있습니다.',
 };
 
-export function createInput({ canvas, view, store, history, character, ui, audio, haptics = null, travel, fishing = null, gathering = null, wreathUI = null, readOnly = false }) {
+export function createInput({ canvas, view, store, history, character, ui, audio, haptics = null, travel, fishing = null, gathering = null, wreathUI = null, hintMemory = null, readOnly = false }) {
   // look: 화환 도구로 걸 모양(만들기 창에서 고른 것)
   const s = { mode: 'walk', tool: 'select', rot: 0, drag: null, carry: null, pointer: null, press: null, lastPlaced: null, look: null };
   const isWreath = (partId) => !!PARTS[partId]?.wreath;
@@ -49,11 +49,17 @@ export function createInput({ canvas, view, store, history, character, ui, audio
   const kindOfPart = (partId) => ({ wall: 'wallitem', top: 'top' }[layerOf(partId)] || 'object');
   const toolKind = () => (PARTS[s.tool] ? kindOfPart(s.tool) : s.tool);
   const placing = () => ['object', 'top', 'wallitem'].includes(toolKind());
+  // 걷기·드나들기·앉기 안내는 처음 몇 번의 접속에만 보인다(6단계 HUD A, src/hint-memory.js).
+  // 낚시·꾸미기·주운 것의 수처럼 그때그때 필요한 안내는 늘 보인다
+  const LEARNED = new Set(['walkYard', 'walkRoom', 'seated']);
+  // 눌러서 걷기·드나들기·앉기를 한 번 해 보면 이번 접속에서는 그곳의 걷기 안내를 접는다(src/hint-memory.js done)
+  const learned = () => { if (!hintMemory) return; hintMemory.done(here() === 'yard' ? 'walkYard' : 'walkRoom'); ui.setHint(hintFor()); };
   function hintFor() {
     if (s.mode === 'walk') {
       const fish = fishing?.hint();
       if (fish != null) return fish;
-      return character.seated ? hints.seated : here() === 'yard' ? hints.walkYard : hints.walkRoom;
+      const key = character.seated ? 'seated' : here() === 'yard' ? 'walkYard' : 'walkRoom';
+      return !hintMemory || !LEARNED.has(key) || hintMemory.shows(key) ? hints[key] : '';
     }
     if (s.carry) return isWreath(s.carry.part) ? hints.carryWreath : hints.carry;
     if (isWreath(s.tool)) return hints.wreath;
@@ -310,9 +316,9 @@ export function createInput({ canvas, view, store, history, character, ui, audio
       // 연못의 물을 누르면 물가로 가서 찌를 던진다. 다른 곳을 누르면 물가로 가던 것을 그만둔다
       const water = !hit?.special && fishing?.isWater(at.pt);
       if (!water) fishing?.cancel();
-      if (hit?.special) { travel.walkToDoor(); return; }
+      if (hit?.special) { learned(); travel.walkToDoor(); return; }
       travel.cancel(); // 드나들려고 걷던 중이었으면 그만둔다
-      if (trySit(hit, at)) return;
+      if (trySit(hit, at)) { learned(); return; }
       if (water) { fishing.start(at.pt); return; }
       // 숲의 주울 거리를 누르면 그 위에 서지 않고 카메라 반대쪽 곁으로 걸어간다(가까이 가면 줍는다, gathering-play.js).
       // 일반 바닥을 누르는 이동 방식은 그대로 유지한다.
@@ -323,7 +329,7 @@ export function createInput({ canvas, view, store, history, character, ui, audio
         // 구경하는 사람은 꾸미기를 쓸 수 없으므로 고치는 방법은 집주인에게만 알린다
         ui.toast(readOnly ? '가구 때문에 그곳으로 갈 수 없습니다' : '가구 때문에 그곳으로 갈 수 없습니다. 꾸미기에서 통로를 만들어 주세요', 'error');
         audio.play('error');
-      } else if (walking) view.showMarker(target.x, target.z);
+      } else if (walking) { view.showMarker(target.x, target.z); learned(); }
       return;
     }
     const drag = s.drag;

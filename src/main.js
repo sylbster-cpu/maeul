@@ -27,6 +27,7 @@ import { createPondView } from './fishing-view.js';
 import { createFishing } from './fishing-play.js';
 import { createFishingUI, createCatchCard } from './fishing-ui.js';
 import { createWreathUI } from './wreath-ui.js';
+import { createHintMemory } from './hint-memory.js';
 
 watchShareHash(window);
 
@@ -120,11 +121,17 @@ async function start(saved = {}) {
   // ---- 마당과 방 사이를 오가기 ----
   const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let input;
+  let fishingUI = null;
+  // 걷기 안내를 처음 몇 번의 접속에만 보이기 위한 기억. 집 저장과 따로 둔다(src/hint-memory.js)
+  const hintMemory = createHintMemory(openStorage());
   let busy = false;
   let switchingHouse = !!transferError; // 교체·복구 중에는 예전 화면이 저장 내용을 덮지 않는다
   let pending = null; // 문이나 깔개를 눌러 걸어가는 중이면 'door'
   function go(place) {
     if (busy || character.place === place) return;
+    // 드나들어 보았으므로 이번 접속에서는 떠나는 곳의 걷기 안내를 접는다. 문·깔개로 걸어가기, 걸어 들어가기,
+    // 왼쪽 위 있는 곳 버튼이 모두 여기를 지난다(GPT 검토 PR #49 97c4210, src/hint-memory.js done)
+    hintMemory.done(character.place === 'yard' ? 'walkYard' : 'walkRoom');
     const arrive = () => {
       input.leavePlace();
       if (place === 'yard') { const p = doorFront(); character.setPlace('yard', p.x, p.z, 0); view.setPlace('yard'); view.snapFocus(p.x, p.z); }
@@ -264,6 +271,7 @@ async function start(saved = {}) {
       choose: (cmd) => input.choose(cmd),
       upgrade: () => input.upgrade(),
       travel: () => travel.toggle(),
+      resetHints: () => { hintMemory.reset(); input?.syncUI(); },
     },
   });
   // 온라인 기능은 설정이 없으면 버튼을 숨긴다. 로컬 집/오프라인 링크는 항상 독립적으로 작동한다.
@@ -281,7 +289,7 @@ async function start(saved = {}) {
   const fishing = createFishing({
     character, ui, audio, haptics, storage: openStorage(), catchCard: createCatchCard(),
     pondView,
-    onChange: () => input?.syncUI(),
+    onChange: () => { input?.syncUI(); fishingUI?.sync(); },
   });
   // 숲에서 줍기(4단계 채집). 기록은 집·낚시 기록과 따로 이 브라우저에 둔다. 친구 집을 구경하는 중에도 내 기록에 남는다
   gathering = createGathering({ character, view, ui, audio, haptics, storage: openStorage() });
@@ -290,8 +298,8 @@ async function start(saved = {}) {
   store.subscribe(showFound);
   gathering.subscribe(showFound);
   showFound();
-  createFishingUI({ fishing, gathering });
-  input = createInput({ canvas, view, store, history, character, ui, audio, haptics, travel, fishing, gathering, wreathUI, readOnly: guest });
+  fishingUI = createFishingUI({ fishing, gathering, store, guest, toast: (message) => ui.toast(message) });
+  input = createInput({ canvas, view, store, history, character, ui, audio, haptics, travel, fishing, gathering, wreathUI, hintMemory, readOnly: guest });
   history.subscribe((status) => ui.setHistory(status));
   ui.setHistory(history.status());
   if (!guest && handed?.mode === 'build') input.setMode('build');
@@ -420,7 +428,7 @@ async function start(saved = {}) {
 
   // 열어 둔 화면에 새 판이 도착해도 꾸민 집을 잃지 않게 한다
   window.claude?.hot?.snapshot?.(() => guest || switchingHouse ? {} : ({ state: store.state, place: character.place, pos: { ...character.pos }, mode: input.state.mode }));
-  window.__game = { store, view, character, input, history, saveNow, travel, fishing, gathering, haptics, wreathUI, pondWatch: () => pondView.watchPoints };
+  window.__game = { store, view, character, input, history, saveNow, travel, fishing, gathering, haptics, wreathUI, hintMemory, fishingUI, ui, pondWatch: () => pondView.watchPoints };
   window.__ready = true;
 }
 

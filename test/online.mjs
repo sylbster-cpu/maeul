@@ -1,5 +1,6 @@
 // 온라인 기능을 가짜 서버 응답으로 열어 보는 브라우저/모바일 UI 시험.
 // 실제 Firebase 설정·결제·실서버는 쓰지 않는다.
+import { menuClick, menuVisible } from './helpers/menu.mjs';
 export default async function onlineTour(page, { out, logs }) {
   const say = (label, ok) => logs.push(`${ok ? '통과' : '실패'}  ${label}`);
   const mock = `
@@ -36,9 +37,9 @@ export default async function onlineTour(page, { out, logs }) {
     window.__game.saveNow();
   });
   const original = await page.evaluate(() => JSON.parse(localStorage.getItem('house-lab-web:save')).state);
-  say('설정된 경우 온라인 버튼이 나타난다', await page.locator('#online-action').isVisible());
+  say('설정된 경우 온라인 버튼이 나타난다', await menuVisible(page, '#online-action'));
 
-  await page.click('#online-action');
+  await menuClick(page, '#online-action');
   say('온라인 게시 창이 화면 위에 열린다', await page.locator('#online-layer').isVisible());
   const stateText = () => page.evaluate(() => document.getElementById('online-state').textContent);
   await page.waitForFunction(() => document.getElementById('online-state').dataset.state === 'none');
@@ -57,14 +58,14 @@ export default async function onlineTour(page, { out, logs }) {
   await page.waitForFunction(() => document.getElementById('share-link').value.includes('#visit='));
   say('온라인 게시 버튼이 짧은 방문 링크를 표시한다', await page.locator('#share-layer').isVisible());
   await page.click('#share-close');
-  await page.click('#online-action');
+  await menuClick(page, '#online-action');
   await page.waitForFunction(() => document.getElementById('online-state').dataset.state === 'public');
   say('게시한 뒤 창을 열면 공개 중이라고 알려 준다', /지금 공개 중입니다.*마지막 게시 11\. 20\./.test(await stateText()));
   await page.click('#online-unpublish');
   await page.waitForFunction(() => document.getElementById('online-state').dataset.state === 'private');
   say('공개 중지를 누르면 중지됐다고 바로 알려 준다', (await stateText()).includes('공개가 중지되어 있습니다'));
   await page.click('#online-close');
-  await page.click('#online-action');
+  await menuClick(page, '#online-action');
   await page.waitForFunction(() => document.getElementById('online-state').dataset.state === 'private');
   say('창을 다시 열어도 중지 상태가 보인다', (await stateText()).includes('공개가 중지되어 있습니다'));
   await page.screenshot({ path: `${out}-state.png` });
@@ -76,7 +77,7 @@ export default async function onlineTour(page, { out, logs }) {
   ]);
   await page.waitForFunction(() => window.__ready === true && !document.getElementById('my-home').hidden);
   say('방문 모드에서는 편집 버튼이 숨겨진다', await page.locator('#mode-build').isHidden());
-  await page.click('#online-action');
+  await menuClick(page, '#online-action');
   say('방문자의 창에는 게시 상태 줄이 없다', await page.locator('#online-state').isHidden());
   await page.fill('#online-note-text', '반가워요');
   await page.click('#online-submit');

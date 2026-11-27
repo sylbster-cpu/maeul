@@ -3,6 +3,7 @@
 // 끝에서는 가져오기·맞바꾸기 확인 창이 떠 있는 사이 다른 탭이 새 판의 집을 저장해도 그 원문을 잃지 않는지 본다.
 // 확인 창은 브라우저의 진짜 창(window.confirm)이다. 창이 떠 있는 동안 이 탭은 다른 탭의 변경을 받지 못하고,
 // 창을 닫은 바로 그 자리에서 읽으면 옛 내용이 나왔다(2026-11-26 GPT 재검토, 가짜 저장소 시험으로는 보이지 않음)
+import { menuClick } from './helpers/menu.mjs';
 export default async function transferTabsTour(page, { out, logs }) {
   const say = (name, ok, details = '') => logs.push(`${ok ? '통과' : '실패'}  ${name} ${details}`);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 30000 });
@@ -103,7 +104,7 @@ export default async function transferTabsTour(page, { out, logs }) {
       await page.goto(link);
       await page.waitForFunction(() => window.__ready === true && document.getElementById('share-house').textContent === '집 가져오기', null, { timeout: 30000 });
       const accepted = acceptAfterWrite('zz-import');
-      await page.click('#share-house');
+      await menuClick(page, '#share-house');
       const newerImport = await accepted;
       await page.waitForFunction(() => (document.getElementById('toast')?.textContent || '').includes('더 새로운 판'), null, { timeout: 5000 }).catch(() => {});
       const afterImport = await houseKeys();
@@ -133,7 +134,7 @@ export default async function transferTabsTour(page, { out, logs }) {
           resolve(text);
         });
       });
-      await page.click('#share-house');
+      await menuClick(page, '#share-house');
       const sameVersion = await editedInOther;
       await page.waitForFunction(() => (document.getElementById('toast')?.textContent || '').includes('다른 탭에서 집이 바뀌어'), null, { timeout: 5000 }).catch(() => {});
       const afterSame = await houseKeys();
@@ -147,7 +148,7 @@ export default async function transferTabsTour(page, { out, logs }) {
       const kept = (await houseKeys()).previous;
       await page.goto(origin + '/');
       await page.waitForFunction(() => window.__ready === true && document.getElementById('share-house').textContent === '집 공유', null, { timeout: 30000 });
-      await page.click('#share-house');
+      await menuClick(page, '#share-house');
       await page.waitForSelector('#share-restore-previous:not([hidden])', { timeout: 10000 });
       const swapped = acceptAfterWrite('zz-swap');
       const reloaded = page.waitForEvent('load', { timeout: 15000 }).catch(() => null);

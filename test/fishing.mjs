@@ -234,6 +234,7 @@ export default async function fishingTour(page, { out, logs }) {
 
   // 7) 낚시 기록 창
   await page.click('#fish-log');
+  await page.click('#log-tab-fish');
   const panel = await g(() => ({ open: !document.getElementById('fish-layer').hidden, rows: [...document.querySelectorAll('#fish-list li strong')].map((e) => e.textContent), text: document.getElementById('log-fish').innerText }));
   say('낚시 기록 창에 잡은 물고기만 보인다', panel.open && panel.rows.join() === '송사리,잉어,메기', JSON.stringify(panel));
   say('못 잡은 물고기가 몇 종인지는 알리지 않는다 (2026-11-26 사용자 결정)', !/종 더|모두 잡아/.test(panel.text), panel.text);

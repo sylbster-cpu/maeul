@@ -1,6 +1,7 @@
 // 온라인 서버가 응답하지 않을 때의 화면 확인. 가짜 서비스로 응답을 멈추거나 늦춘다.
 // 실제 Firebase 에는 접속하지 않는다.
 // 실행: TOUCH=1 node tools/shot.mjs / shots/online-timeout 390 844 test/online-timeout.mjs
+import { menuClick } from './helpers/menu.mjs';
 export default async function onlineTimeoutTour(page, { out, logs }) {
   const say = (label, ok, extra = '') => logs.push(`${ok ? '통과' : '실패'}  ${label} ${extra}`);
   const g = (fn, arg) => page.evaluate(fn, arg);
@@ -39,7 +40,7 @@ export default async function onlineTimeoutTour(page, { out, logs }) {
   // 1) 게시가 응답하지 않을 때
   await page.goto(base + '?hang=publish'); await ready();
   await g(() => { window.__game.store.dispatch({ type: 'setExterior', slot: 'roof', value: 'slate' }); window.__game.saveNow(); });
-  await page.click('#online-action');
+  await menuClick(page, '#online-action');
   await page.click('#online-publish');
   // 세 값을 한 번에 읽는다. 따로 읽으면 그 사이에 한도가 지나 값이 엇갈릴 수 있다
   const waiting = await g(() => ({ text: document.getElementById('online-status').textContent, closeOff: document.getElementById('online-close').disabled, publishOff: document.getElementById('online-publish').disabled }));
@@ -47,7 +48,7 @@ export default async function onlineTimeoutTour(page, { out, logs }) {
   await page.click('#online-close');
   say('응답을 기다리는 중에도 창을 닫을 수 있다', await hidden('online-layer'));
 
-  await page.click('#online-action');
+  await menuClick(page, '#online-action');
   say('닫았다 다시 열면 버튼을 바로 쓸 수 있다', !(await g(() => document.getElementById('online-publish').disabled)) && (await status()) === '');
   await page.click('#online-publish');
   await page.waitForFunction(() => document.getElementById('online-status').textContent.includes('응답이 없습니다'), null, { timeout: 15000 }).catch(() => {});
@@ -62,13 +63,13 @@ export default async function onlineTimeoutTour(page, { out, logs }) {
 
   // 2) 창을 닫은 뒤 늦게 온 응답
   await page.goto(base + '?gate=publish'); await ready();
-  await page.click('#online-action');
+  await menuClick(page, '#online-action');
   await page.click('#online-publish');
   await page.click('#online-close'); // 응답은 아직 붙잡혀 있다
   const released = await g(() => window.__releaseOnline()); // 닫은 뒤에 응답을 보낸다
   await page.waitForTimeout(400);
   say('닫은 뒤 늦게 온 응답은 화면을 바꾸지 않는다', released && (await hidden('share-layer')) && (await hidden('online-layer')));
-  await page.click('#online-action');
+  await menuClick(page, '#online-action');
   await page.click('#online-publish');
   await page.waitForFunction(() => document.getElementById('online-publish').disabled, null, { timeout: 5000 }).catch(() => {});
   await g(() => window.__releaseOnline()); // 이번에는 창을 연 채로 응답을 받는다

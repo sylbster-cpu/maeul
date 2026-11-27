@@ -84,6 +84,7 @@ jobs:
           run_tour gather 390 844 test/gather.mjs yes
           run_tour found 390 844 test/found.mjs yes
           run_tour wreath 390 844 test/wreath.mjs yes
+          run_tour hud 360 640 test/hud.mjs yes
 
       - name: 브라우저 시험 로그·화면 보관
         if: always()
