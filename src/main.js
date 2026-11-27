@@ -350,7 +350,7 @@ async function start(saved = {}) {
   if (shareError) ui.toast(`공유 링크 오류: ${shareError}. 내 집으로 열었습니다`, 'error');
   if (saver.locked) ui.toast('이 집은 더 새로운 판의 게임에서 저장되었습니다. 이 화면에서는 저장하지 않으니 새로 고쳐 주세요', 'error');
   else if (loaded && !loaded.ok) ui.toast(`${loaded.reason}. 처음 배치로 시작합니다`, 'error');
-  else if (loaded?.dropped) ui.toast(`저장된 것 가운데 ${loaded.dropped}개는 지금 규칙에 맞지 않아 빼고 불러왔습니다`, 'error');
+  else if (loaded?.dropped) ui.toast(`저장된 것 가운데 ${loaded.dropped}개는 지금 규칙에 맞지 않아 빼고 불러왔습니다. 원래 저장 내용은 따로 남겨 두었습니다`, 'error');
   else if (fishing.loadProblem) ui.toast(fishing.loadProblem, 'error');
   else if (gathering.loadProblem) ui.toast(gathering.loadProblem, 'error');
 

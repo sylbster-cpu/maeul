@@ -218,7 +218,8 @@ export default async function upkeepTour(page, { out, logs }) {
   const saved7 = await g(() => localStorage.getItem('house-lab-web:save'));
   const filled = await g(() => {
     let n = 0;
-    for (let size = 1 << 20; size >= 16; size >>= 1) {
+    // 1글자까지 줄여 가며 채운다. 16글자에서 멈추면 남은 몇 바이트에 아래의 시험 쓰기가 들어가 가득 차지 않은 것으로 보였다
+    for (let size = 1 << 20; size >= 1; size >>= 1) {
       const chunk = 'x'.repeat(size);
       for (;;) { try { localStorage.setItem(`fill:${n}`, chunk); n++; } catch { break; } }
     }

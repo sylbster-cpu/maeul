@@ -144,3 +144,30 @@ test('공유 링크와 온라인 집에도 모양이 그대로 간다', async ()
   const visited = readPublishedSnapshot({ ownerUid: uid, isPublic: true, snapshot }, uid);
   assert.deepEqual(visited.spaces.main.objects[id].look, LOOK);
 });
+
+test('모양은 맞고 자리가 틀린 화환을 빼고 읽으면 원문을 옆에 남긴다. 저장은 이어 가되 남긴 원문은 덮어쓰지 않는다 (PR #48 GPT 검토)', () => {
+  const { store, history } = setup();
+  const { id } = hang(history, store);
+  const two = hang(history, store, OTHER, 3).id;
+  const data = JSON.parse(serialize(store.state));
+  data.state.spaces.main.objects[id].i = 999; // 벽 밖
+  data.state.spaces.yard.objects[two] = { ...data.state.spaces.main.objects[two] }; // 겹친 ID 도 같다
+  const text = JSON.stringify(data);
+  const r = parse(text);
+  assert.ok(r.ok && r.dropped === 2 && r.unknown === 0, JSON.stringify({ dropped: r.dropped, unknown: r.unknown }));
+  assert.equal(isNewerHouse(text), false, '새 판의 집은 아니다');
+  const mem = new Map([[SAVE_KEY, text]]);
+  const storage = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) };
+  const saver = createSaver(storage);
+  const loaded = saver.load();
+  assert.equal(mem.get(`${SAVE_KEY}:dropped`), text, '원문을 옆에 남긴다');
+  assert.equal(saver.locked, false, '새로 고쳐도 풀리지 않으므로 저장은 멈추지 않는다');
+  assert.ok(saver.save(loaded.state), '뺀 채로 저장은 된다');
+  assert.notEqual(mem.get(SAVE_KEY), text);
+  // 다시 불러와 또 빼더라도 처음 남긴 원문은 그대로다
+  const again = JSON.parse(mem.get(SAVE_KEY));
+  again.state.spaces.main.objects[two].i = 999;
+  mem.set(SAVE_KEY, JSON.stringify(again));
+  createSaver(storage).load();
+  assert.equal(mem.get(`${SAVE_KEY}:dropped`), text, '처음 남긴 원문을 덮어쓰지 않는다');
+});

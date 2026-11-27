@@ -112,6 +112,13 @@ export function createSaver(storage, key = SAVE_KEY) {
       const result = parse(text);
       // 읽지 못한 내용은 지우지 않고 옆에 남겨 둔다
       if (!result.ok) { try { storage.setItem(`${key}:broken`, text); } catch { /* 남기지 못해도 계속한다 */ } }
+      // 일부를 빼고 읽었으면(자리가 틀린 가구·화환, 겹친 ID 등) 원문을 옆에 남긴다. 다음 저장이 뺀 채로 원문 위에 쓰기 때문이다.
+      // 새 판의 집과 달리 새로 고쳐도 풀리지 않으므로 저장은 멈추지 않는다. 처음 남긴 원문을 덮어쓰지 않는다
+      // (2026-11-27 PR #48 GPT 검토: 모양은 맞고 벽 위치가 틀린 화환이 저장 뒤 사라질 수 있었다. 다른 가구도 전부터 같았다)
+      // 모르는 부품이 든 새 판의 집은 아래에서 :newer 에 남기므로 여기서 또 남기지 않는다(같은 글 두 벌)
+      if (result.ok && result.dropped > 0 && !(result.unknown > 0)) {
+        try { if (storage.getItem(`${key}:dropped`) === null) storage.setItem(`${key}:dropped`, text); } catch { /* 남기지 못해도 계속한다 */ }
+      }
       // 더 새로운 판의 집: 원문을 옆에 남기고 이 화면에서는 저장하지 않는다
       if (result.newer || (result.ok && result.unknown > 0)) {
         locked = true;
