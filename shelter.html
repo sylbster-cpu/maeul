@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>마을 · 공동 쉼터 조작 체험</title>
+<style>
+:root{color-scheme:light;--ink:#354638;--muted:#65745b;--paper:#fffdf4;--edge:#d0d7be;--green:#527a55;font:15px system-ui,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:#d9e8bd;color:var(--ink);overflow:hidden}
+[hidden]{display:none!important}
+#app{height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+button,a{font:inherit;color:inherit}
+button,.back{min-height:44px;border:1px solid var(--edge);border-radius:13px;background:var(--paper);font-weight:650;cursor:pointer;touch-action:manipulation}
+button:disabled{opacity:.42;cursor:default}
+button[aria-pressed=true],button.primary{background:var(--green);color:white;border-color:var(--green)}
+header{display:flex;align-items:center;gap:8px;padding:6px 8px;background:#f6f7e8;border-bottom:1px solid var(--edge);flex:none;min-height:56px}
+.back{display:flex;align-items:center;justify-content:center;min-width:54px;padding:0 8px;text-decoration:none;font-size:13px}
+.heading{flex:1;min-width:0;line-height:1.25}
+h1{font-size:17px;margin:0 0 2px;font-weight:730}
+.sub{font-size:12px;color:var(--muted)}
+#owned{font-size:13px;font-weight:700;white-space:nowrap}
+#stage{position:relative;flex:1;min-height:0;overflow:hidden}
+canvas{display:block;position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+#notice{position:absolute;top:10px;left:10px;right:10px;text-align:center;pointer-events:none}
+#notice span{display:inline-block;padding:7px 11px;background:#fffdf0eb;border:1px solid #d8dfbf;border-radius:12px;max-width:100%;font-size:13px}
+#sheet-backdrop{position:absolute;inset:0;background:transparent;z-index:2}
+#sheet{position:absolute;left:8px;right:8px;bottom:8px;z-index:3;background:var(--paper);border:1px solid var(--edge);border-radius:17px;box-shadow:0 7px 28px #324d3626;padding:10px}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.sheet-head strong{font-size:15px}
+#sheet-close{padding:0 12px;min-width:50px}
+#choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+#choices button{height:54px;text-align:left;padding:0 10px}
+#actions{display:flex;gap:5px;padding:6px 8px;background:#f6f7e8;border-top:1px solid var(--edge);flex:none;height:68px;align-items:stretch}
+#actions button{flex:1;min-width:44px;padding:0 4px;white-space:nowrap;font-size:14px}
+#loading{position:absolute;inset:0;display:grid;place-content:center;padding:22px;text-align:center;background:#d9e8bd;z-index:4}
+@media(max-height:360px){header{min-height:48px;padding:2px 6px}#actions{height:52px;padding:3px 6px}#notice{top:4px}#notice span{padding:3px 8px}#sheet{bottom:2px;padding:5px}#choices button{height:44px}.sheet-head{margin:0}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <a class="back" href="./">마을로</a>
+    <div class="heading"><h1>숲의 작은 쉼터</h1><div class="sub">조작 체험 · 실제 서버 미연결</div></div>
+    <div id="owned">나무 0/6</div>
+  </header>
+  <main id="stage">
+    <canvas id="shelter-canvas" aria-label="8×8 공동 쉼터"></canvas>
+    <div id="notice" aria-live="polite"><span id="message">빈 곳을 누르면 걸어갑니다</span></div>
+    <div id="sheet-backdrop" hidden></div>
+    <section id="sheet" aria-label="가구 고르기" hidden>
+      <div class="sheet-head"><strong>쉼터 가구</strong><button id="sheet-close" type="button">닫기</button></div>
+      <div id="choices"></div>
+    </section>
+    <div id="loading" role="status">쉼터를 불러오는 중입니다</div>
+  </main>
+  <footer id="actions" aria-label="조작"></footer>
+</div>
+<script type="module" src="./src/shelter-preview.js"></script>
+</body>
+</html>

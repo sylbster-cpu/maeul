@@ -4,6 +4,7 @@
 
 | 날짜 | 누가 | 요청 | 결과 |
 | --- | --- | --- | --- |
+| 2026-11-27 | GPT | 7단계 공동 쉼터 계속 진행, Claude #52 재검토 | 검토 head 5ebf6d3 Firebase 66개 통과, Claude가 동시 배치 재시도 5회 성공 확인. 별도 8×8 숲 쉼터 조작 체험 추가: 기존 캐릭터/모델 재사용, 점유 투영, 터치 연속 배치·이동·회전·치우기, 친구 가구 보호, 짧은 변화 표시. 예제 상태는 메모리에서만 다룸. 쉼터 단위시험과 360×640 터치 자동시험 추가. 실제 Firebase·초대·메뉴 미연결. 로컬 GitHub DNS 실패로 전체 시험 미실시, 새 head CI 및 Claude 검토 필요. |
 | 2026-11-27 | GPT | PR #52 Claude 독립 검토 및 Firebase CI 실패 | Claude가 규칙 정규식 3줄의 닫힘 누락과 서로 다른 칸/동시 참여가 permission-denied로 끝나는 현상을 에뮬레이터에서 재현. 정규식 3줄 복구, 서버 판 증가 때만 재검증·최대 3회 재시도, 실제 권한 오류/겹친 칸은 구분. 서비스 단위시험 및 실제 서비스 동시 배치·참여·24개 가득 찬 경로·표식 탈취 거절 시험 추가. 기존 head 게임 CI 성공, Firebase 실패. 수정 head 검증 대기(로컬 전체 시험 미실시). |
 | 2026-11-27 | GPT | #51 병합 및 6단계 휴대폰 확인 후 사용자 승인 7단계 착수 | 공동 쉼터 순수 명령·역명령·수신 상태 검사, 별도 단일 Firestore 문서 트랜잭션 서비스와 서버 규칙, 부정 시험 추가. 화면·초대 경로·운영 배포는 아직 없음. 변경: src/shelter-state.js, src/shelter-service.js, firestore.rules, test/shelter-state.test.mjs, test/firestore-rules.mjs, docs/SHELTER.md, docs/HANDOFF.md. 로컬 전체 실행 불가(네트워크 차단), draft CI 검증 필요. |
 | 2026-11-27 | Claude | 사용자가 판 56의 수첩을 휴대폰으로 보고 "가진것, 채집의 차이점이 크게 없는데 합칠 수 없나요?" → 바로 합치기, 칸 이름 "채집"(사용자 결정) | 가진 수는 채집 기록의 주운 수와 같아(`gathering.js ownedFound`) 두 칸에 늘 같은 종류가 같은 수로 나왔다. 수첩을 채집·낚시 두 칸으로 줄이고, 채집 칸 한 줄에 가진 수, 집에 놓은 수·더 놓을 수 있는 수, 가장 큰 것·처음 주운 날을 모았다. 처음 열면 채집 칸. 주운 적 없이 집에 놓여 있는 것(가져온 집)도 전처럼 보인다. 바뀐 파일: `page.html`, `index.html`, `src/fishing-ui.js`, `test/gather.mjs`, `test/hud.mjs`. 시험(이 환경, 터치 흉내): `npm test` 153, gather 14, hud 26, fishing 49, beach 28 통과. 실제 휴대폰 확인은 아직 없다. |
