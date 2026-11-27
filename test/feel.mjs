@@ -1,7 +1,7 @@
 // 연출 확인: 집 꾸미기·마을·낚시에 넣은 몸짓과 손맛 (docs/GAME_PRINCIPLES.md). 그리는 모습만 보고 규칙은 보지 않는다.
 // 시간은 게임 시계(화면 수)로 기다린다. 실제 휴대폰의 느낌을 대신하지는 않는다.
 //   TOUCH=1 node tools/shot.mjs / shots/feel 390 844 test/feel.mjs
-import { menuClick, menuVisible } from './helpers/menu.mjs';
+import { menuClick, closeMenu } from './helpers/menu.mjs';
 export default async function feel(page, { out, logs }) {
   const cdp = process.env.TOUCH === '1' ? await page.context().newCDPSession(page) : null;
   const tap = async (x, y) => {
@@ -148,6 +148,7 @@ export default async function feel(page, { out, logs }) {
   await g(() => { window.__vib.length = 0; window.__game.input.undo(); });
   const mutedVib = await vibs();
   await menuClick(page, '#sound');
+  await closeMenu(page); // 소리 단추는 메뉴를 열어 둔다. 열린 채 땅을 누르면 메뉴만 닫힌다(6단계 HUD A)
   say('소리 버튼으로 소리를 끄면 진동도 하지 않는다', mutedVib.length === 0 && (await g(() => window.__game.haptics.enabled)), JSON.stringify(mutedVib));
 
   // 10) 앉으면 몸과 방석이 눌린다

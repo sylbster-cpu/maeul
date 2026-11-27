@@ -11,7 +11,7 @@
 // 7. 저장 공간이 가득 차 새로 쓰기가 안 되어도 저장된 집을 읽어 연다(처음 배치로 시작하지 않는다) (2026-11-26 GPT 점검)
 //    같은 열쇠를 같은 크기로 덮어쓰는 저장은 가득 차도 될 수 있으므로, 저장 여부가 아니라 집의 내용을 본다
 // 8. 자리가 틀린 가구를 빼고 읽어야 하는데 저장 공간이 가득 차 원문을 따로 남기지 못하면, 저장하지 않고 남겼다고 말하지 않는다 (2026-11-27 PR #48 GPT 재검토)
-import { menuClick, menuVisible } from './helpers/menu.mjs';
+import { menuClick } from './helpers/menu.mjs';
 export default async function upkeepTour(page, { out, logs }) {
   const say = (label, ok, extra = '') => logs.push(`${ok ? '통과' : '실패'}  ${label} ${extra}`);
   const g = (fn, arg) => page.evaluate(fn, arg);

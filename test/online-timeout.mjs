@@ -1,7 +1,7 @@
 // 온라인 서버가 응답하지 않을 때의 화면 확인. 가짜 서비스로 응답을 멈추거나 늦춘다.
 // 실제 Firebase 에는 접속하지 않는다.
 // 실행: TOUCH=1 node tools/shot.mjs / shots/online-timeout 390 844 test/online-timeout.mjs
-import { menuClick, menuVisible } from './helpers/menu.mjs';
+import { menuClick } from './helpers/menu.mjs';
 export default async function onlineTimeoutTour(page, { out, logs }) {
   const say = (label, ok, extra = '') => logs.push(`${ok ? '통과' : '실패'}  ${label} ${extra}`);
   const g = (fn, arg) => page.evaluate(fn, arg);

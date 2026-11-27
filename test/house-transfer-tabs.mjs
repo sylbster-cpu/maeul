@@ -3,7 +3,7 @@
 // 끝에서는 가져오기·맞바꾸기 확인 창이 떠 있는 사이 다른 탭이 새 판의 집을 저장해도 그 원문을 잃지 않는지 본다.
 // 확인 창은 브라우저의 진짜 창(window.confirm)이다. 창이 떠 있는 동안 이 탭은 다른 탭의 변경을 받지 못하고,
 // 창을 닫은 바로 그 자리에서 읽으면 옛 내용이 나왔다(2026-11-26 GPT 재검토, 가짜 저장소 시험으로는 보이지 않음)
-import { menuClick, menuVisible } from './helpers/menu.mjs';
+import { menuClick } from './helpers/menu.mjs';
 export default async function transferTabsTour(page, { out, logs }) {
   const say = (name, ok, details = '') => logs.push(`${ok ? '통과' : '실패'}  ${name} ${details}`);
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 30000 });
