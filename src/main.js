@@ -129,6 +129,9 @@ async function start(saved = {}) {
   let pending = null; // 문이나 깔개를 눌러 걸어가는 중이면 'door'
   function go(place) {
     if (busy || character.place === place) return;
+    // 드나들어 보았으므로 이번 접속에서는 떠나는 곳의 걷기 안내를 접는다. 문·깔개로 걸어가기, 걸어 들어가기,
+    // 왼쪽 위 있는 곳 버튼이 모두 여기를 지난다(GPT 검토 PR #49 97c4210, src/hint-memory.js done)
+    hintMemory.done(character.place === 'yard' ? 'walkYard' : 'walkRoom');
     const arrive = () => {
       input.leavePlace();
       if (place === 'yard') { const p = doorFront(); character.setPlace('yard', p.x, p.z, 0); view.setPlace('yard'); view.snapFocus(p.x, p.z); }

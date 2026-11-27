@@ -193,4 +193,15 @@ export default async function hud(page, { out, logs }) {
   await frames(3);
   const again = await hintNow();
   say('"처음 안내 다시 보기"를 누르면 걷기 안내가 다시 보인다', again.shown && again.text.includes('땅을 누르면'), JSON.stringify(again));
+
+  // 13) 왼쪽 위 있는 곳 버튼으로 드나들어도 해 본 것으로 친다. 돌아왔을 때 마당의 걷기 안내가 다시 뜨지 않는다(GPT 검토 PR #49 97c4210)
+  await page.click('#place-toggle');
+  await page.waitForFunction(() => window.__game.character.place === 'main', null, { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  const inRoom = await hintNow();
+  await page.click('#place-toggle');
+  await page.waitForFunction(() => window.__game.character.place === 'yard', null, { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  const back = await hintNow();
+  say('있는 곳 버튼으로 드나들어 보면, 돌아온 마당에서 걷기 안내가 다시 뜨지 않는다', inRoom.shown && inRoom.text.includes('의자를') && !back.shown, JSON.stringify({ inRoom, back }));
 }
