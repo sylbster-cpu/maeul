@@ -32,6 +32,8 @@ test('녹음은 첫 음부터의 실제 박자를 유지하고 64음/30초에서
   assert.equal(r.add(0,31000),false);assert.deepEqual(r.finish(),[[0,1],[266,6],[576,4]]);assert.equal(r.add(2,1900),false);
   const limit=createRecorder(0);for(let i=0;i<MAX_NOTES;i++)assert.ok(limit.add(i%8,i*10));
   assert.ok(limit.full);assert.equal(limit.add(1,999),false);assert.equal(limit.finish().length,64);
+  const edge=createRecorder(0);edge.add(0,0);edge.add(1,29999.9);assert.deepEqual(edge.finish(),[[0,0],[29999,1]]);
+  assert.equal(validNotes(new Array(2)),false);
 });
 test('한국어 제목과 실제 박자 링크 왕복, 악성/잘못된 주소 거부',()=>{
   const link=musicLink(song);assert.ok(link.startsWith('https://sylbster-cpu.github.io/maeul/music.html#melody='));

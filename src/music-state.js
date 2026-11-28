@@ -17,9 +17,15 @@ export function validTitle(title){
   return typeof title==='string'&&title===title.trim()&&[...title].length>=1&&[...title].length<=32&&!/[\u0000-\u001f\u007f-\u009f]/.test(title);
 }
 export function validNotes(notes){
-  return Array.isArray(notes)&&notes.length>0&&notes.length<=MAX_NOTES&&notes.every((e,i)=>
-    Array.isArray(e)&&e.length===2&&Number.isInteger(e[0])&&e[0]>=0&&e[0]<MAX_TIME&&validNote(e[1])&&
-    (i===0?e[0]===0:e[0]>=notes[i-1][0]));
+  if(!Array.isArray(notes)||notes.length<1||notes.length>MAX_NOTES)return false;
+  let last=0;
+  for(let i=0;i<notes.length;i++){
+    const e=notes[i];
+    if(!Array.isArray(e)||e.length!==2||!Number.isInteger(e[0])||e[0]<last||e[0]>=MAX_TIME||
+      !validNote(e[1])||(i===0&&e[0]!==0))return false;
+    last=e[0];
+  }
+  return true;
 }
 export function validSong(song){
   return exact(song,['title','notes','createdAt'])&&validTitle(song.title)&&validNotes(song.notes)&&
@@ -61,7 +67,7 @@ export function createRecorder(start){
     add(note,now){
       if(finished||!validNote(note)||!Number.isFinite(now)||now<last||now-start>=MAX_TIME||notes.length>=MAX_NOTES)return false;
       if(first===null)first=now;
-      notes.push([Math.round(now-first),note]);last=now;return true;
+      notes.push([Math.min(MAX_TIME-1,Math.round(now-first)),note]);last=now;return true;
     },
     finish(){finished=true;return notes.map(n=>n.slice());},
   };

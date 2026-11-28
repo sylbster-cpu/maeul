@@ -42,4 +42,14 @@ export default async function music(page,{out,logs}){
   const preserved=await page.evaluate(values=>Object.entries(values).every(([k,v])=>localStorage.getItem(k)===v),original);
   say('집·낚시·채집 저장 값 그대로',preserved);
   await page.screenshot({path:out+'-play.png'});
+  local.hash='#melody=???';await page.goto(local.href);await page.waitForFunction(()=>window.__ready===true);
+  say('잘못된 공유 주소는 재생과 저장을 하지 않음',await g(()=>window.__music.audio.state==='idle'&&Object.keys(window.__music.state.songs).length===0&&document.getElementById('listen-layer').hidden));
+  // 게임 메뉴 진입은 오염되지 않은 실제 집 저장 상태에서 별도로 확인.
+  await page.evaluate(()=>localStorage.clear());
+  await page.goto(local.origin+'/');await page.waitForFunction(()=>window.__ready===true);
+  await page.evaluate(()=>window.__game.saveNow());
+  await page.tap('#menu-toggle');
+  await Promise.all([page.waitForURL('**/music.html'),page.tap('#music-action')]);
+  await page.waitForFunction(()=>window.__ready===true);
+  say('마을 메뉴에서 기존 집 저장 후 실제 음악 화면 진입',await g(()=>!!window.__music&&!!localStorage.getItem('house-lab-web:save')));
 }

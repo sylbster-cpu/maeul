@@ -5,7 +5,7 @@ import { createKalimbaAudio } from './music-audio.js';
 const $=id=>document.getElementById(id);
 const storage=()=>{try{return window.localStorage;}catch{return null;}};
 const library=createMusicLibrary(storage()),audio=createKalimbaAudio();
-let view=null,recorder=null,draft=null,selected=null,recordStart=0,recordTimer=0,playTicket=0,playing=false,friend=null;
+let view=null,recorder=null,draft=null,selected=null,selectedId=null,recordStart=0,recordTimer=0,playTicket=0,playing=false,friend=null;
 const keyTimers=[],buttons=[];
 let bubbleTimer=0;
 const message=text=>{$('status').textContent=text;};
@@ -116,7 +116,7 @@ $('close-share').addEventListener('click',()=>{
 $('save').addEventListener('click',()=>{
   try{
     const song=currentDraft();let id=makeId();while(library.state.songs[id])id=makeId();
-    library.commit({type:'setSong',id,song});selected=song;draft=null;
+    library.commit({type:'setSong',id,song});selected=song;selectedId=id;draft=null;
     message('「'+song.title+'」을 이 브라우저에 저장했습니다');update();
   }catch(error){message(error.message);update();}
 });
@@ -134,16 +134,16 @@ function openLibrary(){
     const row=document.createElement('div');row.className='song';row.dataset.id=id;
     const input=document.createElement('input');input.value=song.title;input.maxLength=64;input.setAttribute('aria-label','곡 제목');
     const bar=document.createElement('div');bar.className='bar';
-    bar.append(button('듣기',()=>{selected=song;$('library-layer').hidden=true;playSong(song);}),
+    bar.append(button('듣기',()=>{selected=song;selectedId=id;$('library-layer').hidden=true;playSong(song);}),
       button('이름 저장',()=>{
         try{const name=input.value.trim();if(!validTitle(name))throw new Error('곡 제목을 1~32자로 적어 주세요');
-          library.commit({type:'setSong',id,song:{...song,title:name}});openLibrary();}
+          const renamed={...song,title:name};library.commit({type:'setSong',id,song:renamed});if(selectedId===id)selected=renamed;openLibrary();}
         catch(error){$('library-status').textContent=error.message;}
       },!!library.locked),
       button('공유',()=>share(song,'library')),
       button('삭제',()=>{
         if(!window.confirm('「'+song.title+'」을 보관함에서 지울까요?'))return;
-        try{library.commit({type:'setSong',id,song:null});openLibrary();}
+        try{library.commit({type:'setSong',id,song:null});if(selectedId===id){stopPlayback();selected=null;selectedId=null;update();}openLibrary();}
         catch(error){$('library-status').textContent=error.message;}
       },!!library.locked));
     row.append(input,bar);$('songs').append(row);
@@ -153,7 +153,7 @@ function openLibrary(){
 $('library').addEventListener('click',openLibrary);
 $('close-library').addEventListener('click',()=>{$('library-layer').hidden=true;focusBack($('library'));});
 $('close-listen').addEventListener('click',()=>{$('listen-layer').hidden=true;focusBack(buttons[0]);});
-$('listen').addEventListener('click',()=>{$('listen-layer').hidden=true;selected=friend;playSong(friend);});
+$('listen').addEventListener('click',()=>{$('listen-layer').hidden=true;selected=friend;selectedId=null;playSong(friend);});
 $('back').addEventListener('click',event=>{
   if((draft||recorder)&&!window.confirm('저장하지 않은 연주가 있습니다. 마을로 돌아갈까요?')){event.preventDefault();return;}
   stopPlayback();
@@ -166,7 +166,7 @@ window.addEventListener('pageshow',event=>{if(event.persisted)location.reload();
 window.addEventListener('hashchange',()=>location.reload());
 try{
   friend=readMusicLink(location.hash);
-  if(friend){$('friend-title').textContent='「'+friend.title+'」 · '+friend.notes.length+'음';$('listen-layer').hidden=false;}
+  if(friend){selected=friend;selectedId=null;$('friend-title').textContent='「'+friend.title+'」 · '+friend.notes.length+'음';$('listen-layer').hidden=false;}
 }catch(error){message(error.message);}
 if(library.locked&&!location.hash)message(library.locked+' · 자유 연주는 계속 할 수 있습니다.');
 update();
