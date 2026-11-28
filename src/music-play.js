@@ -67,11 +67,13 @@ function beginRecord(){
   },180);
   message('녹음 중 · 건반을 자유롭게 눌러 보세요');update();
 }
-function tap(n){
+function sound(n){
+  audio.note(n).then(ok=>{if(!ok&&!document.hidden&&!recorder&&audio.state!=='running')message('소리를 시작하지 못했습니다. 다시 눌러 주세요');});
+}
+function tap(n,{audible=true}={}){
   if(playing)stopPlayback();
   showNote(n);
-  // AudioContext 생성/재개는 실제 터치 이벤트에서 곧바로 시작한다.
-  audio.note(n).then(ok=>{if(!ok&&!document.hidden&&!recorder&&audio.state!=='running')message('소리를 시작하지 못했습니다. 다시 눌러 주세요');});
+  if(audible)sound(n);
   if(recorder){
     if(!recorder.add(n,performance.now())||recorder.full)finishRecord();
   }
@@ -81,9 +83,20 @@ for(const [n,note] of NOTES.entries()){
   const tine=document.createElement('span');tine.className='tine';tine.setAttribute('aria-hidden','true');tine.style.height=(25-n*1.5)+'px';
   const label=document.createElement('span');label.className='label';label.textContent=note.label;
   b.append(tine,label);b.setAttribute('aria-label',note.label);buttons.push(b);$('keys').append(b);
-  b.addEventListener('pointerdown',event=>{if(event.pointerType==='mouse'&&event.button!==0)return;event.preventDefault();tap(n);});
+  const waiting=new Set();
+  b.addEventListener('pointerdown',event=>{
+    if(event.pointerType==='mouse'&&event.button!==0)return;
+    event.preventDefault();
+    // 첫 손가락 입력은 pointerup이 브라우저의 실제 활성화 시점일 수 있다.
+    // 누르는 즉시 건반과 녹음은 반응하고, 아직 잠긴 소리만 손을 뗄 때 시작한다.
+    const locked=audio.state!=='running'&&event.pointerType!=='mouse';
+    if(locked)waiting.add(event.pointerId);
+    tap(n,{audible:!locked});
+  });
+  b.addEventListener('pointerup',event=>{if(waiting.delete(event.pointerId))sound(n);});
+  b.addEventListener('pointercancel',event=>waiting.delete(event.pointerId));
   // 키보드·접근성 도구의 실제 클릭만 받는다. 손가락 클릭을 두 번 울리지 않는다.
-  b.addEventListener('click',event=>{if(event.detail===0)tap(n);});
+  b.addEventListener('click',event=>{if(event.detail===0&&event.pointerType!=='touch'&&event.pointerType!=='pen')tap(n);});
 }
 $('record').addEventListener('click',beginRecord);
 $('play').addEventListener('click',()=>{

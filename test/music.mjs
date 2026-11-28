@@ -30,7 +30,7 @@ export default async function music(page,{out,logs}){
   await page.getByRole('button',{name:'듣기',exact:true}).tap();await page.waitForFunction(()=>window.__music.audio.played>=1);
   say('저장한 곡 재생',await g(()=>window.__music.playing));
   await page.tap('#play');
-  const local=new URL(page.url());local.hash=new URL(link).hash;await page.goto(local.href);await page.waitForFunction(()=>window.__ready===true);
+  const local=new URL(page.url());local.searchParams.set('test','friend');local.hash=new URL(link).hash;await page.goto(local.href);await page.waitForFunction(()=>window.__ready===true);
   await page.locator('#listen-layer').waitFor({state:'visible'});
   say('친구의 공유 곡 자동 재생·저장 없음',await g(()=>window.__music.audio.state==='idle'&&Object.keys(window.__music.state.songs).length===1));
   await page.tap('#listen');await page.waitForFunction(()=>window.__music.audio.played>=1);
@@ -42,7 +42,7 @@ export default async function music(page,{out,logs}){
   const preserved=await page.evaluate(values=>Object.entries(values).every(([k,v])=>localStorage.getItem(k)===v),original);
   say('집·낚시·채집 저장 값 그대로',preserved);
   await page.screenshot({path:out+'-play.png'});
-  local.hash='#melody=???';await page.goto(local.href);await page.waitForFunction(()=>window.__ready===true);
+  local.searchParams.set('test','bad');local.hash='#melody=???';await page.goto(local.href);await page.waitForFunction(()=>window.__ready===true);
   say('잘못된 공유 주소는 재생과 저장을 하지 않음',await g(()=>window.__music.audio.state==='idle'&&Object.keys(window.__music.state.songs).length===0&&document.getElementById('listen-layer').hidden));
   // 게임 메뉴 진입은 오염되지 않은 실제 집 저장 상태에서 별도로 확인.
   await page.evaluate(()=>localStorage.clear());
