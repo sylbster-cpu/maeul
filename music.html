@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>마을 · 작은 연주</title>
+<style>
+:root{color-scheme:light;--paper:#fffdf3;--ink:#3b493b;--muted:#657460;--green:#537654;--edge:#c9d3b9;font:15px system-ui,sans-serif}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;overflow:hidden;background:#dce8c9;color:var(--ink)}
+button,input,a{font:inherit;color:inherit}
+button,a.back{-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+button,a.back{min-height:44px;border:1px solid var(--edge);background:var(--paper);border-radius:12px;font-weight:650;cursor:pointer;touch-action:manipulation}
+button:disabled{opacity:.48;cursor:default}
+.primary,button[aria-pressed=true]{background:var(--green);border-color:var(--green);color:white}
+#app{height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+header{display:flex;align-items:center;gap:8px;padding:6px 9px;background:#f7f6e8;min-height:56px;flex:none;border-bottom:1px solid var(--edge)}
+.back{display:flex;align-items:center;justify-content:center;min-width:54px;padding:0 8px;text-decoration:none;font-size:13px}
+.heading{flex:1;min-width:0}h1{font-size:17px;margin:0 0 2px}.sub{font-size:12px;color:var(--muted)}
+#mute{width:74px;font-size:12px}
+main{display:flex;flex:1;min-height:0;flex-direction:column;overflow:hidden}
+#stage{position:relative;flex:1;min-height:0;background:radial-gradient(ellipse at 50% 60%,#e9efd5,#c8d9b4);overflow:hidden}
+#stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#stage-tag{position:absolute;top:10px;left:10px;background:#fffdf0df;border:1px solid #d1d9bf;padding:6px 10px;border-radius:14px;font-size:12px;pointer-events:none}
+#note-bubble{position:absolute;top:14px;left:50%;transform:translateX(-50%);font-size:17px;font-weight:700;color:#54765c;background:#fffdf2e8;padding:6px 13px;border-radius:20px;opacity:0;pointer-events:none}
+#note-bubble.show{opacity:1}
+#fallback{position:absolute;inset:0;display:grid;place-content:center;text-align:center;color:#657460;pointer-events:none}
+#fallback strong{font-size:38px;color:#8b694c}
+#controls{flex:none;padding:9px;background:#f7f6e8;border-top:1px solid var(--edge);display:grid;gap:7px}
+#status{font-size:12px;line-height:1.4;min-height:17px;color:var(--muted);overflow-wrap:anywhere;margin:0}
+#keys{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;user-select:none;touch-action:none}
+.key{height:62px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;padding:5px;background:#f4ead5;border-color:#d1c3a3;touch-action:none}
+.key.high{background:#e5ecd8;border-color:#c2d1ad}
+.key .tine{width:7px;height:23px;border-radius:3px;background:linear-gradient(#a6a08c,#e8e2ce,#aaa28e);box-shadow:0 1px 2px #9b8c7155}
+.key .label{font-size:13px;white-space:nowrap}
+.key.active{background:#e4c88e;box-shadow:inset 0 0 0 2px #c19a56}
+.bar{display:flex;gap:6px;align-items:stretch}.bar>button{flex:1;min-width:44px;padding:4px;font-size:13px;white-space:nowrap}
+#record[aria-pressed=true]{background:#a45547;border-color:#a45547}
+#draft{display:grid;gap:6px;padding:7px;border:1px solid var(--edge);border-radius:12px;background:var(--paper)}
+#draft label{display:block;font-size:12px;color:var(--muted)}
+#draft-warning{font-size:12px;line-height:1.4;margin:0;color:#8b4b37;overflow-wrap:anywhere}
+#draft input,.song input,#share-url{min-height:44px;border:1px solid var(--edge);border-radius:8px;background:white;padding:7px;width:100%}
+#draft .bar button{min-height:44px}
+#record-time{font-variant-numeric:tabular-nums}
+.layer{position:fixed;inset:0;z-index:5;background:#334b3890;display:flex;align-items:safe center;justify-content:center;padding:12px;overflow:auto}
+.panel{width:min(460px,100%);max-height:100%;overflow:auto;background:var(--paper);border:1px solid var(--edge);border-radius:17px;padding:12px}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}.panel-head h2{font-size:17px;margin:0}
+.panel-head button{padding:0 12px}.panel p{font-size:13px;color:var(--muted);margin:8px 0;overflow-wrap:anywhere}
+.song{border-top:1px solid var(--edge);padding:10px 0;display:grid;gap:6px}
+.song .bar button{font-size:12px}
+#share-url{font-size:12px}
+@media(max-height:420px) and (min-width:550px){
+  header{min-height:48px;padding:2px 8px}
+  main{flex-direction:row}
+  #controls{width: min(49vw,390px);max-height:100%;overflow:auto;border-top:0;border-left:1px solid var(--edge);padding:6px}
+  .key{height:46px;gap:1px;padding:2px}.key .tine{height:14px}.key .label{font-size:11px}
+  #stage-tag{top:4px;left:4px}
+}
+@media(max-height:560px) and (max-width:549px){.key{height:50px}.key .tine{height:16px}#controls{gap:5px;padding:6px}#draft{padding:4px;gap:3px}}
+@media(prefers-reduced-motion:no-preference){.key{transition:background .06s}#note-bubble{transition:opacity .14s}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header><a id="back" class="back" href="./">마을로</a><div class="heading"><h1>작은 연주</h1><div class="sub">숲에서 칼림바 한 곡</div></div><button id="mute" aria-pressed="false">소리 켜짐</button></header>
+  <main>
+    <div id="stage">
+      <div id="fallback"><strong>♪</strong><span>작은 칼림바</span></div>
+      <canvas id="music-canvas" aria-label="칼림바를 쥔 마을 캐릭터" hidden></canvas>
+      <span id="stage-tag">자유 연주</span><span id="note-bubble" aria-hidden="true">♪</span>
+    </div>
+    <section id="controls" aria-label="연주">
+      <p id="status" role="status" aria-live="polite">건반을 눌러 소리를 내 보세요.</p>
+      <div id="keys" aria-label="칼림바 건반"></div>
+      <div class="bar"><button id="record" aria-pressed="false">● 녹음</button><button id="play" disabled>▶ 재생</button><button id="library">내 곡</button></div>
+      <section id="draft" hidden aria-label="녹음한 곡">
+        <label for="title">곡 제목 <span id="record-time"></span></label>
+        <input id="title" maxlength="32" placeholder="나만의 작은 곡">
+        <p id="draft-warning" role="status" hidden></p>
+        <div class="bar"><button id="save" class="primary">저장</button><button id="share-draft">공유</button><button id="discard">그만두기</button></div>
+      </section>
+    </section>
+  </main>
+</div>
+<div id="library-layer" class="layer" hidden>
+  <section class="panel" role="dialog" aria-modal="true" aria-label="내 곡">
+    <div class="panel-head"><h2>내 곡</h2><button id="close-library">닫기</button></div><p id="library-status"></p><div id="songs"></div>
+  </section>
+</div>
+<div id="share-layer" class="layer" hidden>
+  <section class="panel" role="dialog" aria-modal="true" aria-label="연주 공유">
+    <div class="panel-head"><h2>친구에게 들려주기</h2><button id="close-share">닫기</button></div>
+    <p>이 주소에는 곡의 제목과 음, 박자만 들어 있습니다. 친구가 직접 재생하면 들을 수 있습니다.</p>
+    <input id="share-url" readonly aria-label="연주 공유 주소"><div class="bar" style="margin-top:8px"><button id="copy-share" class="primary">주소 복사</button></div><p id="share-status" role="status"></p>
+  </section>
+</div>
+<div id="listen-layer" class="layer" hidden>
+  <section class="panel" role="dialog" aria-modal="true" aria-label="친구의 곡">
+    <div class="panel-head"><h2>친구가 보낸 곡</h2><button id="close-listen">닫기</button></div>
+    <p id="friend-title"></p><button id="listen" class="primary" style="width:100%">▶ 들어 보기</button><p>재생을 눌러야 소리가 납니다.</p>
+  </section>
+</div>
+<script type="module" src="./src/music-play.js"></script>
+</body>
+</html>
