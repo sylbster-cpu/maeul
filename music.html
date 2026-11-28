@@ -10,6 +10,7 @@
 [hidden]{display:none!important}
 body{margin:0;overflow:hidden;background:#dce8c9;color:var(--ink)}
 button,input,a{font:inherit;color:inherit}
+button,a.back{-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 button,a.back{min-height:44px;border:1px solid var(--edge);background:var(--paper);border-radius:12px;font-weight:650;cursor:pointer;touch-action:manipulation}
 button:disabled{opacity:.48;cursor:default}
 .primary,button[aria-pressed=true]{background:var(--green);border-color:var(--green);color:white}
@@ -38,6 +39,7 @@ main{display:flex;flex:1;min-height:0;flex-direction:column;overflow:hidden}
 #record[aria-pressed=true]{background:#a45547;border-color:#a45547}
 #draft{display:grid;gap:6px;padding:7px;border:1px solid var(--edge);border-radius:12px;background:var(--paper)}
 #draft label{display:block;font-size:12px;color:var(--muted)}
+#draft-warning{font-size:12px;line-height:1.4;margin:0;color:#8b4b37;overflow-wrap:anywhere}
 #draft input,.song input,#share-url{min-height:44px;border:1px solid var(--edge);border-radius:8px;background:white;padding:7px;width:100%}
 #draft .bar button{min-height:44px}
 #record-time{font-variant-numeric:tabular-nums}
@@ -74,7 +76,8 @@ main{display:flex;flex:1;min-height:0;flex-direction:column;overflow:hidden}
       <div class="bar"><button id="record" aria-pressed="false">● 녹음</button><button id="play" disabled>▶ 재생</button><button id="library">내 곡</button></div>
       <section id="draft" hidden aria-label="녹음한 곡">
         <label for="title">곡 제목 <span id="record-time"></span></label>
-        <input id="title" maxlength="64" placeholder="나만의 작은 곡">
+        <input id="title" maxlength="32" placeholder="나만의 작은 곡">
+        <p id="draft-warning" role="status" hidden></p>
         <div class="bar"><button id="save" class="primary">저장</button><button id="share-draft">공유</button><button id="discard">그만두기</button></div>
       </section>
     </section>

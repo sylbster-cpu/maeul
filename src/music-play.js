@@ -31,6 +31,8 @@ function update(){
   $('library').disabled=!!recorder;
   $('draft').hidden=!draft||!!recorder;
   $('save').disabled=!!library.locked;
+  $('draft-warning').hidden=!library.locked;
+  $('draft-warning').textContent=library.locked?'곡을 저장할 수 없습니다. 이 화면을 닫거나 새로고침하기 전에 제목을 붙이고 공유 주소를 복사해 따로 보관하세요. 공유 주소로 곡을 다시 들을 수 있습니다.':'';
   $('stage-tag').textContent=recorder?'녹음 중':playing?'감상 중':'자유 연주';
 }
 function stopPlayback(){
@@ -101,7 +103,9 @@ for(const [n,note] of NOTES.entries()){
 $('record').addEventListener('click',beginRecord);
 $('play').addEventListener('click',()=>{
   if(playing){stopPlayback();message('재생을 멈췄습니다');return;}
-  try{playSong(draft?currentDraft():selected);}catch(error){message(error.message);}
+  // 재생은 제목을 정하기 전에도 가능하다. 제목 검증은 저장과 공유에서만 한다.
+  const name=title();
+  playSong(draft?{...draft,title:validTitle(name)?name:draft.title}:selected);
 });
 $('mute').addEventListener('click',()=>{
   audio.setMuted(!audio.muted);$('mute').textContent=audio.muted?'소리 꺼짐':'소리 켜짐';
@@ -145,7 +149,7 @@ function openLibrary(){
   $('library-status').textContent=library.locked|| (entries.length?entries.length+'/'+MAX_SONGS+'곡 · 이 브라우저에 보관':'아직 저장한 곡이 없습니다');
   for(const [id,song] of entries){
     const row=document.createElement('div');row.className='song';row.dataset.id=id;
-    const input=document.createElement('input');input.value=song.title;input.maxLength=64;input.setAttribute('aria-label','곡 제목');
+    const input=document.createElement('input');input.value=song.title;input.maxLength=32;input.setAttribute('aria-label','곡 제목');
     const bar=document.createElement('div');bar.className='bar';
     bar.append(button('듣기',()=>{selected=song;selectedId=id;$('library-layer').hidden=true;playSong(song);}),
       button('이름 저장',()=>{

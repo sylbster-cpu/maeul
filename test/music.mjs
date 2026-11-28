@@ -16,6 +16,20 @@ export default async function music(page,{out,logs}){
   await page.tap('#record');await page.tap('#note-0');await page.waitForTimeout(220);await page.tap('#note-2');await page.waitForTimeout(380);await page.tap('#note-4');await page.tap('#record');
   const draft=await g(()=>window.__music.draft);
   say('실제 음 순서와 박자 녹음',draft.notes.length===3&&draft.notes[0][0]===0&&draft.notes[1][0]>=150&&draft.notes[2][0]-draft.notes[1][0]>=300&&draft.notes.map(n=>n[1]).join(',')==='0,2,4');
+  say('제목 입력 최대 32자',await page.locator('#title').getAttribute('maxlength')==='32');
+  await page.fill('#title','');
+  await page.tap('#play');await page.waitForFunction(()=>window.__music.playing);await page.tap('#play');
+  say('제목 없이도 녹음 재생',!(await g(()=>window.__music.playing))&&await page.inputValue('#title')==='');
+  await page.tap('#save');
+  say('빈 제목은 저장만 거절',await g(()=>Object.keys(window.__music.state.songs).length===0&&!!window.__music.draft));
+  await page.tap('#share-draft');
+  say('빈 제목 공유는 거절',await page.locator('#share-layer').isHidden());
+  // 정상 터치 입력은 최대 길이를 넘지 못한다. 우회 입력에서도 재생과 저장 검증을 분리한다.
+  await page.evaluate(()=>{document.getElementById('title').value='가'.repeat(40);});
+  await page.tap('#play');await page.waitForFunction(()=>window.__music.playing);await page.tap('#play');
+  say('긴 제목도 재생 가능',!(await g(()=>window.__music.playing)));
+  await page.tap('#save');
+  say('긴 제목 저장 거절 및 녹음 유지',await g(()=>Object.keys(window.__music.state.songs).length===0&&!!window.__music.draft));
   await page.fill('#title','숲의 아침');await page.screenshot({path:out+'-record.png'});
   await page.tap('#play');await page.waitForFunction(()=>window.__music.playing);await page.tap('#play');
   say('재생 및 정지',!(await g(()=>window.__music.playing)));
@@ -25,7 +39,7 @@ export default async function music(page,{out,logs}){
   say('곡 제목과 녹음 저장',await g(()=>Object.values(window.__music.state.songs)[0]?.title==='숲의 아침'));
   await page.reload();await page.waitForFunction(()=>window.__ready===true);
   say('재접속 뒤 곡 유지',await g(()=>Object.values(window.__music.state.songs)[0]?.notes.length===3));
-  await page.tap('#library');await page.fill('.song input','작은 숲');await page.getByRole('button',{name:'이름 저장'}).tap();
+  await page.tap('#library');say('보관함 제목 입력 최대 32자',await page.locator('.song input').getAttribute('maxlength')==='32');await page.fill('.song input','작은 숲');await page.getByRole('button',{name:'이름 저장'}).tap();
   say('곡 이름 변경',await g(()=>Object.values(window.__music.state.songs)[0].title==='작은 숲'));
   await page.getByRole('button',{name:'듣기',exact:true}).tap();await page.waitForFunction(()=>window.__music.audio.played>=1);
   say('저장한 곡 재생',await g(()=>window.__music.playing));
@@ -44,6 +58,16 @@ export default async function music(page,{out,logs}){
   await page.screenshot({path:out+'-play.png'});
   local.searchParams.set('test','bad');local.hash='#melody=???';await page.goto(local.href);await page.waitForFunction(()=>window.__ready===true);
   say('잘못된 공유 주소는 재생과 저장을 하지 않음',await g(()=>window.__music.audio.state==='idle'&&Object.keys(window.__music.state.songs).length===0&&document.getElementById('listen-layer').hidden));
+  // 다른 탭이 쓰는 상황을 흉내 내어 저장 차단 및 아직 화면에 있는 곡의 공유를 검증한다.
+  await page.tap('#record');await page.tap('#note-3');await page.tap('#record');
+  const external=JSON.stringify({version:1,songs:{'abcdabcdabcdabcd':{title:'다른 탭의 곡',notes:[[0,1]],createdAt:1}}});
+  await page.evaluate(raw=>localStorage.setItem('maeul:music',raw),external);
+  await page.tap('#save');
+  say('다른 탭 원문 보존 및 녹음 유지',await page.evaluate(raw=>localStorage.getItem('maeul:music')===raw&&!!window.__music.draft,external));
+  say('새로고침 전 공유 주소 보관 안내',await page.locator('#draft-warning').isVisible()&&await page.locator('#save').isDisabled());
+  await page.tap('#share-draft');
+  say('저장 충돌 후에도 곡 공유 주소 생성', (await page.inputValue('#share-url')).includes('#melody='));
+  await page.tap('#close-share');
   // 게임 메뉴 진입은 오염되지 않은 실제 집 저장 상태에서 별도로 확인.
   await page.evaluate(()=>localStorage.clear());
   await page.goto(local.origin+'/');await page.waitForFunction(()=>window.__ready===true);

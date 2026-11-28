@@ -20,7 +20,7 @@ export function createMusicLibrary(storage){
       const encoded=JSON.stringify(next);
       try{
         if(storage.getItem(MUSIC_KEY)!==raw){
-          locked='다른 화면에서 곡이 바뀌었습니다. 새로고침 뒤 저장해 주세요';throw new Error(locked);
+          locked='다른 화면에서 곡이 바뀌어 저장을 멈췄습니다';throw new Error(locked);
         }
         storage.setItem(MUSIC_KEY,encoded);
         if(storage.getItem(MUSIC_KEY)!==encoded){
