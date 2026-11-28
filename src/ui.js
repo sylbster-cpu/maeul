@@ -230,6 +230,8 @@ export function createUI({ thumbs, on, guest = false, canImport = false }) {
   backdrop.addEventListener('click', closeOutside);
   for (const id of ['share-house', 'online-action', 'clear-all', 'sample']) $(id).addEventListener('click', () => setMenu(false, { focus: false }));
   $('help-toggle').addEventListener('click', () => { setMenu(false, { focus: false }); showHelp(help.hidden); });
+  $('music-action').hidden = guest;
+  $('music-action').addEventListener('click', () => { setMenu(false, { focus: false }); on.music(); });
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !menu.hidden) { event.preventDefault(); event.stopImmediatePropagation(); setMenu(false); }
   });

@@ -260,6 +260,11 @@ async function start(saved = {}) {
       zoom: (factor) => view.zoomBy(factor),
       rotate: () => input.rotate(),
       mute: () => { audio.setMuted(!audio.muted); haptics.setEnabled(!audio.muted); return audio.muted; },
+      music: () => {
+        if (guest || switchingHouse) return;
+        if (!saveNow()) { ui.toast('내 집을 저장하지 못했습니다. 저장을 확인한 뒤 이동해 주세요', 'error'); return; }
+        window.location.assign('./music.html');
+      },
       inset: (px) => view.setBottomInset(px),
       topInset: (px) => view.setTopInset(px),
       clear: () => input.clearAll(),

@@ -1,0 +1,43 @@
+name: 음악 터치 검증
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  music:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: node --test test/music.test.mjs
+      - run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: 로컬 서버와 세로·가로 연주 시험
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/serve.mjs > /tmp/maeul-music-server.log 2>&1 &
+          for attempt in $(seq 1 40); do
+            if curl -fsS http://localhost:5173/music.html > /dev/null; then break; fi
+            sleep 1
+          done
+          mkdir -p shots
+          TOUCH=1 timeout 180 node tools/shot.mjs /music.html shots/music-portrait 360 640 test/music.mjs | tee shots/music-portrait.log
+          TOUCH=1 timeout 180 node tools/shot.mjs /music.html shots/music-landscape 640 360 test/music.mjs | tee shots/music-landscape.log
+          if grep -E '^실패  |^\[pageerror\]|^\[shot\] __ready' shots/music-*.log; then exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: music-browser-test
+          path: shots/
+          if-no-files-found: ignore
+          retention-days: 7

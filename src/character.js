@@ -10,7 +10,7 @@ const SPEED = 5.2;
 const SIT_TIME = 0.26; // 올라앉고 일어나는 데 걸리는 시간 (초)
 const SIT_SINK = 0.2; // 앉으면 몸의 아랫부분이 앉는 면 아래로 이만큼 내려간다
 
-function buildFigure() {
+export function buildFigure() {
   const group = new THREE.Group();
   const coat = new THREE.MeshStandardMaterial({ color: 0xf0a030, roughness: 0.8 });
   const skin = new THREE.MeshStandardMaterial({ color: 0xf4cfa4, roughness: 0.9 });

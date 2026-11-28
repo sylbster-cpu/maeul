@@ -1,0 +1,45 @@
+// 360×640 및 가로 화면 터치 시험. 실제 휴대폰의 스피커 음질 평가는 별도다.
+import assert from 'node:assert/strict';
+export default async function music(page,{out,logs}){
+  const say=(name,value)=>{logs.push((value?'통과  ':'실패  ')+name);assert.ok(value,name);};
+  const g=fn=>page.evaluate(fn);
+  const original={'house-lab-web:save':'test-house','house-lab-web:fishing':'test-fishing','maeul:gathering':'test-gathering'};
+  await page.evaluate(values=>{for(const [k,v] of Object.entries(values))localStorage.setItem(k,v);},original);
+  await page.reload();await page.waitForFunction(()=>window.__ready===true);
+  say('터치 전 오디오를 열지 않음',await g(()=>window.__music.audio.state==='idle'));
+  const size=await g(()=>({w:document.documentElement.scrollWidth,h:document.documentElement.scrollHeight,vw:innerWidth,vh:innerHeight}));
+  say('한 화면 안에 연주판과 조작 버튼',size.w<=size.vw&&size.h<=size.vh);
+  await page.waitForFunction(()=>window.__music.hasScene,null,{timeout:15000});
+  await page.tap('#note-0');
+  await page.waitForFunction(()=>window.__music.audio.played>=1);
+  say('첫 터치에 실제 오디오 음 생성',await g(()=>window.__music.audio.played===1));
+  await page.tap('#record');await page.tap('#note-0');await page.waitForTimeout(220);await page.tap('#note-2');await page.waitForTimeout(380);await page.tap('#note-4');await page.tap('#record');
+  const draft=await g(()=>window.__music.draft);
+  say('실제 음 순서와 박자 녹음',draft.notes.length===3&&draft.notes[0][0]===0&&draft.notes[1][0]>=150&&draft.notes[2][0]-draft.notes[1][0]>=300&&draft.notes.map(n=>n[1]).join(',')==='0,2,4');
+  await page.fill('#title','숲의 아침');await page.screenshot({path:out+'-record.png'});
+  await page.tap('#play');await page.waitForFunction(()=>window.__music.playing);await page.tap('#play');
+  say('재생 및 정지',!(await g(()=>window.__music.playing)));
+  await page.tap('#share-draft');const link=await page.inputValue('#share-url');
+  say('정식 공유 주소 생성',link.startsWith('https://sylbster-cpu.github.io/maeul/music.html#melody='));
+  await page.tap('#close-share');await page.tap('#save');
+  say('곡 제목과 녹음 저장',await g(()=>Object.values(window.__music.state.songs)[0]?.title==='숲의 아침'));
+  await page.reload();await page.waitForFunction(()=>window.__ready===true);
+  say('재접속 뒤 곡 유지',await g(()=>Object.values(window.__music.state.songs)[0]?.notes.length===3));
+  await page.tap('#library');await page.fill('.song input','작은 숲');await page.getByRole('button',{name:'이름 저장'}).tap();
+  say('곡 이름 변경',await g(()=>Object.values(window.__music.state.songs)[0].title==='작은 숲'));
+  await page.getByRole('button',{name:'듣기',exact:true}).tap();await page.waitForFunction(()=>window.__music.audio.played>=1);
+  say('저장한 곡 재생',await g(()=>window.__music.playing));
+  await page.tap('#play');
+  const local=new URL(page.url());local.hash=new URL(link).hash;await page.goto(local.href);await page.waitForFunction(()=>window.__ready===true);
+  await page.locator('#listen-layer').waitFor({state:'visible'});
+  say('친구의 공유 곡 자동 재생·저장 없음',await g(()=>window.__music.audio.state==='idle'&&Object.keys(window.__music.state.songs).length===1));
+  await page.tap('#listen');await page.waitForFunction(()=>window.__music.audio.played>=1);
+  say('명시적 재생으로 친구 곡 듣기',await g(()=>window.__music.playing));
+  await page.tap('#play');
+  await page.tap('#library');page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'삭제',exact:true}).tap();
+  say('곡 삭제',await g(()=>Object.keys(window.__music.state.songs).length===0));
+  await page.tap('#close-library');
+  const preserved=await page.evaluate(values=>Object.entries(values).every(([k,v])=>localStorage.getItem(k)===v),original);
+  say('집·낚시·채집 저장 값 그대로',preserved);
+  await page.screenshot({path:out+'-play.png'});
+}
